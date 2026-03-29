@@ -90,7 +90,12 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 		if source.Version != "" {
 			suffix = "@" + source.Version
 		}
-		return "", "", fmt.Errorf("no release found for %s/%s%s — create a GitHub release with platform artifacts", source.Owner, source.Repo, suffix)
+		return "", "", fmt.Errorf(
+			"no release found for %s/%s%s\n\n"+
+				"To install from source instead:\n"+
+				"  branchkit-cli plugin install %s/%s --build",
+			source.Owner, source.Repo, suffix, source.Owner, source.Repo,
+		)
 	}
 	if resp.StatusCode >= 300 {
 		return "", "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
