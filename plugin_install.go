@@ -13,6 +13,16 @@ import (
 )
 
 func cmdInstall(source string, build bool) {
+	// Resolve short names via registry (e.g., "voice" → "branchkit/branchkit-plugin-voice")
+	if isShortName(source) {
+		resolved, err := resolveShortName(source)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		source = resolved
+	}
+
 	var err error
 	if build {
 		err = installFromSource(source)
