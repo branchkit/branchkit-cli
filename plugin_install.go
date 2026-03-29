@@ -37,11 +37,15 @@ func isLocalPath(source string) bool {
 // --- Local install ---
 
 func installFromLocal(source string) error {
-	manifestPath := filepath.Join(source, "plugin.json")
+	manifestPath, err := findManifest(source)
+	if err != nil {
+		return err
+	}
 	manifest, err := readManifest(manifestPath)
 	if err != nil {
 		return err
 	}
+	source = filepath.Dir(manifestPath)
 
 	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
 	os.MkdirAll(targetDir, 0o755)
@@ -201,7 +205,11 @@ func installFromSource(source string) error {
 	os.MkdirAll(targetDir, 0o755)
 
 	// Copy plugin.json
-	copyFile(manifestPath, filepath.Join(targetDir, "plugin.json"), 0o644)
+	if err := copyFile(manifestPath, filepath.Join(targetDir, "plugin.json"), 0o644); err != nil {
+		os.RemoveAll(targetDir)
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to copy manifest: %w", err)
+	}
 
 	// Copy binary
 	if manifest.Run != "" {
@@ -215,7 +223,11 @@ func installFromSource(source string) error {
 			os.RemoveAll(tempDir)
 			return fmt.Errorf("built binary '%s' not found", binaryName)
 		}
-		copyFile(srcBinary, filepath.Join(targetDir, binaryName), 0o755)
+		if err := copyFile(srcBinary, filepath.Join(targetDir, binaryName), 0o755); err != nil {
+			os.RemoveAll(targetDir)
+			os.RemoveAll(tempDir)
+			return fmt.Errorf("failed to copy binary: %w", err)
+		}
 	}
 
 	fmt.Printf("Built and installed plugin '%s' v%s\n", manifest.Name, manifest.Version)

@@ -74,7 +74,10 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 
 	fmt.Printf("Fetching release from %s/%s...\n", source.Owner, source.Repo)
 
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid request URL: %w", err)
+	}
 	req.Header.Set("User-Agent", "branchkit-cli")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -125,7 +128,10 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 
 	// Download artifact
 	fmt.Printf("Downloading %s...\n", asset.Name)
-	dlReq, _ := http.NewRequest("GET", asset.BrowserDownloadURL, nil)
+	dlReq, err := http.NewRequest("GET", asset.BrowserDownloadURL, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid download URL: %w", err)
+	}
 	dlReq.Header.Set("User-Agent", "branchkit-cli")
 	dlResp, err := client.Do(dlReq)
 	if err != nil {
@@ -156,7 +162,10 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 			continue
 		}
 		fmt.Println("Verifying checksum...")
-		csReq, _ := http.NewRequest("GET", a.BrowserDownloadURL, nil)
+		csReq, err := http.NewRequest("GET", a.BrowserDownloadURL, nil)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid checksum URL: %w", err)
+		}
 		csReq.Header.Set("User-Agent", "branchkit-cli")
 		csResp, err := client.Do(csReq)
 		if err != nil || csResp.StatusCode >= 300 {

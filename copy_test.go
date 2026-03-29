@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -48,7 +49,7 @@ func TestSafeCopyRejectsSymlinks(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for symlink")
 	}
-	if !contains(err.Error(), "symlink") {
+	if !strings.Contains(err.Error(), "symlink") {
 		t.Errorf("error should mention symlink, got: %v", err)
 	}
 }
@@ -68,20 +69,8 @@ func TestSafeCopyRejectsExcessiveDepth(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for excessive depth")
 	}
-	if !contains(err.Error(), "depth") {
+	if !strings.Contains(err.Error(), "depth") {
 		t.Errorf("error should mention depth, got: %v", err)
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
