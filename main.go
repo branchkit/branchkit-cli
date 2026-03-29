@@ -40,6 +40,14 @@ func main() {
 			source := os.Args[3]
 			build := len(os.Args) >= 5 && os.Args[4] == "--build"
 			cmdInstall(source, build)
+		case "check-updates":
+			cmdCheckUpdates()
+		case "update":
+			pluginID := ""
+			if len(os.Args) >= 4 {
+				pluginID = os.Args[3]
+			}
+			cmdUpdate(pluginID)
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown plugin command: %s\n", os.Args[2])
 			printPluginUsage()
@@ -64,6 +72,8 @@ func printUsage() {
 	fmt.Println("  plugin list                        List installed plugins")
 	fmt.Println("  plugin remove <plugin-id>          Remove a user-installed plugin")
 	fmt.Println("  plugin info <plugin-id>            Show plugin details")
+	fmt.Println("  plugin check-updates               Check for available updates (JSON)")
+	fmt.Println("  plugin update [plugin-id]          Update one or all plugins")
 	fmt.Println("  help                               Show this help")
 }
 
@@ -75,4 +85,6 @@ func printPluginUsage() {
 	fmt.Println("  list                        List installed plugins")
 	fmt.Println("  remove <plugin-id>          Remove a user-installed plugin")
 	fmt.Println("  info <plugin-id>            Show plugin details")
+	fmt.Println("  check-updates               Check for available updates (JSON output)")
+	fmt.Println("  update [plugin-id]          Update one or all plugins")
 }

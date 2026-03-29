@@ -128,6 +128,9 @@ func installFromGitHub(source string) error {
 		setExecutable(targetDir, manifest.Run)
 	}
 
+	// Save source metadata for update checking
+	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag)
+
 	fmt.Printf("Installed plugin '%s' v%s (%s)\n", manifest.Name, manifest.Version, tag)
 	checkDependencies(manifest)
 	notifyActuator()
@@ -239,6 +242,9 @@ func installFromSource(source string) error {
 			return fmt.Errorf("failed to copy binary: %w", err)
 		}
 	}
+
+	// Save source metadata for update checking
+	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build")
 
 	fmt.Printf("Built and installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
 	checkDependencies(manifest)
@@ -363,6 +369,35 @@ func findManifest(dir string) (string, error) {
 	default:
 		return "", fmt.Errorf("found %d plugin.json files in archive — expected exactly one", len(found))
 	}
+}
+
+// SourceMeta records where a plugin was installed from, for update checking.
+type SourceMeta struct {
+	Source       string `json:"source"`        // "owner/repo"
+	InstalledTag string `json:"installed_tag"` // e.g. "v3.0.0" or "source-build"
+}
+
+const sourceMetaFile = ".branchkit-source.json"
+
+func writeSourceMeta(pluginDir, source, tag string) {
+	meta := SourceMeta{Source: source, InstalledTag: tag}
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return
+	}
+	os.WriteFile(filepath.Join(pluginDir, sourceMetaFile), data, 0o644)
+}
+
+func readSourceMeta(pluginDir string) (SourceMeta, bool) {
+	data, err := os.ReadFile(filepath.Join(pluginDir, sourceMetaFile))
+	if err != nil {
+		return SourceMeta{}, false
+	}
+	var meta SourceMeta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return SourceMeta{}, false
+	}
+	return meta, true
 }
 
 func setExecutable(dir, runCmd string) {

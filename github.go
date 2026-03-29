@@ -59,6 +59,38 @@ func pluginNameFromRepo(repo string) string {
 	return repo
 }
 
+// fetchLatestTag fetches only the latest release tag from GitHub (no download).
+func fetchLatestTag(source ResolvedSource) (string, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", source.Owner, source.Repo)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "branchkit-cli")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to reach GitHub API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		return "", fmt.Errorf("no releases found for %s/%s", source.Owner, source.Repo)
+	}
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+	}
+
+	var release ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", fmt.Errorf("failed to parse release JSON: %w", err)
+	}
+
+	return release.TagName, nil
+}
+
 // downloadRelease fetches a GitHub release and downloads the platform artifact.
 // Returns the path to the downloaded tarball and the release tag.
 func downloadRelease(source ResolvedSource, destDir string) (string, string, error) {
