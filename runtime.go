@@ -75,6 +75,10 @@ func ensureBunRuntime() error {
 
 // downloadBun downloads the pinned Bun version for the current platform.
 func downloadBun() error {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		return fmt.Errorf("automatic Bun download is not supported on %s — install Bun manually: https://bun.sh", runtime.GOOS)
+	}
+
 	arch := runtime.GOARCH
 	var archName string
 	switch arch {
@@ -86,7 +90,7 @@ func downloadBun() error {
 		return fmt.Errorf("unsupported architecture: %s", arch)
 	}
 
-	filename := fmt.Sprintf("bun-darwin-%s.zip", archName)
+	filename := fmt.Sprintf("bun-%s-%s.zip", runtime.GOOS, archName)
 	url := fmt.Sprintf("https://github.com/oven-sh/bun/releases/download/bun-v%s/%s", bunVersion, filename)
 
 	fmt.Printf("Downloading Bun v%s for %s...\n", bunVersion, archName)
