@@ -7,16 +7,23 @@ import (
 
 // PluginManifest represents the plugin.json manifest — only fields the CLI needs.
 type PluginManifest struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Version      string   `json:"version"`
-	Description  string   `json:"description"`
-	Author       string   `json:"author"`
-	Run          string   `json:"run,omitempty"`
-	Capabilities []string `json:"capabilities,omitempty"`
-	DependsOn    []string `json:"depends_on,omitempty"`
-	ActionPrefix string   `json:"action_prefix,omitempty"`
-	HudTargets   []string `json:"hud_targets,omitempty"`
+	ID            string       `json:"id"`
+	Name          string       `json:"name"`
+	Version       string       `json:"version"`
+	Description   string       `json:"description"`
+	Author        string       `json:"author"`
+	MinAPIVersion string       `json:"min_api_version,omitempty"`
+	Run           string       `json:"run,omitempty"`
+	Capabilities  []string     `json:"capabilities,omitempty"`
+	DependsOn     []Dependency `json:"depends_on,omitempty"`
+	ActionPrefix  string       `json:"action_prefix,omitempty"`
+	HudTargets    []string     `json:"hud_targets,omitempty"`
+}
+
+// Dependency is an explicit plugin dependency with optional version constraint.
+type Dependency struct {
+	Plugin  string `json:"plugin"`
+	Version string `json:"version,omitempty"`
 }
 
 // PluginSource indicates where a plugin was discovered.

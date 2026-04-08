@@ -283,8 +283,12 @@ func checkDependencies(manifest PluginManifest) {
 	}
 	var missing []string
 	for _, dep := range manifest.DependsOn {
-		if !installed[dep] {
-			missing = append(missing, dep)
+		if !installed[dep.Plugin] {
+			label := dep.Plugin
+			if dep.Version != "" {
+				label += " " + dep.Version
+			}
+			missing = append(missing, label)
 		}
 	}
 	if len(missing) > 0 {

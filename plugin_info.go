@@ -40,7 +40,15 @@ func cmdInfo(pluginID string) {
 		fmt.Printf("Capabilities: %s\n", strings.Join(m.Capabilities, ", "))
 	}
 	if len(m.DependsOn) > 0 {
-		fmt.Printf("Depends on:  %s\n", strings.Join(m.DependsOn, ", "))
+		deps := make([]string, len(m.DependsOn))
+		for i, d := range m.DependsOn {
+			if d.Version != "" {
+				deps[i] = d.Plugin + " " + d.Version
+			} else {
+				deps[i] = d.Plugin
+			}
+		}
+		fmt.Printf("Depends on:  %s\n", strings.Join(deps, ", "))
 	}
 	if len(m.HudTargets) > 0 {
 		fmt.Printf("HUD targets: %s\n", strings.Join(m.HudTargets, ", "))
