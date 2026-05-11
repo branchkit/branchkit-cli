@@ -53,6 +53,25 @@ func main() {
 			printPluginUsage()
 			os.Exit(1)
 		}
+	case "model":
+		if len(os.Args) < 3 {
+			printModelUsage()
+			os.Exit(1)
+		}
+		switch os.Args[2] {
+		case "download":
+			if len(os.Args) < 4 {
+				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli model download <engine/model-name>")
+				os.Exit(1)
+			}
+			cmdModelDownload(os.Args[3])
+		case "list":
+			cmdModelList()
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown model command: %s\n", os.Args[2])
+			printModelUsage()
+			os.Exit(1)
+		}
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -74,7 +93,17 @@ func printUsage() {
 	fmt.Println("  plugin info <plugin-id>            Show plugin details")
 	fmt.Println("  plugin check-updates               Check for available updates (JSON)")
 	fmt.Println("  plugin update [plugin-id]          Update one or all plugins")
+	fmt.Println("  model download <engine/model>      Download a speech model")
+	fmt.Println("  model list                         List downloaded models")
 	fmt.Println("  help                               Show this help")
+}
+
+func printModelUsage() {
+	fmt.Println("Usage: branchkit-cli model <command>")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  download <engine/model>  Download a speech model (e.g., vosk/vosk-model-small-en-us-0.15)")
+	fmt.Println("  list                     List downloaded models")
 }
 
 func printPluginUsage() {
