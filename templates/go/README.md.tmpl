@@ -1,0 +1,34 @@
+# {{.PluginName}}
+
+{{.Description}}
+
+## Build
+
+```bash
+branchkit dev build
+```
+
+## Test
+
+```bash
+branchkit dev test .
+```
+
+## Install
+
+```bash
+branchkit plugin install . --build
+```
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `plugin.json` | Manifest — declares actions, keybinds, voice commands |
+| `commands.json` | Voice command patterns that trigger actions |
+| `src/main.go` | Handler logic — your plugin's behavior |
+
+## Learn more
+
+- [Your First Plugin](https://branchkit.dev/guide/getting-started/your-first-plugin)
+- [Plugin SDK (Go)](https://github.com/branchkit/plugin-sdk-go)

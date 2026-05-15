@@ -1,0 +1,12 @@
+[
+  {
+    "pattern": ["hello", "branchkit"],
+    "action": { "type": "{{.ActionPrefix}}.greet", "name": "BranchKit" },
+    "description": "Say Hello BranchKit"
+  },
+  {
+    "pattern": ["hello", "<text>"],
+    "action": { "type": "{{.ActionPrefix}}.greet", "name": "{0}" },
+    "description": "Greet someone by name"
+  }
+]

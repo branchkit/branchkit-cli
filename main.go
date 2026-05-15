@@ -72,6 +72,21 @@ func main() {
 			printModelUsage()
 			os.Exit(1)
 		}
+	case "dev":
+		if len(os.Args) < 3 {
+			printDevUsage()
+			os.Exit(1)
+		}
+		switch os.Args[2] {
+		case "init":
+			cmdDevInit(os.Args[3:])
+		case "build":
+			cmdDevBuild(os.Args[3:])
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown dev command: %s\n", os.Args[2])
+			printDevUsage()
+			os.Exit(1)
+		}
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -95,6 +110,8 @@ func printUsage() {
 	fmt.Println("  plugin update [plugin-id]          Update one or all plugins")
 	fmt.Println("  model download <engine/model>      Download a speech model")
 	fmt.Println("  model list                         List downloaded models")
+	fmt.Println("  dev init [flags]                   Scaffold a new plugin from template")
+	fmt.Println("  dev build [path]                   Build a plugin from source")
 	fmt.Println("  help                               Show this help")
 }
 
@@ -104,6 +121,16 @@ func printModelUsage() {
 	fmt.Println("Commands:")
 	fmt.Println("  download <engine/model>  Download a speech model (e.g., vosk/vosk-model-small-en-us-0.15)")
 	fmt.Println("  list                     List downloaded models")
+}
+
+func printDevUsage() {
+	fmt.Println("Usage: branchkit-cli dev <command>")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  init [--name NAME] [--template go] [--description DESC]")
+	fmt.Println("        Scaffold a new plugin from template")
+	fmt.Println("  build [path]")
+	fmt.Println("        Detect build system and build plugin binary")
 }
 
 func printPluginUsage() {
