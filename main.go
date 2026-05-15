@@ -84,6 +84,10 @@ func main() {
 			cmdDevBuild(os.Args[3:])
 		case "test":
 			cmdDevTest(os.Args[3:])
+		case "watch":
+			cmdDevWatch(os.Args[3:])
+		case "logs":
+			cmdDevLogs(os.Args[3:])
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown dev command: %s\n", os.Args[2])
 			printDevUsage()
@@ -115,6 +119,8 @@ func printUsage() {
 	fmt.Println("  dev init [flags]                   Scaffold a new plugin from template")
 	fmt.Println("  dev build [path]                   Build a plugin from source")
 	fmt.Println("  dev test [path] [flags]            Run static analysis on a plugin")
+	fmt.Println("  dev watch [path]                   Watch + rebuild + reload on changes")
+	fmt.Println("  dev logs [plugin-id] [flags]       Tail actuator log")
 	fmt.Println("  help                               Show this help")
 }
 
@@ -136,6 +142,10 @@ func printDevUsage() {
 	fmt.Println("        Detect build system and build plugin binary")
 	fmt.Println("  test [path] [--static-only] [--json]")
 	fmt.Println("        Run static analysis on a plugin")
+	fmt.Println("  watch [path]")
+	fmt.Println("        Watch for changes, rebuild, and reload via actuator")
+	fmt.Println("  logs [plugin-id] [--source TAG] [--json]")
+	fmt.Println("        Tail actuator log, optionally filtered")
 }
 
 func printPluginUsage() {
