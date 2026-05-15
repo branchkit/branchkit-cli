@@ -1,0 +1,28 @@
+import { describe, test, expect } from "bun:test";
+import { Harness } from "@branchkit/plugin-sdk-ts/harness";
+
+describe("{{.PluginName}}", () => {
+  test("hello branchkit command matches", async () => {
+    const h = await Harness.start(".");
+    try {
+      const result = await h.mustSimulateCommand("hello branchkit");
+      expect(h.actionType(result)).toBe("{{.ActionPrefix}}.greet");
+
+      const params = h.actionParams<{ name: string }>(result);
+      expect(params.name).toBe("BranchKit");
+    } finally {
+      await h.stop();
+    }
+  });
+
+  test("hello <name> command captures name", async () => {
+    const h = await Harness.start(".");
+    try {
+      const result = await h.mustSimulateCommand("hello world");
+      const params = h.actionParams<{ name: string }>(result);
+      expect(params.name).toBe("world");
+    } finally {
+      await h.stop();
+    }
+  });
+});

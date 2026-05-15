@@ -1,0 +1,36 @@
+# {{.PluginName}}
+
+{{.Description}}
+
+## Build
+
+```bash
+branchkit dev build
+```
+
+## Test
+
+```bash
+branchkit dev test .
+bun test
+```
+
+## Install
+
+```bash
+branchkit plugin install . --build
+```
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `plugin.json` | Manifest -- declares actions, keybinds, voice commands |
+| `commands.json` | Voice command patterns that trigger actions |
+| `src/index.ts` | Handler logic -- your plugin's behavior |
+| `run.sh` | Wrapper script that starts the plugin via Bun |
+
+## Learn more
+
+- [Your First Plugin](https://branchkit.dev/guide/getting-started/your-first-plugin)
+- [Plugin SDK (TypeScript)](https://github.com/branchkit/plugin-sdk-ts)

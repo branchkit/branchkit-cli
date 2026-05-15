@@ -1,0 +1,36 @@
+{
+  "id": "{{.PluginID}}",
+  "name": "{{.PluginName}}",
+  "version": "0.1.0",
+  "min_api_version": "0.1.0",
+  "description": "{{.Description}}",
+  "author": "Your Name",
+  "privileges": ["input"],
+  "run": "./run.sh",
+  "action_prefix": "{{.ActionPrefix}}",
+  "action_types": {
+    "greet": {
+      "label": "Greet",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Name",
+          "field_type": "string"
+        }
+      ]
+    }
+  },
+  "collection_data": {
+    "voice_commands": "commands.json",
+    "keybinds": {
+      "alt+shift+h": "{{.ActionPrefix}} greet"
+    }
+  },
+  "implements": {
+    "on_action": true,
+    "render_settings": true,
+    "settings_tabs": [
+      { "label": "Getting Started", "key": "getting_started" }
+    ]
+  }
+}

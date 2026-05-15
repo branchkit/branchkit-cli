@@ -16,6 +16,10 @@ import (
 //go:embed templates/go/src/*
 var goTemplateFS embed.FS
 
+//go:embed templates/ts/*
+//go:embed templates/ts/src/*
+var tsTemplateFS embed.FS
+
 type templateData struct {
 	PluginID     string
 	PluginName   string
@@ -54,10 +58,10 @@ func cmdDevInit(args []string) {
 	}
 
 	if tmpl == "" {
-		tmpl = promptInput("Template", "go")
+		tmpl = promptInput("Template (go or ts)", "go")
 	}
-	if tmpl != "go" {
-		fmt.Fprintf(os.Stderr, "Error: only 'go' template is supported currently\n")
+	if tmpl != "go" && tmpl != "ts" {
+		fmt.Fprintf(os.Stderr, "Error: template must be 'go' or 'ts' (got %q)\n", tmpl)
 		os.Exit(1)
 	}
 
@@ -77,23 +81,53 @@ func cmdDevInit(args []string) {
 		ActionPrefix: strings.ReplaceAll(name, "-", ""),
 	}
 
-	if err := scaffoldGoPlugin(name, data); err != nil {
-		os.RemoveAll(name)
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+	switch tmpl {
+	case "go":
+		if err := scaffoldGoPlugin(name, data); err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		cmd := exec.Command("go", "mod", "tidy")
+		cmd.Dir = filepath.Join(name, "src")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintf(os.Stderr, "Error: go mod tidy failed: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "ts":
+		if err := scaffoldTSPlugin(name, data); err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := os.Chmod(filepath.Join(name, "run.sh"), 0o755); err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintf(os.Stderr, "Error: chmod run.sh: %v\n", err)
+			os.Exit(1)
+		}
+
+		bunPath := "bun"
+		if managed := managedBunPath(); fileExists(managed) {
+			bunPath = managed
+		}
+		cmd := exec.Command(bunPath, "install")
+		cmd.Dir = name
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintf(os.Stderr, "Error: bun install failed: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
-	cmd := exec.Command("go", "mod", "tidy")
-	cmd.Dir = filepath.Join(name, "src")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		os.RemoveAll(name)
-		fmt.Fprintf(os.Stderr, "Error: go mod tidy failed: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("\nCreated plugin %s/ (Go template)\n", name)
+	fmt.Printf("\nCreated plugin %s/ (%s template)\n", name, tmpl)
 	fmt.Println()
 	fmt.Println("  Next steps:")
 	fmt.Printf("    cd %s\n", name)
@@ -152,6 +186,51 @@ func scaffoldGoPlugin(dir string, data templateData) error {
 	return nil
 }
 
+func scaffoldTSPlugin(dir string, data templateData) error {
+	templateFiles := []struct {
+		src  string
+		dest string
+	}{
+		{"templates/ts/plugin.json.tmpl", "plugin.json"},
+		{"templates/ts/commands.json.tmpl", "commands.json"},
+		{"templates/ts/run.sh.tmpl", "run.sh"},
+		{"templates/ts/package.json.tmpl", "package.json"},
+		{"templates/ts/README.md.tmpl", "README.md"},
+		{"templates/ts/src/index.ts.tmpl", "src/index.ts"},
+		{"templates/ts/src/index.test.ts.tmpl", "src/index.test.ts"},
+	}
+
+	for _, tf := range templateFiles {
+		destPath := filepath.Join(dir, tf.dest)
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", filepath.Dir(destPath), err)
+		}
+
+		content, err := tsTemplateFS.ReadFile(tf.src)
+		if err != nil {
+			return fmt.Errorf("read template %s: %w", tf.src, err)
+		}
+
+		tmpl, err := template.New(tf.src).Parse(string(content))
+		if err != nil {
+			return fmt.Errorf("parse template %s: %w", tf.src, err)
+		}
+
+		f, err := os.Create(destPath)
+		if err != nil {
+			return fmt.Errorf("create %s: %w", destPath, err)
+		}
+
+		if err := tmpl.Execute(f, data); err != nil {
+			f.Close()
+			return fmt.Errorf("execute template %s: %w", tf.src, err)
+		}
+		f.Close()
+	}
+
+	return nil
+}
+
 func cmdDevTest(args []string) {
 	dir := "."
 	jsonOutput := false
@@ -169,7 +248,6 @@ func cmdDevTest(args []string) {
 			}
 		}
 	}
-	_ = staticOnly
 
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -185,6 +263,11 @@ func cmdDevTest(args []string) {
 	phase := runStaticAnalysis(absDir)
 	failures := printTestResults(phase, jsonOutput)
 
+	if !staticOnly {
+		harnessFailures := runHarnessConformance(absDir, jsonOutput)
+		failures += harnessFailures
+	}
+
 	if failures > 0 {
 		fmt.Fprintf(os.Stderr, "%d test(s) failed\n", failures)
 		os.Exit(1)
@@ -192,6 +275,63 @@ func cmdDevTest(args []string) {
 	if !jsonOutput {
 		fmt.Println("All tests passed")
 	}
+}
+
+func runHarnessConformance(dir string, jsonOutput bool) int {
+	binary := findHarnessBinary()
+	if binary == "" {
+		if !jsonOutput {
+			fmt.Println("Skipping conformance tests (branchkit-test-harness not found)")
+			fmt.Println("  Install: cargo build -p branchkit-test-harness")
+		}
+		return 0
+	}
+
+	harnessArgs := []string{dir}
+	if jsonOutput {
+		harnessArgs = append(harnessArgs, "--json")
+	}
+
+	cmd := exec.Command(binary, harnessArgs...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode()
+		}
+		fmt.Fprintf(os.Stderr, "Error running harness: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func findHarnessBinary() string {
+	if env := os.Getenv("BRANCHKIT_TEST_HARNESS"); env != "" {
+		return env
+	}
+
+	candidates := []string{
+		"target/debug/branchkit-test-harness",
+		"target/release/branchkit-test-harness",
+		"../target/debug/branchkit-test-harness",
+		"../target/release/branchkit-test-harness",
+	}
+
+	for _, c := range candidates {
+		abs, err := filepath.Abs(c)
+		if err != nil {
+			continue
+		}
+		if fileExists(abs) {
+			return abs
+		}
+	}
+
+	if p, err := exec.LookPath("branchkit-test-harness"); err == nil {
+		return p
+	}
+
+	return ""
 }
 
 func cmdDevBuild(args []string) {
