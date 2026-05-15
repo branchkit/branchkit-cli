@@ -82,6 +82,8 @@ func main() {
 			cmdDevInit(os.Args[3:])
 		case "build":
 			cmdDevBuild(os.Args[3:])
+		case "test":
+			cmdDevTest(os.Args[3:])
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown dev command: %s\n", os.Args[2])
 			printDevUsage()
@@ -112,6 +114,7 @@ func printUsage() {
 	fmt.Println("  model list                         List downloaded models")
 	fmt.Println("  dev init [flags]                   Scaffold a new plugin from template")
 	fmt.Println("  dev build [path]                   Build a plugin from source")
+	fmt.Println("  dev test [path] [flags]            Run static analysis on a plugin")
 	fmt.Println("  help                               Show this help")
 }
 
@@ -131,6 +134,8 @@ func printDevUsage() {
 	fmt.Println("        Scaffold a new plugin from template")
 	fmt.Println("  build [path]")
 	fmt.Println("        Detect build system and build plugin binary")
+	fmt.Println("  test [path] [--static-only] [--json]")
+	fmt.Println("        Run static analysis on a plugin")
 }
 
 func printPluginUsage() {

@@ -152,6 +152,48 @@ func scaffoldGoPlugin(dir string, data templateData) error {
 	return nil
 }
 
+func cmdDevTest(args []string) {
+	dir := "."
+	jsonOutput := false
+	staticOnly := false
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			jsonOutput = true
+		case "--static-only":
+			staticOnly = true
+		default:
+			if !strings.HasPrefix(args[i], "-") {
+				dir = args[i]
+			}
+		}
+	}
+	_ = staticOnly
+
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if _, err := os.Stat(filepath.Join(absDir, "plugin.json")); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: no plugin.json found in %s\n", absDir)
+		os.Exit(1)
+	}
+
+	phase := runStaticAnalysis(absDir)
+	failures := printTestResults(phase, jsonOutput)
+
+	if failures > 0 {
+		fmt.Fprintf(os.Stderr, "%d test(s) failed\n", failures)
+		os.Exit(1)
+	}
+	if !jsonOutput {
+		fmt.Println("All tests passed")
+	}
+}
+
 func cmdDevBuild(args []string) {
 	dir := "."
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
