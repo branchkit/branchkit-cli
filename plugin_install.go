@@ -23,6 +23,9 @@ func cmdInstall(source string, build bool) {
 		source = resolved
 	}
 
+	// Check blocklist before proceeding
+	checkBlocklist(source)
+
 	var err error
 	if build {
 		err = installFromSource(source)

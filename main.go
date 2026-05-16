@@ -42,6 +42,8 @@ func main() {
 			cmdInstall(source, build)
 		case "check-updates":
 			cmdCheckUpdates()
+		case "check-blocklist":
+			cmdCheckBlocklist()
 		case "update":
 			pluginID := ""
 			if len(os.Args) >= 4 {
