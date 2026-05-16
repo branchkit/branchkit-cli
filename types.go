@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 )
@@ -21,9 +22,32 @@ type PluginManifest struct {
 }
 
 // Dependency is an explicit plugin dependency with optional version constraint.
+// Accepts either a bare string ("keyboard") or an object ({"plugin": "keyboard", "version": ">=1.0.0"}).
 type Dependency struct {
 	Plugin  string `json:"plugin"`
 	Version string `json:"version,omitempty"`
+}
+
+func (d *Dependency) UnmarshalJSON(data []byte) error {
+	// Try bare string first
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		d.Plugin = s
+		d.Version = ""
+		return nil
+	}
+	// Fall back to object
+	type depObj struct {
+		Plugin  string `json:"plugin"`
+		Version string `json:"version,omitempty"`
+	}
+	var obj depObj
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	d.Plugin = obj.Plugin
+	d.Version = obj.Version
+	return nil
 }
 
 // PluginSource indicates where a plugin was discovered.
