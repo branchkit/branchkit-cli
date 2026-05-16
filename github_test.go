@@ -13,7 +13,13 @@ func TestParseGitHubSource(t *testing.T) {
 		{"drew/branchkit-plugin-basetypes", "drew", "branchkit-plugin-basetypes", "", false},
 		{"drew/branchkit-plugin-basetypes@v2.1.0", "drew", "branchkit-plugin-basetypes", "v2.1.0", false},
 		{"branchkit/branchkit-plugin-voice@latest", "branchkit", "branchkit-plugin-voice", "latest", false},
+		// github: URL format
+		{"github:drew/branchkit-plugin-basetypes", "drew", "branchkit-plugin-basetypes", "", false},
+		{"github:drew/branchkit-plugin-basetypes@v2.1.0", "drew", "branchkit-plugin-basetypes", "v2.1.0", false},
+		{"github:branchkit/branchkit-plugin-voice", "branchkit", "branchkit-plugin-voice", "", false},
+		// errors
 		{"just-a-name", "", "", "", true},
+		{"github:just-a-name", "", "", "", true},
 		{"/repo", "", "", "", true},
 		{"owner/", "", "", "", true},
 		{"a/b/c", "", "", "", true},

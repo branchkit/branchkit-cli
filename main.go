@@ -152,7 +152,7 @@ func printPluginUsage() {
 	fmt.Println("Usage: branchkit-cli plugin <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  install <source> [--build]  Install from GitHub (owner/repo) or local path")
+	fmt.Println("  install <source> [--build]  Install from GitHub (github:owner/repo) or local path")
 	fmt.Println("  list                        List installed plugins")
 	fmt.Println("  remove <plugin-id>          Remove a user-installed plugin")
 	fmt.Println("  info <plugin-id>            Show plugin details")

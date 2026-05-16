@@ -132,7 +132,7 @@ func installFromGitHub(source string) error {
 	// Save source metadata for update checking
 	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag)
 
-	fmt.Printf("Installed plugin '%s' v%s (%s)\n", manifest.Name, manifest.Version, tag)
+	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
 	checkDependencies(manifest)
 	checkRuntime(manifest)
 	notifyActuator()
@@ -248,7 +248,7 @@ func installFromSource(source string) error {
 	// Save source metadata for update checking
 	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build")
 
-	fmt.Printf("Built and installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
+	fmt.Printf("Built and installed plugin '%s' v%s by github:%s\n", manifest.Name, manifest.Version, parsed.Owner)
 	checkDependencies(manifest)
 	checkRuntime(manifest)
 	notifyActuator()

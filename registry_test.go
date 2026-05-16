@@ -11,10 +11,12 @@ func TestIsShortName(t *testing.T) {
 	}
 
 	notShort := []string{
-		"drew/branchkit-plugin-basetypes", // owner/repo
-		"./my-plugin",                      // local path
-		"/usr/local/plugin",                // absolute path
-		"../plugin",                        // relative path
+		"drew/branchkit-plugin-basetypes",           // owner/repo
+		"github:drew/branchkit-plugin-basetypes",    // github: URL
+		"github:branchkit/branchkit-plugin-keyboard", // github: URL
+		"./my-plugin",                                // local path
+		"/usr/local/plugin",                          // absolute path
+		"../plugin",                                  // relative path
 	}
 	for _, s := range notShort {
 		if isShortName(s) {

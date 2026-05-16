@@ -30,18 +30,21 @@ type ghAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-// parseGitHubSource parses "owner/repo" or "owner/repo@version".
+// parseGitHubSource parses "owner/repo", "owner/repo@version",
+// "github:owner/repo", or "github:owner/repo@version".
 func parseGitHubSource(source string) (ResolvedSource, error) {
+	s := strings.TrimPrefix(source, "github:")
+
 	var version string
-	repoPart := source
-	if idx := strings.Index(source, "@"); idx != -1 {
-		repoPart = source[:idx]
-		version = source[idx+1:]
+	repoPart := s
+	if idx := strings.Index(s, "@"); idx != -1 {
+		repoPart = s[:idx]
+		version = s[idx+1:]
 	}
 
 	parts := strings.Split(repoPart, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return ResolvedSource{}, fmt.Errorf("invalid GitHub source '%s' — expected format: owner/repo", source)
+		return ResolvedSource{}, fmt.Errorf("invalid GitHub source '%s' — expected format: github:owner/repo", source)
 	}
 
 	return ResolvedSource{
