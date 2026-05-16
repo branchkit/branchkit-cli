@@ -133,6 +133,8 @@ func installFromGitHub(source string) error {
 	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag)
 
 	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
+	cs := fetchConformanceStatus(parsed, tag)
+	fmt.Println(formatConformanceStatus(cs))
 	checkDependencies(manifest)
 	checkRuntime(manifest)
 	notifyActuator()

@@ -14,10 +14,12 @@ import (
 
 //go:embed templates/go/*
 //go:embed templates/go/src/*
+//go:embed templates/go/.github/workflows/*
 var goTemplateFS embed.FS
 
 //go:embed templates/ts/*
 //go:embed templates/ts/src/*
+//go:embed templates/ts/.github/workflows/*
 var tsTemplateFS embed.FS
 
 type templateData struct {
@@ -148,6 +150,7 @@ func scaffoldGoPlugin(dir string, data templateData) error {
 		{"templates/go/src/actions_gen.go.tmpl", "src/actions_gen.go"},
 		{"templates/go/src/main_test.go.tmpl", "src/main_test.go"},
 		{"templates/go/README.md.tmpl", "README.md"},
+		{"templates/go/.github/workflows/conformance.yml.tmpl", ".github/workflows/conformance.yml"},
 	}
 
 	for _, tf := range templateFiles {
@@ -198,6 +201,7 @@ func scaffoldTSPlugin(dir string, data templateData) error {
 		{"templates/ts/README.md.tmpl", "README.md"},
 		{"templates/ts/src/index.ts.tmpl", "src/index.ts"},
 		{"templates/ts/src/index.test.ts.tmpl", "src/index.test.ts"},
+		{"templates/ts/.github/workflows/conformance.yml.tmpl", ".github/workflows/conformance.yml"},
 	}
 
 	for _, tf := range templateFiles {

@@ -1,0 +1,37 @@
+name: BranchKit Conformance
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download branchkit-cli
+        run: |
+          CLI_VERSION="latest"
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; fi
+          if [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+
+          DOWNLOAD_URL="https://github.com/branchkit/branchkit-cli/releases/${CLI_VERSION}/download/branchkit-cli-${OS}-${ARCH}.tar.gz"
+          curl -fsSL "$DOWNLOAD_URL" -o /tmp/branchkit-cli.tar.gz
+          tar -xzf /tmp/branchkit-cli.tar.gz -C /usr/local/bin/
+          chmod +x /usr/local/bin/branchkit-cli
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install dependencies
+        run: cd src && go mod download
+
+      - name: Run conformance checks
+        run: branchkit-cli dev test . --static-only
