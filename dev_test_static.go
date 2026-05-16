@@ -67,8 +67,13 @@ func checkRequiredFields(m map[string]any) []TestResult {
 		}
 		s, _ := val.(string)
 		if s == "" {
+			// id is always an error; name/version are warnings to match actuator severity
+			severity := "warn"
+			if field == "id" {
+				severity = "fail"
+			}
 			results = append(results, TestResult{
-				Name: "required_field_" + field, Status: "fail",
+				Name: "required_field_" + field, Status: severity,
 				Detail: fmt.Sprintf("field %q is empty", field),
 			})
 			continue

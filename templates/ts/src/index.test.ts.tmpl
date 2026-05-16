@@ -6,9 +6,9 @@ describe("{{.PluginName}}", () => {
     const h = await Harness.start(".");
     try {
       const result = await h.mustSimulateCommand("hello branchkit");
-      expect(h.actionType(result)).toBe("{{.ActionPrefix}}.greet");
+      expect(result.actionType()).toBe("{{.ActionPrefix}}.greet");
 
-      const params = h.actionParams<{ name: string }>(result);
+      const params = result.actionParams<{ name: string }>();
       expect(params.name).toBe("BranchKit");
     } finally {
       await h.stop();
@@ -19,7 +19,7 @@ describe("{{.PluginName}}", () => {
     const h = await Harness.start(".");
     try {
       const result = await h.mustSimulateCommand("hello world");
-      const params = h.actionParams<{ name: string }>(result);
+      const params = result.actionParams<{ name: string }>();
       expect(params.name).toBe("world");
     } finally {
       await h.stop();
