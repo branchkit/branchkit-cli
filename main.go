@@ -34,12 +34,26 @@ func main() {
 			cmdRemove(os.Args[3])
 		case "install":
 			if len(os.Args) < 4 {
-				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli plugin install <source> [--build]")
+				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli plugin install <source> [--build] [--force] [--preview]")
 				os.Exit(1)
 			}
 			source := os.Args[3]
-			build := len(os.Args) >= 5 && os.Args[4] == "--build"
-			cmdInstall(source, build)
+			var build, force, preview bool
+			for _, arg := range os.Args[4:] {
+				switch arg {
+				case "--build":
+					build = true
+				case "--force":
+					force = true
+				case "--preview":
+					preview = true
+				}
+			}
+			if preview {
+				cmdPreview(source)
+			} else {
+				cmdInstall(source, build, force)
+			}
 		case "check-updates":
 			cmdCheckUpdates()
 		case "check-blocklist":
@@ -110,7 +124,7 @@ func printUsage() {
 	fmt.Println("Usage: branchkit-cli <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  plugin install <source> [--build]  Install a plugin")
+	fmt.Println("  plugin install <source> [--build] [--force]  Install a plugin")
 	fmt.Println("  plugin list                        List installed plugins")
 	fmt.Println("  plugin remove <plugin-id>          Remove a user-installed plugin")
 	fmt.Println("  plugin info <plugin-id>            Show plugin details")
@@ -154,7 +168,7 @@ func printPluginUsage() {
 	fmt.Println("Usage: branchkit-cli plugin <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  install <source> [--build]  Install from GitHub (github:owner/repo) or local path")
+	fmt.Println("  install <source> [--build] [--force]  Install from GitHub (github:owner/repo) or local path")
 	fmt.Println("  list                        List installed plugins")
 	fmt.Println("  remove <plugin-id>          Remove a user-installed plugin")
 	fmt.Println("  info <plugin-id>            Show plugin details")

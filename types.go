@@ -21,25 +21,26 @@ type PluginManifest struct {
 	HudTargets    []string     `json:"hud_targets,omitempty"`
 }
 
-// Dependency is an explicit plugin dependency with optional version constraint.
-// Accepts either a bare string ("keyboard") or an object ({"plugin": "keyboard", "version": ">=1.0.0"}).
+// Dependency is an explicit plugin dependency with optional version constraint and source hint.
+// Accepts either a bare string ("keyboard") or an object ({"plugin": "keyboard", "version": ">=1.0.0", "source": "github:owner/repo"}).
 type Dependency struct {
 	Plugin  string `json:"plugin"`
 	Version string `json:"version,omitempty"`
+	Source  string `json:"source,omitempty"`
 }
 
 func (d *Dependency) UnmarshalJSON(data []byte) error {
-	// Try bare string first
 	var s string
 	if err := json.Unmarshal(data, &s); err == nil {
 		d.Plugin = s
 		d.Version = ""
+		d.Source = ""
 		return nil
 	}
-	// Fall back to object
 	type depObj struct {
 		Plugin  string `json:"plugin"`
 		Version string `json:"version,omitempty"`
+		Source  string `json:"source,omitempty"`
 	}
 	var obj depObj
 	if err := json.Unmarshal(data, &obj); err != nil {
@@ -47,6 +48,7 @@ func (d *Dependency) UnmarshalJSON(data []byte) error {
 	}
 	d.Plugin = obj.Plugin
 	d.Version = obj.Version
+	d.Source = obj.Source
 	return nil
 }
 

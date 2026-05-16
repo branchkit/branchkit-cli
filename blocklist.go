@@ -149,7 +149,13 @@ func blocklistStale(_ *blocklist) bool {
 	if err != nil {
 		return true
 	}
-	return time.Since(info.ModTime()) > 24*time.Hour
+	ttl := 24 * time.Hour
+	if v := os.Getenv("BRANCHKIT_BLOCKLIST_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			ttl = d
+		}
+	}
+	return time.Since(info.ModTime()) > ttl
 }
 
 func matchesBlockedSource(installSource, blockedSource string) bool {

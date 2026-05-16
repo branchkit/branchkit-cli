@@ -12,8 +12,7 @@ import (
 	"strings"
 )
 
-func cmdInstall(source string, build bool) {
-	// Resolve short names via registry (e.g., "voice" → "branchkit/branchkit-plugin-voice")
+func cmdInstall(source string, build bool, force bool) {
 	if isShortName(source) {
 		resolved, err := resolveShortName(source)
 		if err != nil {
@@ -23,8 +22,9 @@ func cmdInstall(source string, build bool) {
 		source = resolved
 	}
 
-	// Check blocklist before proceeding
-	checkBlocklist(source)
+	if !force {
+		checkBlocklist(source)
+	}
 
 	var err error
 	if build {
@@ -73,6 +73,9 @@ func installFromLocal(source string) error {
 	}
 
 	fmt.Printf("Installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
+	if len(manifest.Capabilities) > 0 {
+		fmt.Printf("  Privileges: %s\n", strings.Join(manifest.Capabilities, ", "))
+	}
 	checkDependencies(manifest)
 	checkRuntime(manifest)
 	notifyActuator()
@@ -136,9 +139,7 @@ func installFromGitHub(source string) error {
 	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag)
 
 	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
-	cs := fetchConformanceStatus(parsed, tag)
-	fmt.Println(formatConformanceStatus(cs))
-	checkDependencies(manifest)
+	printInstallInfo(manifest, parsed, tag)
 	checkRuntime(manifest)
 	notifyActuator()
 	os.RemoveAll(tempDir)
@@ -254,7 +255,7 @@ func installFromSource(source string) error {
 	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build")
 
 	fmt.Printf("Built and installed plugin '%s' v%s by github:%s\n", manifest.Name, manifest.Version, parsed.Owner)
-	checkDependencies(manifest)
+	printInstallInfo(manifest, parsed, "source-build")
 	checkRuntime(manifest)
 	notifyActuator()
 	os.RemoveAll(tempDir)
@@ -282,28 +283,90 @@ func checkDependencies(manifest PluginManifest) {
 	if len(manifest.DependsOn) == 0 {
 		return
 	}
-	installed := map[string]bool{}
+	installedVersions := map[string]string{}
 	for _, dp := range discoverPlugins() {
-		installed[dp.Manifest.ID] = true
+		installedVersions[dp.Manifest.ID] = dp.Manifest.Version
 	}
 	var missing []string
+	var mismatched []string
 	for _, dep := range manifest.DependsOn {
-		if !installed[dep.Plugin] {
+		version, found := installedVersions[dep.Plugin]
+		if !found {
 			label := dep.Plugin
 			if dep.Version != "" {
 				label += " " + dep.Version
 			}
+			if dep.Source != "" {
+				label += " (" + dep.Source + ")"
+			}
 			missing = append(missing, label)
+			continue
+		}
+		if dep.Version != "" && version != "" {
+			ok, err := satisfiesConstraint(version, dep.Version)
+			if err == nil && !ok {
+				mismatched = append(mismatched, fmt.Sprintf(
+					"%s: requires %s, installed %s", dep.Plugin, dep.Version, version))
+			}
 		}
 	}
 	if len(missing) > 0 {
 		fmt.Println()
 		fmt.Println("This plugin depends on plugins that are not installed:")
-		for _, dep := range missing {
-			fmt.Printf("  - %s\n", dep)
+		for _, m := range missing {
+			fmt.Printf("  - %s\n", m)
 		}
 		fmt.Println("Install them with: branchkit-cli plugin install <source>")
 	}
+	if len(mismatched) > 0 {
+		fmt.Println()
+		fmt.Println("Version mismatches:")
+		for _, m := range mismatched {
+			fmt.Printf("  - %s\n", m)
+		}
+	}
+}
+
+func printInstallInfo(manifest PluginManifest, source ResolvedSource, tag string) {
+	// Catalog tier
+	tier := lookupCatalogTier(manifest.ID)
+	if tier != "" {
+		fmt.Printf("  Catalog: %s\n", tier)
+	}
+
+	// Conformance
+	cs := fetchConformanceStatus(source, tag)
+	fmt.Println(formatConformanceStatus(cs))
+
+	// Privileges
+	if len(manifest.Capabilities) > 0 {
+		fmt.Printf("  Privileges: %s\n", strings.Join(manifest.Capabilities, ", "))
+	}
+
+	// Dependencies
+	checkDependencies(manifest)
+}
+
+func lookupCatalogTier(pluginID string) string {
+	cat, err := fetchCatalog()
+	if err != nil {
+		return ""
+	}
+	for _, entry := range cat.Plugins {
+		if entry.ID == pluginID {
+			switch entry.Tier {
+			case "first-party":
+				return "First-party"
+			case "approved":
+				return "Approved"
+			case "community":
+				return "Community"
+			default:
+				return entry.Tier
+			}
+		}
+	}
+	return ""
 }
 
 func extractTarball(tarballPath, destDir string) error {
