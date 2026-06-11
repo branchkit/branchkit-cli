@@ -89,9 +89,13 @@ func cmdDevWatch(args []string) {
 				continue
 			}
 
-			if reloadViaEndpoint(manifest.ID, token) {
+			ok, manifestReloaded := reloadViaEndpoint(manifest.ID, token)
+			switch {
+			case ok && manifestReloaded:
+				fmt.Printf("Built and reloaded %s (manifest changes applied).\n", manifest.ID)
+			case ok:
 				fmt.Printf("Built and reloaded %s.\n", manifest.ID)
-			} else {
+			default:
 				fmt.Println("Built. Could not notify actuator — plugin will load on next restart.")
 			}
 		}
@@ -175,32 +179,33 @@ func readHostToken() string {
 	return strings.TrimSpace(string(data))
 }
 
-func reloadViaEndpoint(pluginID, token string) bool {
+func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	url := fmt.Sprintf("http://127.0.0.1:21551/dev/plugins/%s/rebuild", pluginID)
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
-		return false
+		return false, false
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return false
+		return false, false
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
 
 	var result struct {
-		OK    bool   `json:"ok"`
-		Error string `json:"error"`
+		OK               bool   `json:"ok"`
+		Error            string `json:"error"`
+		ManifestReloaded bool   `json:"manifest_reloaded"`
 	}
 	if json.Unmarshal(body, &result) == nil && result.OK {
-		return true
+		return true, result.ManifestReloaded
 	}
 	if result.Error != "" {
 		fmt.Fprintf(os.Stderr, "Reload error: %s\n", result.Error)
 	}
-	return false
+	return false, false
 }
