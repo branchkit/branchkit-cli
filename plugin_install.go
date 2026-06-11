@@ -393,8 +393,12 @@ func extractTarball(tarballPath, destDir string) error {
 		}
 
 		target := filepath.Join(destDir, header.Name)
-		// Prevent path traversal
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)) {
+		// Prevent path traversal. filepath.Rel instead of a raw prefix
+		// check: HasPrefix(Clean(target), Clean(destDir)) lets "../bevil"
+		// escape /a/b into the sibling /a/bevil (prefix matches without a
+		// separator boundary).
+		rel, err := filepath.Rel(destDir, target)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return fmt.Errorf("archive contains path traversal: %s", header.Name)
 		}
 

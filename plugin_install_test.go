@@ -156,6 +156,39 @@ func TestExtractTarballRejectsSymlinks(t *testing.T) {
 	}
 }
 
+func TestExtractTarballRejectsTraversal(t *testing.T) {
+	dest := tmpDir(t, "tar-traversal-dest")
+
+	// The sibling-prefix escape is the subtle case: "../<destname>-evil/x"
+	// resolves to a sibling whose path shares the dest as a string prefix,
+	// so a raw HasPrefix check passes it. filepath.Rel must reject both.
+	cases := []string{
+		"../escaped.txt",
+		"../" + filepath.Base(dest) + "-evil/escaped.txt",
+	}
+	for _, name := range cases {
+		archiveDir := tmpDir(t, "tar-traversal")
+		tarballPath := filepath.Join(archiveDir, "evil.tar.gz")
+		f, _ := os.Create(tarballPath)
+		gz := gzip.NewWriter(f)
+		tw := tar.NewWriter(gz)
+		tw.WriteHeader(&tar.Header{
+			Name:     name,
+			Typeflag: tar.TypeReg,
+			Mode:     0o644,
+			Size:     4,
+		})
+		tw.Write([]byte("evil"))
+		tw.Close()
+		gz.Close()
+		f.Close()
+
+		if err := extractTarball(tarballPath, dest); err == nil {
+			t.Errorf("entry %q: expected traversal rejection, got nil", name)
+		}
+	}
+}
+
 func TestReadManifestValid(t *testing.T) {
 	dir := tmpDir(t, "manifest-valid")
 	os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(`{"id":"test","name":"Test","version":"1.0"}`), 0o644)
