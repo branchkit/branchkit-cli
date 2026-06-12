@@ -195,7 +195,12 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 	outFile.Write(bodyBytes)
 	outFile.Close()
 
-	// Verify checksum if available
+	// Verify checksum if the release publishes one. The checksum file is
+	// same-origin with the artifact, so this proves integrity (no
+	// corruption in transit), not authenticity — a compromised release
+	// can republish both. Authenticity is the publisher-verification
+	// track (DESIGN_PLUGIN_PUBLISHER_VERIFICATION).
+	checksumVerified := false
 	checksumName := asset.Name + ".sha256"
 	for _, a := range release.Assets {
 		if a.Name != checksumName {
@@ -223,8 +228,12 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 		if actualHash != expectedHash {
 			return "", "", fmt.Errorf("checksum mismatch!\n  Expected: %s\n  Actual:   %s", expectedHash, actualHash)
 		}
-		fmt.Println("Checksum verified.")
+		fmt.Println("Checksum verified (integrity only — the checksum is published alongside the artifact).")
+		checksumVerified = true
 		break
+	}
+	if !checksumVerified {
+		fmt.Printf("WARNING: release %s publishes no %s — artifact integrity is unverified.\n", release.TagName, checksumName)
 	}
 
 	return tarballPath, release.TagName, nil
