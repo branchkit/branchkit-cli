@@ -22,6 +22,7 @@ func cmdModelList() {
 		fmt.Println("Download a model:")
 		fmt.Println("  branchkit-cli model download vosk/vosk-model-small-en-us-0.15")
 		fmt.Println("  branchkit-cli model download whisperkit/openai_whisper-large-v3-v20240930")
+		fmt.Println("  branchkit-cli model download sherpa/sherpa-offline-nemo")
 		return
 	}
 
