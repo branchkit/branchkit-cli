@@ -251,10 +251,11 @@ func extractModelZip(zipPath, destDir string) error {
 //
 // Unlike vosk/whisperkit (one archive → models/<engine>/<model>), the sherpa
 // command model is assembled into a FLAT dir (models/sherpa-offline-nemo, where
-// the stage looks) from two SHA-pinned downloads plus four small derived files
-// vendored in the app bundle. The big model.onnx is downloaded fresh; the
-// command-vocab HL grammar + tokenizer come from the bundle so the user's machine
-// needs no Python build toolchain. Mirrors the `just sherpa-model-nemo` recipe.
+// the stage looks) from two SHA-pinned downloads plus the small generic tokenizer
+// files vendored in the app bundle. The big model.onnx is downloaded fresh; the
+// tokenizer (bpe.model + bpe.vocab) comes from the bundle so the user's machine
+// needs no Python build toolchain. No command grammar is vendored — the stage
+// self-seeds it in-process from the live vocabulary. Mirrors `just sherpa-model-nemo`.
 
 const (
 	sherpaModelRef  = "sherpa/sherpa-offline-nemo"
@@ -284,8 +285,9 @@ var sherpaDownloads = []sherpaDownload{
 	},
 }
 
-// Small files copied from the app bundle (sherpa-assets/<name>/), not downloaded.
-var sherpaBundledAssets = []string{"bpe.model", "bpe.vocab", "HL.fst", "HL.fst.words"}
+// Small generic tokenizer files copied from the app bundle (sherpa-assets/<name>/),
+// not downloaded. The command grammar is not vendored — the stage self-seeds it.
+var sherpaBundledAssets = []string{"bpe.model", "bpe.vocab"}
 
 func assembleSherpaModel(ref string) {
 	destDir := filepath.Join(modelsDir(), sherpaModelName)
@@ -295,7 +297,7 @@ func assembleSherpaModel(ref string) {
 		return
 	}
 
-	// The vendored grammar/tokenizer ride in the app bundle next to this binary.
+	// The vendored tokenizer files ride in the app bundle next to this binary.
 	// Fail before any download if they're absent (a bare/unbundled CLI can't
 	// provision sherpa — dev uses `just sherpa-model-nemo`).
 	assetsDir, err := sherpaAssetsDir()
@@ -360,8 +362,9 @@ func assembleSherpaModel(ref string) {
 		}
 	}
 
-	// Completeness gate — every file the stage expects must be present.
-	for _, f := range []string{"model.onnx", "tokens.txt", "silero_vad.onnx", "bpe.model", "bpe.vocab", "HL.fst", "HL.fst.words"} {
+	// Completeness gate — every file the stage expects must be present. No HL.fst:
+	// the stage self-seeds the grammar from the live vocabulary at startup.
+	for _, f := range []string{"model.onnx", "tokens.txt", "silero_vad.onnx", "bpe.model", "bpe.vocab"} {
 		if !fileExists(filepath.Join(staging, f)) {
 			sherpaFail(ref, fmt.Errorf("assembled model missing %s", f))
 		}
