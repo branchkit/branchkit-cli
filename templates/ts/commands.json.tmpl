@@ -5,8 +5,8 @@
     "description": "Say Hello BranchKit"
   },
   {
-    "pattern": ["hello", "<text>"],
-    "action": { "type": "{{.ActionPrefix}}.greet", "name": "{text}" },
-    "description": "Greet someone by name"
+    "pattern": ["hello", "<apps>"],
+    "action": { "type": "{{.ActionPrefix}}.greet", "name": "{apps}" },
+    "description": "Greet an installed app by name"
   }
 ]
