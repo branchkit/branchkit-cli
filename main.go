@@ -144,7 +144,7 @@ func printModelUsage() {
 	fmt.Println("Usage: branchkit-cli model <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  download <engine/model>  Download a speech model (e.g., vosk/vosk-model-small-en-us-0.15)")
+	fmt.Println("  download <engine/model>  Download a speech model (e.g., whisperkit/openai_whisper-large-v3-v20240930)")
 	fmt.Println("  list                     List downloaded models")
 }
 

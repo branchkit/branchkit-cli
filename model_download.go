@@ -20,20 +20,6 @@ import (
 // The voice plugin has a parallel catalog for UI display — this one
 // has the URLs the CLI needs to actually fetch them.
 var modelCatalog = map[string]modelEntry{
-	// Vosk models — upstream GitHub releases
-	"vosk/vosk-model-small-en-us-0.15": {
-		URL:  "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
-		Size: "68 MB",
-	},
-	"vosk/vosk-model-en-us-0.22-lgraph": {
-		URL:  "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip",
-		Size: "204 MB",
-	},
-	"vosk/vosk-model-en-us-0.22": {
-		URL:  "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip",
-		Size: "1.8 GB",
-	},
-
 	// WhisperKit models — Hugging Face
 	"whisperkit/openai_whisper-large-v3-v20240930": {
 		URL:  "https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-large-v3-v20240930.zip",
@@ -75,7 +61,7 @@ func modelsDir() string {
 func cmdModelDownload(ref string) {
 	// Sherpa (NeMo) needs a multi-file assembly (two SHA-pinned downloads + four
 	// vendored small files) into a FLAT model dir, unlike the single-archive
-	// vosk/whisperkit path below — handled separately.
+	// whisperkit/sherpa path below — handled separately.
 	if ref == sherpaModelRef {
 		assembleSherpaModel(ref)
 		return
@@ -249,7 +235,7 @@ func extractModelZip(zipPath, destDir string) error {
 
 // --- Sherpa (NeMo) offline command model -------------------------------------
 //
-// Unlike vosk/whisperkit (one archive → models/<engine>/<model>), the sherpa
+// Unlike whisperkit (one archive → models/<engine>/<model>), the sherpa
 // command model is assembled into a FLAT dir (models/sherpa-offline-nemo, where
 // the stage looks) from two SHA-pinned downloads plus the small generic tokenizer
 // files vendored in the app bundle. The big model.onnx is downloaded fresh; the
