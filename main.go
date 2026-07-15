@@ -104,6 +104,12 @@ func main() {
 			cmdDevWatch(os.Args[3:])
 		case "logs":
 			cmdDevLogs(os.Args[3:])
+		case "smoke":
+			cmdDevSmoke(os.Args[3:])
+		case "say":
+			cmdDevSay(os.Args[3:])
+		case "chain":
+			cmdDevChain(os.Args[3:])
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown dev command: %s\n", os.Args[2])
 			printDevUsage()
@@ -162,6 +168,13 @@ func printDevUsage() {
 	fmt.Println("        Watch for changes, rebuild, and reload via actuator")
 	fmt.Println("  logs [plugin-id] [--source TAG] [--json]")
 	fmt.Println("        Tail actuator log, optionally filtered")
+	fmt.Println("  smoke [--json]")
+	fmt.Println("        Side-effect-free health sweep of the running app (preview resolves,")
+	fmt.Println("        vocab lag, transcript transport) — executes nothing")
+	fmt.Println("  say <text> [--pipeline NAME]")
+	fmt.Println("        Inject a synthetic transcript — matched commands REALLY execute")
+	fmt.Println("  chain [tr_id] [--limit N] [--json]")
+	fmt.Println("        Query correlated event chains (no id = recent-chains index)")
 }
 
 func printPluginUsage() {
