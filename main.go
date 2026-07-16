@@ -54,6 +54,8 @@ func main() {
 			} else {
 				cmdInstall(source, build, force)
 			}
+		case "package":
+			cmdPluginPackage(os.Args[3:])
 		case "check-updates":
 			cmdCheckUpdates()
 		case "check-blocklist":
@@ -185,6 +187,8 @@ func printPluginUsage() {
 	fmt.Println("  list                        List installed plugins")
 	fmt.Println("  remove <plugin-id>          Remove a user-installed plugin")
 	fmt.Println("  info <plugin-id>            Show plugin details")
+	fmt.Println("  package [dir] [--binary P] [--os O] [--arch A] [--name N] [--out D]")
+	fmt.Println("        Build the release tarball + checksum (language/CI-agnostic; sign & upload next)")
 	fmt.Println("  check-updates               Check for available updates (JSON output)")
 	fmt.Println("  update [plugin-id]          Update one or all plugins")
 }
