@@ -80,6 +80,61 @@ func TestRegistryCounterSigRejectsMalformed(t *testing.T) {
 	}
 }
 
+func TestEmbeddedRegistryPublicKeyParses(t *testing.T) {
+	// The real embedded key (the one the user generated) must be a valid
+	// Ed25519 public key — a typo would silently disable all counter-sig
+	// verification.
+	pub, err := registryPublicKey()
+	if err != nil {
+		t.Fatalf("embedded registry public key is invalid: %v", err)
+	}
+	if len(pub) != ed25519.PublicKeySize {
+		t.Fatalf("embedded key wrong size: %d", len(pub))
+	}
+}
+
+func TestVerifyCatalogCounterSig(t *testing.T) {
+	pub, priv := testKeypair(t)
+	manifest := []byte(`{"id":"demo","run":"./demo"}`)
+	bundle := []byte(`{"fake":"sigstore bundle"}`)
+	manifestHash := sha256HexBytes(manifest)
+	attestDigest := sha256HexBytes(bundle)
+
+	signed := catalogEntry{
+		ID:                "demo",
+		ManifestSHA256:    manifestHash,
+		AttestationSHA256: attestDigest,
+		RegistrySignature: signRegistryCounterSig(priv, manifestHash, attestDigest),
+	}
+
+	// Valid counter-sig over the downloaded bytes → registry-signed.
+	ok, err := verifyCatalogCounterSig(pub, signed, manifest, bundle)
+	if err != nil || !ok {
+		t.Fatalf("valid counter-sig: ok=%v err=%v", ok, err)
+	}
+
+	// No signature in the entry → not registry-signed, but NOT an error
+	// (rollout / community plugins).
+	ok, err = verifyCatalogCounterSig(pub, catalogEntry{ID: "demo"}, manifest, bundle)
+	if err != nil || ok {
+		t.Errorf("absent counter-sig should be (false, nil), got ok=%v err=%v", ok, err)
+	}
+
+	// A swapped release (different manifest bytes than were signed) → hard error.
+	if _, err := verifyCatalogCounterSig(pub, signed, []byte(`{"id":"evil"}`), bundle); err == nil {
+		t.Error("swapped manifest must be a hard error")
+	}
+	// A swapped attestation → hard error.
+	if _, err := verifyCatalogCounterSig(pub, signed, manifest, []byte(`{"other":"bundle"}`)); err == nil {
+		t.Error("swapped attestation must be a hard error")
+	}
+	// A signature from a different (clone's) key → hard error.
+	otherPub, _ := testKeypair(t)
+	if _, err := verifyCatalogCounterSig(otherPub, signed, manifest, bundle); err == nil {
+		t.Error("signature under a foreign key must be rejected")
+	}
+}
+
 func TestParseRegistryPublicKey(t *testing.T) {
 	pub, _ := testKeypair(t)
 	b64 := base64.StdEncoding.EncodeToString(pub)

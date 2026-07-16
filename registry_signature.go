@@ -16,6 +16,7 @@ package main
 
 import (
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"strings"
@@ -26,6 +27,18 @@ import (
 // Ed25519 signature in the system. Bump it only with a deliberate format
 // change (and dual-accept during any rollout).
 const registryCounterSigVersion = "branchkit-registry-countersig-v1"
+
+// embeddedRegistryPublicKeyB64 is BranchKit's registry signing public key
+// (base64 raw Ed25519). This is the "what the seal looks like" half — safe to
+// distribute; the private key lives only in the registry CI secret store.
+// Rotating it is a new app/CLI release with a new value here (the small
+// catalog is re-counter-signed under the new key). Generated 2026-07-16.
+const embeddedRegistryPublicKeyB64 = "bGBpeL/bmGY+UxJh0e8OJQOqVOIyE6LdTndMoTvCXA4="
+
+// registryPublicKey returns the embedded registry verification key.
+func registryPublicKey() (ed25519.PublicKey, error) {
+	return parseRegistryPublicKey(embeddedRegistryPublicKeyB64)
+}
 
 // registryCounterSigMessage is the exact byte string both sides sign/verify.
 // manifestHash and attestationDigest are lowercase hex SHA-256 strings:
@@ -70,6 +83,44 @@ func verifyRegistryCounterSig(pub ed25519.PublicKey, manifestHash, attestationDi
 		return fmt.Errorf("registry counter-signature does not verify")
 	}
 	return nil
+}
+
+// sha256HexBytes returns the lowercase hex SHA-256 of in-memory bytes — the
+// digest form the counter-sig payload uses (files go through sha256HexFile).
+func sha256HexBytes(b []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(b))
+}
+
+// verifyCatalogCounterSig checks a plugin's registry counter-signature at
+// install time, recomputing the digests from the bytes actually downloaded.
+//
+// Returns (true, nil) when a valid counter-signature is present — the listing
+// is the canonical registry one (RegistrySigned). (false, nil) when the entry
+// carries no counter-signature: during rollout most entries won't, and a
+// sideloaded/community plugin never will — that's not a failure, just "not
+// registry-signed". (false, err) when a counter-signature is PRESENT but the
+// download doesn't match what was signed or the signature is invalid — a
+// forged or retargeted canonical listing, which the caller treats as a hard
+// install failure.
+func verifyCatalogCounterSig(pub ed25519.PublicKey, entry catalogEntry, manifestBytes, bundleBytes []byte) (bool, error) {
+	if strings.TrimSpace(entry.RegistrySignature) == "" {
+		return false, nil
+	}
+	manifestHash := sha256HexBytes(manifestBytes)
+	attestDigest := sha256HexBytes(bundleBytes)
+
+	// If the entry declares the digests it signed, the download must match
+	// them — a clear error if the release was swapped after admission.
+	if entry.ManifestSHA256 != "" && !strings.EqualFold(entry.ManifestSHA256, manifestHash) {
+		return false, fmt.Errorf("manifest hash mismatch: downloaded %s, catalog counter-signed %s", manifestHash, entry.ManifestSHA256)
+	}
+	if entry.AttestationSHA256 != "" && !strings.EqualFold(entry.AttestationSHA256, attestDigest) {
+		return false, fmt.Errorf("attestation digest mismatch: downloaded %s, catalog counter-signed %s", attestDigest, entry.AttestationSHA256)
+	}
+	if err := verifyRegistryCounterSig(pub, manifestHash, attestDigest, entry.RegistrySignature); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // parseRegistryPublicKey decodes a base64 Ed25519 public key (the form the
