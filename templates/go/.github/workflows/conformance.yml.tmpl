@@ -36,46 +36,46 @@ jobs:
       - name: Run conformance checks
         run: branchkit-cli dev test . --static-only
 
-  # --- Signed release (optional but recommended) --------------------------
-  # Publishing a Sigstore attestation beside your plugin tarball lets
-  # BranchKit verify it was really built by THIS repo — installs then get
-  # the verified-publisher trust posture instead of the reduced "unsigned"
-  # one. This uses your workflow's own GitHub OIDC identity (attest-build-
-  # provenance), so the attestation's certificate names this repository —
-  # the model BranchKit's install path checks against your plugin's
-  # `publisher` field. No keys to manage.
+  # --- Signed release ------------------------------------------------------
+  # Builds a binary per platform, then hands each to the shared BranchKit
+  # release action, which packages, signs (Sigstore keyless — no keys to
+  # manage), and uploads it. Signing uses THIS repo's GitHub OIDC identity,
+  # so the attestation names your repository — what BranchKit's install path
+  # checks against your plugin's `publisher` field. The ONLY part you own is
+  # the `go build` step; everything after is shared and identical for every
+  # plugin, in any language.
   #
-  # Uncomment, and set your plugin's `publisher` to "github:{{.PluginID}}-owner"
-  # (your GitHub org/user). Runs on tag pushes alongside your release.
-  #
-  # release:
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: write      # upload release assets
-  #     id-token: write      # OIDC for keyless signing
-  #     attestations: write  # record the attestation
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Build plugin tarball
-  #       run: |
-  #         # produce branchkit-plugin-{{.PluginID}}-<os>-<arch>.tar.gz
-  #         # (your existing release build)
-  #         echo "build your release artifact here" && exit 1
-  #     - name: Attest the artifact
-  #       uses: actions/attest-build-provenance@v1
-  #       with:
-  #         subject-path: 'branchkit-plugin-{{.PluginID}}-*.tar.gz'
-  #     - name: Export the Sigstore bundle beside the artifact
-  #       run: |
-  #         # BranchKit looks for <artifact>.sigstore.json among release assets.
-  #         for f in branchkit-plugin-{{.PluginID}}-*.tar.gz; do
-  #           gh attestation download "$f" --repo "$GITHUB_REPOSITORY" \
-  #             --format bundle > "$f.sigstore.json"
-  #         done
-  #       env:
-  #         GH_TOKEN: ${{"{{"}} github.token {{"}}"}}
-  #     - name: Upload release assets
-  #       run: gh release upload "${{"{{"}} github.ref_name {{"}}"}}" \
-  #             branchkit-plugin-{{.PluginID}}-*.tar.gz*
-  #       env:
-  #         GH_TOKEN: ${{"{{"}} github.token {{"}}"}}
+  # Set your plugin's `publisher` in plugin.json to "github:YOUR-ORG".
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # upload release assets
+      id-token: write      # OIDC for keyless signing
+      attestations: write  # record the attestation
+    strategy:
+      matrix:
+        include:
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: linux, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      # --- The one language-specific step: build your binary. ---
+      - name: Build
+        run: |
+          mkdir -p out
+          GOOS=${{"{{"}} matrix.goos {{"}}"}} GOARCH=${{"{{"}} matrix.goarch {{"}}"}} \
+            go build -o out/{{.PluginID}}-plugin ./src
+
+      # --- Shared: package + sign + upload. Same for every plugin. ---
+      - name: Package, sign, release
+        uses: branchkit/registry/release-action@main
+        with:
+          binary: out/{{.PluginID}}-plugin
+          goos: ${{"{{"}} matrix.goos {{"}}"}}
+          goarch: ${{"{{"}} matrix.goarch {{"}}"}}
+          tag: ${{"{{"}} github.ref_name {{"}}"}}
