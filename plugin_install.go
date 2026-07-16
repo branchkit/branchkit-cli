@@ -13,13 +13,18 @@ import (
 )
 
 func cmdInstall(source string, build bool, force bool) {
+	// Carries the catalog entry (with its registry counter-signature) when
+	// installing by short name, so the install path can confirm the canonical
+	// listing. nil for direct github:owner/repo or local installs.
+	var entry *catalogEntry
 	if isShortName(source) {
-		resolved, err := resolveShortName(source)
+		e, err := resolveShortNameEntry(source)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		source = resolved
+		entry = e
+		source = e.Source
 	}
 
 	if !force {
@@ -32,7 +37,7 @@ func cmdInstall(source string, build bool, force bool) {
 	} else if isLocalPath(source) {
 		err = installFromLocal(source)
 	} else {
-		err = installFromGitHub(source)
+		err = installFromGitHub(source, entry)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -84,7 +89,7 @@ func installFromLocal(source string) error {
 
 // --- GitHub install ---
 
-func installFromGitHub(source string) error {
+func installFromGitHub(source string, catalog *catalogEntry) error {
 	parsed, err := parseGitHubSource(source)
 	if err != nil {
 		return err
@@ -135,9 +140,33 @@ func installFromGitHub(source string) error {
 		setExecutable(targetDir, manifest.Run)
 	}
 
-	// Save source metadata for update checking + the verified-author record
-	// the actuator's trust-tier resolution will read.
-	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation)
+	// Registry counter-signature: for a canonical-registry (short-name)
+	// install with a verified author attestation, confirm BranchKit's
+	// counter-signature over this exact manifest + attestation. Present-but-
+	// invalid is a hard failure (a forged or retargeted canonical listing);
+	// absent is fine (rollout / community). Only meaningful atop a verified
+	// author signature — the counter-sig signs the attestation's digest.
+	registrySigned := false
+	if catalog != nil && attestation != nil && attestation.Verified {
+		manifestBytes, rerr := os.ReadFile(filepath.Join(targetDir, "plugin.json"))
+		pub, kerr := registryPublicKey()
+		if rerr == nil && kerr == nil {
+			ok, verr := verifyCatalogCounterSig(pub, *catalog, manifestBytes, attestation.BundleBytes)
+			if verr != nil {
+				os.RemoveAll(targetDir)
+				os.RemoveAll(tempDir)
+				return fmt.Errorf("registry counter-signature check failed: %w", verr)
+			}
+			registrySigned = ok
+			if ok {
+				fmt.Println("Registry counter-signature verified — canonical listing.")
+			}
+		}
+	}
+
+	// Save source metadata for update checking + the verified-author and
+	// registry-signed records the actuator's trust-tier resolution reads.
+	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation, registrySigned)
 
 	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
 	printInstallInfo(manifest, parsed, tag)
@@ -253,7 +282,7 @@ func installFromSource(source string) error {
 	}
 
 	// Save source metadata for update checking
-	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build", nil)
+	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build", nil, false)
 
 	fmt.Printf("Built and installed plugin '%s' v%s by github:%s\n", manifest.Name, manifest.Version, parsed.Owner)
 	printInstallInfo(manifest, parsed, "source-build")
@@ -452,10 +481,8 @@ func findManifest(dir string) (string, error) {
 }
 
 // SourceMeta records where a plugin was installed from (for update checking)
-// and the author-attestation outcome at install time (for the actuator's
-// trust-tier resolution — DESIGN_PLUGIN_SIGNING_CHAIN). The registry
-// counter-signature (the canonical-listing signal) is recorded separately
-// when it lands (step 5).
+// and the signing outcome at install time (for the actuator's trust-tier
+// resolution — DESIGN_PLUGIN_SIGNING_CHAIN).
 type SourceMeta struct {
 	Source       string `json:"source"`        // "owner/repo"
 	InstalledTag string `json:"installed_tag"` // e.g. "v3.0.0" or "source-build"
@@ -465,12 +492,16 @@ type SourceMeta struct {
 	// AuthorIdentity is the verified signer identity (cert SAN) — display +
 	// audit. Empty when unverified.
 	AuthorIdentity string `json:"author_identity,omitempty"`
+	// RegistrySigned is true iff BranchKit's registry counter-signature over
+	// this exact listing verified — the canonical-listing signal that lets the
+	// actuator resolve RegistrySigned rather than a catalog claim.
+	RegistrySigned bool `json:"registry_signed"`
 }
 
 const sourceMetaFile = ".branchkit-source.json"
 
-func writeSourceMeta(pluginDir, source, tag string, attestation *AuthorAttestation) {
-	meta := SourceMeta{Source: source, InstalledTag: tag}
+func writeSourceMeta(pluginDir, source, tag string, attestation *AuthorAttestation, registrySigned bool) {
+	meta := SourceMeta{Source: source, InstalledTag: tag, RegistrySigned: registrySigned}
 	if attestation != nil && attestation.Verified {
 		meta.AuthorVerified = true
 		meta.AuthorIdentity = attestation.SAN

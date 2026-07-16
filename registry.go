@@ -72,18 +72,20 @@ func fetchCatalog() (catalog, error) {
 	return cat, nil
 }
 
-func resolveShortName(name string) (string, error) {
+// resolveShortNameEntry returns the full catalog entry for a short name —
+// including the registry counter-signature fields the install path verifies.
+func resolveShortNameEntry(name string) (*catalogEntry, error) {
 	fmt.Printf("Looking up '%s' in catalog...\n", name)
 
 	cat, err := fetchCatalog()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	for _, entry := range cat.Plugins {
-		if entry.ID == name {
-			fmt.Printf("Resolved '%s' → %s\n", name, entry.Source)
-			return entry.Source, nil
+	for i := range cat.Plugins {
+		if cat.Plugins[i].ID == name {
+			fmt.Printf("Resolved '%s' → %s\n", name, cat.Plugins[i].Source)
+			return &cat.Plugins[i], nil
 		}
 	}
 
@@ -92,10 +94,18 @@ func resolveShortName(name string) (string, error) {
 		available = append(available, entry.ID)
 	}
 	sort.Strings(available)
-	return "", fmt.Errorf(
+	return nil, fmt.Errorf(
 		"plugin '%s' not found in catalog\n\nAvailable: %s\n\nFor unlisted plugins, use: branchkit-cli plugin install github:owner/repo",
 		name, strings.Join(available, ", "),
 	)
+}
+
+func resolveShortName(name string) (string, error) {
+	entry, err := resolveShortNameEntry(name)
+	if err != nil {
+		return "", err
+	}
+	return entry.Source, nil
 }
 
 // isShortName returns true if the source looks like a short plugin name

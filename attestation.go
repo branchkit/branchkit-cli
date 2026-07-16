@@ -60,6 +60,10 @@ type AuthorAttestation struct {
 	// Reason explains a non-verified outcome (absent bundle, digest mismatch,
 	// repo mismatch, crypto failure) — surfaced to the user, never swallowed.
 	Reason string
+	// BundleBytes is the raw Sigstore bundle, retained so the registry
+	// counter-signature (which signs over the attestation's digest) can be
+	// verified at install without re-downloading. Nil when unverified.
+	BundleBytes []byte
 }
 
 // attestationAssetName is the pinned release-asset layout: the bundle sits
@@ -119,9 +123,10 @@ func verifyReleaseAttestation(
 	}
 
 	return &AuthorAttestation{
-		Verified: true,
-		RepoSlug: id.RepoSlug,
-		SAN:      id.SAN,
-		Issuer:   id.Issuer,
+		Verified:    true,
+		RepoSlug:    id.RepoSlug,
+		SAN:         id.SAN,
+		Issuer:      id.Issuer,
+		BundleBytes: bundleJSON,
 	}, nil
 }

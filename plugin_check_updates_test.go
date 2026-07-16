@@ -10,7 +10,7 @@ import (
 func TestWriteReadSourceMeta(t *testing.T) {
 	dir := tmpDir(t, "source-meta")
 
-	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.2.3", nil)
+	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.2.3", nil, false)
 
 	meta, ok := readSourceMeta(dir)
 	if !ok {
@@ -46,8 +46,8 @@ func TestReadSourceMetaBadJSON(t *testing.T) {
 func TestWriteSourceMetaOverwrites(t *testing.T) {
 	dir := tmpDir(t, "source-meta-overwrite")
 
-	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.0.0", nil)
-	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v2.0.0", nil)
+	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.0.0", nil, false)
+	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v2.0.0", nil, false)
 
 	meta, ok := readSourceMeta(dir)
 	if !ok {
@@ -95,5 +95,25 @@ func TestUpdateInfoEmptyArray(t *testing.T) {
 	data, _ := json.Marshal(updates)
 	if string(data) != "[]" {
 		t.Errorf("got %q, want []", data)
+	}
+}
+
+func TestSourceMetaRecordsRegistrySigned(t *testing.T) {
+	dir := t.TempDir()
+	att := &AuthorAttestation{Verified: true, SAN: "https://github.com/acme/x"}
+	writeSourceMeta(dir, "acme/x", "v1.0.0", att, true)
+	meta, ok := readSourceMeta(dir)
+	if !ok {
+		t.Fatal("source meta not written")
+	}
+	if !meta.AuthorVerified || !meta.RegistrySigned {
+		t.Errorf("author_verified=%v registry_signed=%v, want both true", meta.AuthorVerified, meta.RegistrySigned)
+	}
+	// Unsigned install records both false.
+	dir2 := t.TempDir()
+	writeSourceMeta(dir2, "x/y", "v1", nil, false)
+	m2, _ := readSourceMeta(dir2)
+	if m2.AuthorVerified || m2.RegistrySigned {
+		t.Errorf("unsigned should be false/false, got %v/%v", m2.AuthorVerified, m2.RegistrySigned)
 	}
 }
