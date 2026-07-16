@@ -30,17 +30,17 @@ import (
 // registrySigner produces a registry counter-signature. Local key today;
 // KMS/HSM later via the same interface.
 type registrySigner interface {
-	signCounterSig(manifestHash, attestationDigest string) (string, error)
+	signCounterSig(manifestHash string) (string, error)
 }
 
 // localKeySigner holds an Ed25519 private key in-process (file/env backend).
 type localKeySigner struct{ priv ed25519.PrivateKey }
 
-func (s localKeySigner) signCounterSig(manifestHash, attestationDigest string) (string, error) {
+func (s localKeySigner) signCounterSig(manifestHash string) (string, error) {
 	if len(s.priv) != ed25519.PrivateKeySize {
 		return "", fmt.Errorf("registry private key is not a valid Ed25519 key")
 	}
-	return signRegistryCounterSig(s.priv, manifestHash, attestationDigest), nil
+	return signRegistryCounterSig(s.priv, manifestHash), nil
 }
 
 // loadLocalSigner reads the private key from --key <file> if keyPath is set,
@@ -130,22 +130,19 @@ func cmdRegistryKeygen(_ []string) {
 }
 
 func cmdRegistrySign(args []string) {
-	var manifestPath, attestationPath, keyPath string
+	var manifestPath, keyPath string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--manifest":
 			i++
 			manifestPath = argAt(args, i)
-		case "--attestation":
-			i++
-			attestationPath = argAt(args, i)
 		case "--key":
 			i++
 			keyPath = argAt(args, i)
 		}
 	}
-	if manifestPath == "" || attestationPath == "" {
-		fmt.Fprintln(os.Stderr, "Usage: branchkit-cli registry sign --manifest plugin.json --attestation artifact.sigstore.json [--key file]")
+	if manifestPath == "" {
+		fmt.Fprintln(os.Stderr, "Usage: branchkit-cli registry sign --manifest plugin.json [--key file]")
 		fmt.Fprintln(os.Stderr, "  (or set BRANCHKIT_REGISTRY_KEY instead of --key)")
 		os.Exit(1)
 	}
@@ -155,17 +152,12 @@ func cmdRegistrySign(args []string) {
 		fmt.Fprintf(os.Stderr, "Error hashing manifest: %v\n", err)
 		os.Exit(1)
 	}
-	attestationDigest, err := sha256HexFile(attestationPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error hashing attestation: %v\n", err)
-		os.Exit(1)
-	}
 	signer, err := loadLocalSigner(keyPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	sig, err := signer.signCounterSig(manifestHash, attestationDigest)
+	sig, err := signer.signCounterSig(manifestHash)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error signing: %v\n", err)
 		os.Exit(1)
@@ -173,7 +165,6 @@ func cmdRegistrySign(args []string) {
 
 	// Print the fields to record in the plugin's catalog.yaml entry.
 	fmt.Printf("manifest_sha256:    %s\n", manifestHash)
-	fmt.Printf("attestation_sha256: %s\n", attestationDigest)
 	fmt.Printf("registry_signature: %s\n", sig)
 }
 
@@ -184,6 +175,6 @@ func printRegistryUsage() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  keygen                Generate the registry signing keypair (run once, locally)")
-	fmt.Println("  sign --manifest plugin.json --attestation bundle.sigstore.json [--key file]")
+	fmt.Println("  sign --manifest plugin.json [--key file]")
 	fmt.Println("        Counter-sign a plugin's catalog listing (needs the private key)")
 }

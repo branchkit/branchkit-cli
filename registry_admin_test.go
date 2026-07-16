@@ -25,11 +25,11 @@ func TestRegistryKeygenSignVerifyRoundTrip(t *testing.T) {
 	}
 
 	signer := localKeySigner{priv: priv}
-	sig, err := signer.signCounterSig(testManifestHash, testAttestDigest)
+	sig, err := signer.signCounterSig(testManifestHash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyRegistryCounterSig(pub, testManifestHash, testAttestDigest, sig); err != nil {
+	if err := verifyRegistryCounterSig(pub, testManifestHash, sig); err != nil {
 		t.Fatalf("install-path verification rejected a maintainer-path signature: %v", err)
 	}
 }

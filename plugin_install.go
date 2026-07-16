@@ -151,7 +151,7 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		manifestBytes, rerr := os.ReadFile(filepath.Join(targetDir, "plugin.json"))
 		pub, kerr := registryPublicKey()
 		if rerr == nil && kerr == nil {
-			ok, verr := verifyCatalogCounterSig(pub, *catalog, manifestBytes, attestation.BundleBytes)
+			ok, verr := verifyCatalogCounterSig(pub, *catalog, manifestBytes)
 			if verr != nil {
 				os.RemoveAll(targetDir)
 				os.RemoveAll(tempDir)

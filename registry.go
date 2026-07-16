@@ -26,12 +26,12 @@ type catalogEntry struct {
 	Description string   `yaml:"description"`
 	Categories  []string `yaml:"categories"`
 	Tier        string   `yaml:"tier"`
-	// Registry counter-signature fields, written by `registry sign` when a
-	// plugin is admitted (DESIGN_PLUGIN_SIGNING_CHAIN step 5). Absent until
-	// the plugin is counter-signed; the install path treats absence as
-	// "not registry-signed", a present-but-invalid signature as a hard fail.
+	// Registry counter-signature, written by `registry sign` when a plugin is
+	// admitted (DESIGN_PLUGIN_SIGNING_CHAIN step 5). It signs the manifest hash
+	// (platform- and version-independent). Absent until counter-signed; the
+	// install path treats absence as "not registry-signed", a present-but-
+	// invalid signature as a hard fail.
 	ManifestSHA256    string `yaml:"manifest_sha256,omitempty"`
-	AttestationSHA256 string `yaml:"attestation_sha256,omitempty"`
 	RegistrySignature string `yaml:"registry_signature,omitempty"`
 }
 
