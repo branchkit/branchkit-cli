@@ -1,0 +1,47 @@
+name: Release CLI
+
+# Publishes the branchkit-cli binary as downloadable tarballs on every version
+# tag, so CI everywhere can fetch it:
+#   https://github.com/branchkit/branchkit-cli/releases/latest/download/branchkit-cli-<os>-<arch>.tar.gz
+# The registry counter-sign workflow, the plugin conformance template, and the
+# shared release-action all consume these. Cut a release with:
+#   git tag v0.1.0 && git push origin v0.1.0
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          go build -ldflags="-s -w" -o branchkit-cli .
+          tar -czf "branchkit-cli-${GOOS}-${GOARCH}.tar.gz" branchkit-cli
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: branchkit-cli-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
+          fail_on_unmatched_files: true
