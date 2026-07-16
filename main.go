@@ -117,6 +117,21 @@ func main() {
 			printDevUsage()
 			os.Exit(1)
 		}
+	case "registry":
+		if len(os.Args) < 3 {
+			printRegistryUsage()
+			os.Exit(1)
+		}
+		switch os.Args[2] {
+		case "keygen":
+			cmdRegistryKeygen(os.Args[3:])
+		case "sign":
+			cmdRegistrySign(os.Args[3:])
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown registry command: %s\n", os.Args[2])
+			printRegistryUsage()
+			os.Exit(1)
+		}
 	case "help", "--help", "-h":
 		printUsage()
 	default:
