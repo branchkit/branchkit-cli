@@ -10,7 +10,7 @@ import (
 func TestWriteReadSourceMeta(t *testing.T) {
 	dir := tmpDir(t, "source-meta")
 
-	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.2.3")
+	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.2.3", nil)
 
 	meta, ok := readSourceMeta(dir)
 	if !ok {
@@ -46,8 +46,8 @@ func TestReadSourceMetaBadJSON(t *testing.T) {
 func TestWriteSourceMetaOverwrites(t *testing.T) {
 	dir := tmpDir(t, "source-meta-overwrite")
 
-	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.0.0")
-	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v2.0.0")
+	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.0.0", nil)
+	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v2.0.0", nil)
 
 	meta, ok := readSourceMeta(dir)
 	if !ok {

@@ -96,7 +96,7 @@ func fetchLatestTag(source ResolvedSource) (string, error) {
 
 // downloadRelease fetches a GitHub release and downloads the platform artifact.
 // Returns the path to the downloaded tarball and the release tag.
-func downloadRelease(source ResolvedSource, destDir string) (string, string, error) {
+func downloadRelease(source ResolvedSource, destDir string) (string, string, *AuthorAttestation, error) {
 	client := &http.Client{Timeout: 60 * time.Second}
 
 	// Fetch release
@@ -111,12 +111,12 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return "", "", fmt.Errorf("invalid request URL: %w", err)
+		return "", "", nil, fmt.Errorf("invalid request URL: %w", err)
 	}
 	req.Header.Set("User-Agent", "branchkit-cli")
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to reach GitHub API: %w", err)
+		return "", "", nil, fmt.Errorf("failed to reach GitHub API: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -125,7 +125,7 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 		if source.Version != "" {
 			suffix = "@" + source.Version
 		}
-		return "", "", fmt.Errorf(
+		return "", "", nil, fmt.Errorf(
 			"no release found for %s/%s%s\n\n"+
 				"To install from source instead:\n"+
 				"  branchkit-cli plugin install %s/%s --build",
@@ -133,12 +133,12 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 		)
 	}
 	if resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+		return "", "", nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
 	}
 
 	var release ghRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return "", "", fmt.Errorf("failed to parse release JSON: %w", err)
+		return "", "", nil, fmt.Errorf("failed to parse release JSON: %w", err)
 	}
 
 	// Find platform artifact
@@ -163,34 +163,34 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 		for i, a := range release.Assets {
 			names[i] = a.Name
 		}
-		return "", "", fmt.Errorf("no artifact '%s' in release %s — available: %v", expected, release.TagName, names)
+		return "", "", nil, fmt.Errorf("no artifact '%s' in release %s — available: %v", expected, release.TagName, names)
 	}
 
 	// Download artifact
 	fmt.Printf("Downloading %s...\n", asset.Name)
 	dlReq, err := http.NewRequest("GET", asset.BrowserDownloadURL, nil)
 	if err != nil {
-		return "", "", fmt.Errorf("invalid download URL: %w", err)
+		return "", "", nil, fmt.Errorf("invalid download URL: %w", err)
 	}
 	dlReq.Header.Set("User-Agent", "branchkit-cli")
 	dlResp, err := client.Do(dlReq)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to download artifact: %w", err)
+		return "", "", nil, fmt.Errorf("failed to download artifact: %w", err)
 	}
 	defer dlResp.Body.Close()
 	if dlResp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("download failed with status %d", dlResp.StatusCode)
+		return "", "", nil, fmt.Errorf("download failed with status %d", dlResp.StatusCode)
 	}
 
 	tarballPath := filepath.Join(destDir, asset.Name)
 	outFile, err := os.Create(tarballPath)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 	bodyBytes, err := io.ReadAll(dlResp.Body)
 	if err != nil {
 		outFile.Close()
-		return "", "", err
+		return "", "", nil, err
 	}
 	outFile.Write(bodyBytes)
 	outFile.Close()
@@ -209,24 +209,24 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 		fmt.Println("Verifying checksum...")
 		csReq, err := http.NewRequest("GET", a.BrowserDownloadURL, nil)
 		if err != nil {
-			return "", "", fmt.Errorf("invalid checksum URL: %w", err)
+			return "", "", nil, fmt.Errorf("invalid checksum URL: %w", err)
 		}
 		csReq.Header.Set("User-Agent", "branchkit-cli")
 		csResp, err := client.Do(csReq)
 		if err != nil || csResp.StatusCode >= 300 {
-			return "", "", fmt.Errorf("failed to download checksum file")
+			return "", "", nil, fmt.Errorf("failed to download checksum file")
 		}
 		csData, _ := io.ReadAll(csResp.Body)
 		csResp.Body.Close()
 
 		expectedHash := strings.TrimSpace(strings.SplitN(string(csData), " ", 2)[0])
 		if expectedHash == "" {
-			return "", "", fmt.Errorf("checksum file is empty or malformed")
+			return "", "", nil, fmt.Errorf("checksum file is empty or malformed")
 		}
 
 		actualHash := fmt.Sprintf("%x", sha256.Sum256(bodyBytes))
 		if actualHash != expectedHash {
-			return "", "", fmt.Errorf("checksum mismatch!\n  Expected: %s\n  Actual:   %s", expectedHash, actualHash)
+			return "", "", nil, fmt.Errorf("checksum mismatch!\n  Expected: %s\n  Actual:   %s", expectedHash, actualHash)
 		}
 		fmt.Println("Checksum verified (integrity only — the checksum is published alongside the artifact).")
 		checksumVerified = true
@@ -236,5 +236,20 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, err
 		fmt.Printf("WARNING: release %s publishes no %s — artifact integrity is unverified.\n", release.TagName, checksumName)
 	}
 
-	return tarballPath, release.TagName, nil
+	// Author attestation — real provenance, above the same-origin checksum.
+	// Absent bundle is a soft outcome (unsigned posture); present-but-invalid
+	// is a hard error (a tampered artifact must not install as if unsigned).
+	artifactDigest := fmt.Sprintf("%x", sha256.Sum256(bodyBytes))
+	wantRepo := fmt.Sprintf("%s/%s", source.Owner, source.Repo)
+	attestation, err := verifyReleaseAttestation(client, release.Assets, asset.Name, artifactDigest, wantRepo)
+	if err != nil {
+		return "", "", nil, err
+	}
+	if attestation.Verified {
+		fmt.Printf("Author attestation verified — built by %s.\n", attestation.RepoSlug)
+	} else {
+		fmt.Printf("No author attestation (%s) — installs with reduced trust.\n", attestation.Reason)
+	}
+
+	return tarballPath, release.TagName, attestation, nil
 }

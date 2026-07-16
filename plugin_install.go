@@ -95,7 +95,7 @@ func installFromGitHub(source string) error {
 	os.RemoveAll(tempDir)
 	os.MkdirAll(tempDir, 0o755)
 
-	tarballPath, tag, err := downloadRelease(parsed, tempDir)
+	tarballPath, tag, attestation, err := downloadRelease(parsed, tempDir)
 	if err != nil {
 		os.RemoveAll(tempDir)
 		return err
@@ -135,8 +135,9 @@ func installFromGitHub(source string) error {
 		setExecutable(targetDir, manifest.Run)
 	}
 
-	// Save source metadata for update checking
-	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag)
+	// Save source metadata for update checking + the verified-author record
+	// the actuator's trust-tier resolution will read.
+	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation)
 
 	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
 	printInstallInfo(manifest, parsed, tag)
@@ -252,7 +253,7 @@ func installFromSource(source string) error {
 	}
 
 	// Save source metadata for update checking
-	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build")
+	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build", nil)
 
 	fmt.Printf("Built and installed plugin '%s' v%s by github:%s\n", manifest.Name, manifest.Version, parsed.Owner)
 	printInstallInfo(manifest, parsed, "source-build")
@@ -450,16 +451,30 @@ func findManifest(dir string) (string, error) {
 	}
 }
 
-// SourceMeta records where a plugin was installed from, for update checking.
+// SourceMeta records where a plugin was installed from (for update checking)
+// and the author-attestation outcome at install time (for the actuator's
+// trust-tier resolution — DESIGN_PLUGIN_SIGNING_CHAIN). The registry
+// counter-signature (the canonical-listing signal) is recorded separately
+// when it lands (step 5).
 type SourceMeta struct {
 	Source       string `json:"source"`        // "owner/repo"
 	InstalledTag string `json:"installed_tag"` // e.g. "v3.0.0" or "source-build"
+	// AuthorVerified is true iff a Sigstore attestation was present and
+	// verified AND bound to Source at install time.
+	AuthorVerified bool `json:"author_verified"`
+	// AuthorIdentity is the verified signer identity (cert SAN) — display +
+	// audit. Empty when unverified.
+	AuthorIdentity string `json:"author_identity,omitempty"`
 }
 
 const sourceMetaFile = ".branchkit-source.json"
 
-func writeSourceMeta(pluginDir, source, tag string) {
+func writeSourceMeta(pluginDir, source, tag string, attestation *AuthorAttestation) {
 	meta := SourceMeta{Source: source, InstalledTag: tag}
+	if attestation != nil && attestation.Verified {
+		meta.AuthorVerified = true
+		meta.AuthorIdentity = attestation.SAN
+	}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return
