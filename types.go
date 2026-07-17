@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 // PluginManifest represents the plugin.json manifest — only fields the CLI needs.
@@ -68,7 +69,9 @@ type DiscoveredPlugin struct {
 	Source      PluginSource
 }
 
-// appSupportDir returns the BranchKit app support directory.
+// appSupportDir returns the BranchKit app support directory, matching the
+// actuator's app_support_dir() resolution on each OS: Application Support
+// on macOS, %APPDATA% on Windows, XDG data home elsewhere.
 func appSupportDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -78,7 +81,23 @@ func appSupportDir() string {
 	if os.Getenv("BRANCHKIT_DEV") != "" {
 		name = "BranchKitDev"
 	}
-	dir := filepath.Join(home, "Library", "Application Support", name)
+	var dir string
+	switch runtime.GOOS {
+	case "darwin":
+		dir = filepath.Join(home, "Library", "Application Support", name)
+	case "windows":
+		base := os.Getenv("APPDATA")
+		if base == "" {
+			base = filepath.Join(home, "AppData", "Roaming")
+		}
+		dir = filepath.Join(base, name)
+	default:
+		base := os.Getenv("XDG_DATA_HOME")
+		if base == "" {
+			base = filepath.Join(home, ".local", "share")
+		}
+		dir = filepath.Join(base, name)
+	}
 	os.MkdirAll(dir, 0o755)
 	return dir
 }
