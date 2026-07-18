@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/tar"
-	"archive/zip"
 	"compress/bzip2"
 	"crypto/sha256"
 	"encoding/hex"
@@ -20,24 +19,31 @@ import (
 // The voice plugin has a parallel catalog for UI display — this one
 // has the URLs the CLI needs to actually fetch them.
 var modelCatalog = map[string]modelEntry{
-	// WhisperKit models — Hugging Face
+	// WhisperKit models — Hugging Face. argmaxinc publishes each model as a FOLDER
+	// of CoreML bundles (*.mlmodelc) + config files, NOT a single archive, so we
+	// snapshot the folder (recursive tree walk + per-file fetch). The old <model>.zip
+	// URLs 404 — argmaxinc never hosted zips.
 	"whisperkit/openai_whisper-large-v3-v20240930": {
-		URL:  "https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-large-v3-v20240930.zip",
-		Size: "1.62 GB",
+		HFRepo: "argmaxinc/whisperkit-coreml",
+		HFPath: "openai_whisper-large-v3-v20240930",
+		Size:   "1.5 GB",
 	},
 	"whisperkit/openai_whisper-base.en": {
-		URL:  "https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-base.en.zip",
-		Size: "67 MB",
+		HFRepo: "argmaxinc/whisperkit-coreml",
+		HFPath: "openai_whisper-base.en",
+		Size:   "~150 MB",
 	},
 	"whisperkit/openai_whisper-small.en": {
-		URL:  "https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-small.en.zip",
-		Size: "166 MB",
+		HFRepo: "argmaxinc/whisperkit-coreml",
+		HFPath: "openai_whisper-small.en",
+		Size:   "~500 MB",
 	},
 }
 
 type modelEntry struct {
-	URL  string
-	Size string
+	HFRepo string // Hugging Face repo, e.g. argmaxinc/whisperkit-coreml
+	HFPath string // model folder within the repo
+	Size   string
 }
 
 type downloadProgress struct {
@@ -89,49 +95,139 @@ func cmdModelDownload(ref string) {
 
 	emitProgress(downloadProgress{Model: ref, Status: "downloading", Pct: 0})
 
-	tmpFile, err := os.CreateTemp("", "branchkit-model-*")
-	if err != nil {
+	if err := snapshotHFFolder(ref, entry.HFRepo, entry.HFPath, destDir); err != nil {
 		emitProgress(downloadProgress{Model: ref, Status: "error", Error: err.Error()})
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
-	}
-	tmpPath := tmpFile.Name()
-	tmpFile.Close()
-	defer os.Remove(tmpPath)
-
-	if err := downloadModelFile(ref, entry.URL, tmpPath); err != nil {
-		emitProgress(downloadProgress{Model: ref, Status: "error", Error: err.Error()})
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	emitProgress(downloadProgress{Model: ref, Status: "extracting"})
-
-	extractDir := filepath.Join(modelsDir(), engine)
-	os.MkdirAll(extractDir, 0o755)
-
-	if strings.HasSuffix(entry.URL, ".zip") {
-		if err := extractModelZip(tmpPath, extractDir); err != nil {
-			emitProgress(downloadProgress{Model: ref, Status: "error", Error: err.Error()})
-			fmt.Fprintf(os.Stderr, "Error extracting: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		if err := extractTarball(tmpPath, extractDir); err != nil {
-			emitProgress(downloadProgress{Model: ref, Status: "error", Error: err.Error()})
-			fmt.Fprintf(os.Stderr, "Error extracting: %v\n", err)
-			os.Exit(1)
-		}
 	}
 
 	if !fileExists(destDir) {
-		emitProgress(downloadProgress{Model: ref, Status: "error", Error: "extraction did not produce expected directory"})
-		fmt.Fprintf(os.Stderr, "Error: extraction did not produce expected directory: %s\n", destDir)
+		emitProgress(downloadProgress{Model: ref, Status: "error", Error: "download did not produce expected directory"})
+		fmt.Fprintf(os.Stderr, "Error: download did not produce expected directory: %s\n", destDir)
 		os.Exit(1)
 	}
 
 	emitProgress(downloadProgress{Model: ref, Status: "done"})
 	fmt.Fprintf(os.Stderr, "Model downloaded to %s\n", destDir)
+}
+
+// snapshotHFFolder downloads a Hugging Face repo subfolder (recursively) into
+// destDir, atomically: files land in a sibling ".partial" staging dir that is
+// renamed into place only after every file succeeds, so an interrupted download
+// never looks like a ready model.
+func snapshotHFFolder(ref, repo, folder, destDir string) error {
+	if repo == "" || folder == "" {
+		return fmt.Errorf("model has no Hugging Face source")
+	}
+	files, err := hfListFiles(repo, folder)
+	if err != nil {
+		return fmt.Errorf("list %s/%s: %w", repo, folder, err)
+	}
+	if len(files) == 0 {
+		return fmt.Errorf("no files found at %s/%s", repo, folder)
+	}
+	var total int64
+	for _, f := range files {
+		total += f.Size
+	}
+
+	staging := destDir + ".partial"
+	os.RemoveAll(staging)
+	defer os.RemoveAll(staging)
+
+	client := &http.Client{Timeout: 30 * time.Minute}
+	prefix := folder + "/"
+	var done int64
+	lastPct := -1
+	for _, f := range files {
+		rel := strings.TrimPrefix(f.Path, prefix)
+		out := filepath.Join(staging, rel)
+		if !strings.HasPrefix(filepath.Clean(out), filepath.Clean(staging)) {
+			return fmt.Errorf("path traversal in %s", f.Path)
+		}
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			return err
+		}
+		url := fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repo, f.Path)
+		if err := httpGetToFile(client, url, out); err != nil {
+			return fmt.Errorf("download %s: %w", rel, err)
+		}
+		done += f.Size
+		if total > 0 {
+			pct := int(done * 100 / total)
+			if pct != lastPct && pct%5 == 0 {
+				lastPct = pct
+				emitProgress(downloadProgress{Model: ref, Status: "downloading", Pct: pct, Bytes: done, Total: total})
+			}
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destDir), 0o755); err != nil {
+		return err
+	}
+	return os.Rename(staging, destDir)
+}
+
+type hfTreeEntry struct {
+	Type string `json:"type"` // "file" | "directory"
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+}
+
+// hfListFiles recursively lists every file under repo/folder via the HF tree API.
+// (WhisperKit model folders are small — tens of files — so no pagination needed.)
+func hfListFiles(repo, folder string) ([]hfTreeEntry, error) {
+	client := &http.Client{Timeout: 60 * time.Second}
+	var out []hfTreeEntry
+	var walk func(path string) error
+	walk = func(path string) error {
+		url := fmt.Sprintf("https://huggingface.co/api/models/%s/tree/main/%s", repo, path)
+		resp, err := client.Get(url)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("HTTP %d for %s", resp.StatusCode, url)
+		}
+		var entries []hfTreeEntry
+		if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if e.Type == "directory" {
+				if err := walk(e.Path); err != nil {
+					return err
+				}
+			} else {
+				out = append(out, e)
+			}
+		}
+		return nil
+	}
+	if err := walk(folder); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// httpGetToFile downloads url to dest (overwriting).
+func httpGetToFile(client *http.Client, url, dest string) error {
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, resp.Body)
+	return err
 }
 
 func downloadModelFile(ref, url, destPath string) error {
@@ -184,49 +280,6 @@ func downloadModelFile(ref, url, destPath string) error {
 		}
 		if readErr != nil {
 			return readErr
-		}
-	}
-
-	return nil
-}
-
-func extractModelZip(zipPath, destDir string) error {
-	r, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	for _, f := range r.File {
-		target := filepath.Join(destDir, f.Name)
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)) {
-			return fmt.Errorf("archive contains path traversal: %s", f.Name)
-		}
-
-		if f.FileInfo().IsDir() {
-			os.MkdirAll(target, 0o755)
-			continue
-		}
-
-		if f.FileInfo().Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlinks are not allowed in model archives: %s", f.Name)
-		}
-
-		os.MkdirAll(filepath.Dir(target), 0o755)
-		src, err := f.Open()
-		if err != nil {
-			return err
-		}
-		dst, err := os.Create(target)
-		if err != nil {
-			src.Close()
-			return err
-		}
-		_, err = io.Copy(dst, src)
-		src.Close()
-		dst.Close()
-		if err != nil {
-			return err
 		}
 	}
 
