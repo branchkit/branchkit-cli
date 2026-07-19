@@ -56,7 +56,7 @@ var packageDenylistNames = map[string]bool{
 	".git": true, ".github": true, ".gitignore": true, ".gitmodules": true,
 	"src": true, "node_modules": true,
 	"go.mod": true, "go.sum": true,
-	"package.json": true, "package-lock.json": true, "bun.lockb": true,
+	"package.json": true, "package-lock.json": true, "bun.lock": true, "bun.lockb": true,
 	"tsconfig.json": true, "Taskfile.yml": true, "Justfile": true,
 	"justfile": true, "Makefile": true, ".DS_Store": true,
 }

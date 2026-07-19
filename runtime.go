@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const bunVersion = "1.2.5"
+const bunVersion = "1.3.14"
 
 // runtimesDir returns the path to BranchKit's managed runtimes directory.
 func runtimesDir() string {
