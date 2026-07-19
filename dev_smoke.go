@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -178,14 +179,13 @@ func cmdDevSmoke(args []string) {
 	// --- 2. Layer-2 state: matchable inspector ---
 	raw, status, err := devHTTP("GET", "/inspector/matchable", "", nil)
 	var matchable struct {
-		ActiveTags    []string `json:"active_tags"`
-		ExclusiveTags []string `json:"exclusive_tags"`
-		EligibleCount int      `json:"eligible_count"`
-		GatedCount    int      `json:"gated_count"`
-		Eligible      []struct {
-			Owner   string `json:"owner"`
-			Pattern string `json:"pattern"`
-		} `json:"eligible"`
+		ActiveTags          []string       `json:"active_tags"`
+		ExclusiveTags       []string       `json:"exclusive_tags"`
+		ExclusiveNamespaces []string       `json:"exclusive_namespaces"`
+		EligibleCount       int            `json:"eligible_count"`
+		GatedCount          int            `json:"gated_count"`
+		Eligible            []matchableCmd `json:"eligible"`
+		Gated               []matchableCmd `json:"gated"`
 	}
 	if err != nil || status != 200 || json.Unmarshal(raw, &matchable) != nil {
 		add("matchable", "fail", fmt.Sprintf("GET /inspector/matchable: status=%d err=%v", status, err))
@@ -285,7 +285,143 @@ func cmdDevSmoke(args []string) {
 			len(failedPatterns), literals, strings.Join(sample, ", ")))
 	}
 
+	// --- 6. Prefix-collision lint: an UNGATED literal command that is a
+	// word-prefix of a GATED command reachable in the same context can
+	// never execute there — the matcher's gated-Partial-suppresses-
+	// ungated-exact discipline (matching.rs, the cold-startup hint-race
+	// design) swallows it into completion mode. That swallow is
+	// load-bearing (continuous decoding segments on ~100ms VAD silences,
+	// so eager exact-match would misfire; the fix belongs in the
+	// VOCABULARY). Precision notes, each mirroring a matcher rule:
+	//   - gated exact beats gated partial, so gated shorts are safe
+	//     ("up" resolves under "up level");
+	//   - only a LITERAL continuation swallows — a capture next-token
+	//     does not ("scroll down" resolves under "scroll down <number>");
+	//   - an exclusive mode suppresses everything outside it, so
+	//     commands are co-reachable only with EQUAL exclusive-gate sets.
+	// See branchkit-extension notes/PLAN_RELIABILITY_CONSOLIDATION.md
+	// (prefix-free vocabulary arc). Warn-level while the first-party
+	// vocabulary pass is open.
+	collisions := prefixCollisions(append(matchable.Eligible, matchable.Gated...), matchable.ExclusiveNamespaces)
+	if len(collisions) == 0 {
+		add("prefix-lint", "pass", fmt.Sprintf("no prefix collisions among co-reachable commands (%d commands checked)",
+			len(matchable.Eligible)+len(matchable.Gated)))
+	} else {
+		sample := collisions
+		if len(sample) > 4 {
+			sample = sample[:4]
+		}
+		add("prefix-lint", "warn", fmt.Sprintf("%d shadowed command(s) — unreachable where their extensions are live: %s",
+			len(collisions), strings.Join(sample, "; ")))
+	}
+
 	finish()
+}
+
+// matchableCmd is the per-command shape of /inspector/matchable entries the
+// smoke checks consume.
+type matchableCmd struct {
+	Owner        string   `json:"owner"`
+	Pattern      string   `json:"pattern"`
+	RequiresTags []string `json:"requires_tags"`
+}
+
+// exclusiveKey canonicalizes the subset of a command's required tags that
+// fall under a declared-exclusive namespace. Two commands can be
+// simultaneously matchable only if these subsets are EQUAL: while an
+// exclusive gate is active the matcher suppresses every command that
+// doesn't require it, and while it's inactive the commands requiring it
+// are gated.
+func exclusiveKey(tags, exclusiveNamespaces []string) string {
+	var ex []string
+	for _, t := range tags {
+		for _, ns := range exclusiveNamespaces {
+			if t == ns || strings.HasPrefix(t, ns+".") {
+				ex = append(ex, t)
+				break
+			}
+		}
+	}
+	sort.Strings(ex)
+	return strings.Join(ex, ",")
+}
+
+// prefixCollisions reports complete literal commands that are word-prefixes
+// of a longer command requiring the same exclusive gates (i.e. reachable in
+// the same context). One entry per shadowed short command, e.g.
+// "'pause' ⊂ 'pause video' (+2 more)".
+func prefixCollisions(cmds []matchableCmd, exclusiveNamespaces []string) []string {
+	literalTok := func(tok string) bool {
+		return !strings.ContainsAny(tok, "<{([|")
+	}
+	type short struct {
+		words []string
+		key   string
+	}
+	shorts := make(map[string]short) // pattern -> tokenized short candidate
+	for _, c := range cmds {
+		// Only UNGATED commands can be swallowed (a gated exact beats a
+		// gated partial), so only they are collision candidates.
+		if len(c.RequiresTags) > 0 {
+			continue
+		}
+		words := strings.Fields(c.Pattern)
+		ok := len(words) > 0
+		for _, w := range words {
+			if !literalTok(w) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			shorts[c.Pattern] = short{words: words, key: exclusiveKey(c.RequiresTags, exclusiveNamespaces)}
+		}
+	}
+	shadowedBy := make(map[string][]string) // short pattern -> extension patterns
+	for _, c := range cmds {
+		ext := strings.Fields(c.Pattern)
+		for pat, s := range shorts {
+			if len(ext) <= len(s.words) {
+				continue
+			}
+			match := true
+			for i, w := range s.words {
+				if !literalTok(ext[i]) || ext[i] != w {
+					match = false
+					break
+				}
+			}
+			// Only a LITERAL continuation swallows the short command into
+			// completion mode — a capture-shaped next token does not block
+			// the exact match (observed: "scroll down" resolves fine under
+			// "scroll down <number>", while "copy" is swallowed by
+			// "copy url").
+			if match && !literalTok(ext[len(s.words)]) {
+				match = false
+			}
+			// Only a GATED extension suppresses the ungated short (an
+			// ungated partial never suppresses an exact match).
+			if match && len(c.RequiresTags) > 0 && exclusiveKey(c.RequiresTags, exclusiveNamespaces) == s.key {
+				shadowedBy[pat] = append(shadowedBy[pat], c.Pattern)
+			}
+		}
+	}
+	var out []string
+	var keys []string
+	for k := range shadowedBy {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		exts := shadowedBy[k]
+		sort.Strings(exts)
+		entry := fmt.Sprintf("%q ⊂ %q", k, exts[0])
+		if len(exts) > 1 {
+			entry += fmt.Sprintf(" (+%d more)", len(exts)-1)
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func cmdDevSay(args []string) {
