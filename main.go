@@ -106,6 +106,8 @@ func main() {
 			cmdDevWatch(os.Args[3:])
 		case "logs":
 			cmdDevLogs(os.Args[3:])
+		case "plog":
+			cmdDevPlog(os.Args[3:])
 		case "smoke":
 			cmdDevSmoke(os.Args[3:])
 		case "say":
@@ -160,6 +162,7 @@ func printUsage() {
 	fmt.Println("  dev test [path] [flags]            Run static analysis on a plugin")
 	fmt.Println("  dev watch [path]                   Watch + rebuild + reload on changes")
 	fmt.Println("  dev logs [plugin-id] [flags]       Tail actuator log")
+	fmt.Println("  dev plog <plugin-id> [flags]       Query a plugin's debug log (--since/--tag/--exclude)")
 	fmt.Println("  help                               Show this help")
 }
 
@@ -185,6 +188,8 @@ func printDevUsage() {
 	fmt.Println("        Watch for changes, rebuild, and reload via actuator")
 	fmt.Println("  logs [plugin-id] [--source TAG] [--json]")
 	fmt.Println("        Tail actuator log, optionally filtered")
+	fmt.Println("  plog <plugin-id> [--since 30s] [--tag GLOB[,GLOB]] [--exclude GLOB[,GLOB]] [--level warn] [--limit N] [--json]")
+	fmt.Println("        One-shot query of plugin-logs/<id>.log — server does the time math")
 	fmt.Println("  smoke [--json]")
 	fmt.Println("        Side-effect-free health sweep of the running app (preview resolves,")
 	fmt.Println("        vocab lag, transcript transport) — executes nothing")
