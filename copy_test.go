@@ -73,4 +73,3 @@ func TestSafeCopyRejectsExcessiveDepth(t *testing.T) {
 		t.Errorf("error should mention depth, got: %v", err)
 	}
 }
-

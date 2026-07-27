@@ -47,12 +47,12 @@ type modelEntry struct {
 }
 
 type downloadProgress struct {
-	Model   string `json:"model"`
-	Status  string `json:"status"`
-	Pct     int    `json:"pct,omitempty"`
-	Bytes   int64  `json:"bytes,omitempty"`
-	Total   int64  `json:"total,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Model  string `json:"model"`
+	Status string `json:"status"`
+	Pct    int    `json:"pct,omitempty"`
+	Bytes  int64  `json:"bytes,omitempty"`
+	Total  int64  `json:"total,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 func emitProgress(p downloadProgress) {
@@ -266,11 +266,11 @@ func downloadModelFile(ref, url, destPath string) error {
 				if pct != lastPct && pct%5 == 0 {
 					lastPct = pct
 					emitProgress(downloadProgress{
-						Model: ref,
+						Model:  ref,
 						Status: "downloading",
-						Pct:   pct,
-						Bytes: written,
-						Total: total,
+						Pct:    pct,
+						Bytes:  written,
+						Total:  total,
 					})
 				}
 			}

@@ -10,19 +10,19 @@ import (
 )
 
 type previewResult struct {
-	ID           string              `json:"id"`
-	Name         string              `json:"name"`
-	Version      string              `json:"version"`
-	Description  string              `json:"description"`
-	Author       string              `json:"author"`
-	Privileges   []string            `json:"privileges"`
-	DependsOn    []previewDep        `json:"depends_on"`
-	Conformance  string              `json:"conformance"`
-	Tier         string              `json:"tier"`
-	Blocklisted  bool                `json:"blocklisted"`
-	BlockReason  string              `json:"block_reason,omitempty"`
-	Source       string              `json:"source"`
-	Tag          string              `json:"tag"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Version     string       `json:"version"`
+	Description string       `json:"description"`
+	Author      string       `json:"author"`
+	Privileges  []string     `json:"privileges"`
+	DependsOn   []previewDep `json:"depends_on"`
+	Conformance string       `json:"conformance"`
+	Tier        string       `json:"tier"`
+	Blocklisted bool         `json:"blocklisted"`
+	BlockReason string       `json:"block_reason,omitempty"`
+	Source      string       `json:"source"`
+	Tag         string       `json:"tag"`
 }
 
 type previewDep struct {
