@@ -20,6 +20,15 @@ type PluginManifest struct {
 	DependsOn     []Dependency `json:"depends_on,omitempty"`
 	ActionPrefix  string       `json:"action_prefix,omitempty"`
 	HudTargets    []string     `json:"hud_targets,omitempty"`
+	Sockets       *SocketsCfg  `json:"sockets,omitempty"`
+}
+
+// SocketsCfg mirrors the actuator's `sockets` manifest field, just deeply
+// enough to know whether the plugin declares loopback listeners — that
+// decides its runtime (a listener-granted TS plugin runs under Node, not
+// Bun; see runtime.go's needsNode).
+type SocketsCfg struct {
+	Listen []json.RawMessage `json:"listen,omitempty"`
 }
 
 // Dependency is an explicit plugin dependency with optional version constraint and source hint.
