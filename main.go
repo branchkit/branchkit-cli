@@ -114,6 +114,8 @@ func main() {
 			cmdDevSay(os.Args[3:])
 		case "chain":
 			cmdDevChain(os.Args[3:])
+		case "margins":
+			cmdDevMargins(os.Args[3:])
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown dev command: %s\n", os.Args[2])
 			printDevUsage()
@@ -197,6 +199,9 @@ func printDevUsage() {
 	fmt.Println("        Inject a synthetic transcript — matched commands REALLY execute")
 	fmt.Println("  chain [tr_id] [--limit N] [--json]")
 	fmt.Println("        Query correlated event chains (no id = recent-chains index)")
+	fmt.Println("  margins [--collection NAME]")
+	fmt.Println("        Recognition-margin distribution (verdict-split) of a keyed")
+	fmt.Println("        recognition log, read via its compacted projection — for floor siting")
 }
 
 func printPluginUsage() {
