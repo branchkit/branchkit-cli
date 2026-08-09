@@ -115,13 +115,3 @@ func TestDiscoverPluginsDedup(t *testing.T) {
 		t.Fatalf("expected 1 plugin after dedup, got %d", len(found))
 	}
 }
-
-func TestLoadDisabledPluginsEmpty(t *testing.T) {
-	// When file doesn't exist, returns empty map
-	disabled := loadDisabledPlugins()
-	// This tests the real function, which reads from appSupportDir
-	// Just verify it doesn't crash and returns a map
-	if disabled == nil {
-		t.Fatal("expected non-nil map")
-	}
-}

@@ -4,7 +4,7 @@ import "fmt"
 
 func cmdList() {
 	discovered := discoverPlugins()
-	disabled := loadDisabledPlugins()
+	states, online := fetchPluginStates()
 
 	if len(discovered) == 0 {
 		fmt.Println("No plugins found.")
@@ -27,11 +27,17 @@ func cmdList() {
 
 	fmt.Printf("%-*s  %-*s  %-*s  %-8s  %s\n", idW, "ID", nameW, "NAME", verW, "VERSION", "SOURCE", "STATUS")
 	for _, dp := range discovered {
+		// Install kind is a disk fact (a `run` command → managed process).
 		status := "static"
-		if disabled[dp.Manifest.ID] {
-			status = "disabled"
-		} else if dp.Manifest.Run != "" {
+		if dp.Manifest.Run != "" {
 			status = "managed"
+		}
+		// Disabled is runtime state owned by the actuator; overlay it only
+		// when the actuator answered.
+		if online {
+			if st, ok := states[dp.Manifest.ID]; ok && !st.Enabled {
+				status = "disabled"
+			}
 		}
 		fmt.Printf("%-*s  %-*s  %-*s  %-8s  %s\n",
 			idW, dp.Manifest.ID,
@@ -39,5 +45,11 @@ func cmdList() {
 			verW, dp.Manifest.Version,
 			string(dp.Source), status,
 		)
+	}
+
+	// Be honest when we couldn't determine disabled state rather than
+	// silently showing everything as enabled.
+	if !online {
+		fmt.Println("\nNote: BranchKit isn't running — disabled state unavailable (STATUS shows install kind only).")
 	}
 }

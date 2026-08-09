@@ -91,20 +91,40 @@ func discoverPlugins() []DiscoveredPlugin {
 	return discovered
 }
 
-// loadDisabledPlugins reads the disabled plugin IDs from disk.
-func loadDisabledPlugins() map[string]bool {
-	path := filepath.Join(appSupportDir(), "disabled_plugins.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return map[string]bool{}
+// pluginState is the authoritative enabled/status for one plugin, as reported
+// by the running actuator.
+type pluginState struct {
+	Enabled bool
+	Status  string
+}
+
+// fetchPluginStates queries the running actuator for authoritative
+// enabled/status per plugin (GET /v1/plugins). Returns (states, true) when the
+// actuator answered; (nil, false) when it isn't reachable — no host token, not
+// running, or a non-200 — so callers degrade to "unknown" rather than reading a
+// stale on-disk file. The actuator is the single source of truth for disabled
+// state (it's the only writer); the old disabled_plugins.json the CLI used to
+// read was never written by the actuator.
+func fetchPluginStates() (map[string]pluginState, bool) {
+	token := readHostToken()
+	if token == "" {
+		return nil, false
 	}
-	var ids []string
-	if err := json.Unmarshal(data, &ids); err != nil {
-		return map[string]bool{}
+	raw, status, err := devHTTP("GET", "/v1/plugins", token, nil)
+	if err != nil || status != 200 {
+		return nil, false
 	}
-	m := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		m[id] = true
+	var items []struct {
+		ID      string `json:"id"`
+		Enabled bool   `json:"enabled"`
+		Status  string `json:"status"`
 	}
-	return m
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, false
+	}
+	m := make(map[string]pluginState, len(items))
+	for _, it := range items {
+		m[it.ID] = pluginState{Enabled: it.Enabled, Status: it.Status}
+	}
+	return m, true
 }
