@@ -315,6 +315,56 @@ func cmdDevSmoke(args []string) {
 			len(collisions), strings.Join(sample, "; ")))
 	}
 
+	// --- 7. Collection-ownership guard: cross-owner rehydrate refused, or
+	// orphaned data (no live introducer). Reinstalling a plugin — or a
+	// different plugin reusing a collection name — must never silently inherit
+	// the old owner's on-disk data (storage is keyed by name alone). The
+	// reconciliation pass in build_collections refuses the mismatch and
+	// classifies orphans against uninstall markers + grace. `refused` is the
+	// last reconciliation; `orphans` are surfaced-not-deleted; `quarantined`
+	// is the durable collection_logs/orphaned/ scan. See
+	// DESIGN_PLUGIN_DATA_LIFECYCLE.md.
+	raw, status, err = devHTTP("GET", "/inspector/ownership", "", nil)
+	var ownership struct {
+		RefusedCount       int  `json:"refused_count"`
+		OrphanCount        int  `json:"orphan_count"`
+		OrphansReclaimable int  `json:"orphans_reclaimable"`
+		OrphansRetained    int  `json:"orphans_retained"`
+		OrphansUnmarked    int  `json:"orphans_unmarked"`
+		QuarantinedCount   int  `json:"quarantined_count"`
+		Clean              bool `json:"clean"`
+		Refused            []struct {
+			Collection        string `json:"collection"`
+			Storage           string `json:"storage"`
+			StoredIntroducer  string `json:"stored_introducer"`
+			CurrentIntroducer string `json:"current_introducer"`
+		} `json:"refused"`
+	}
+	if err != nil || status != 200 || json.Unmarshal(raw, &ownership) != nil {
+		add("ownership", "fail", fmt.Sprintf("GET /inspector/ownership: status=%d err=%v", status, err))
+	} else if ownership.Clean {
+		add("ownership", "pass", "no cross-owner conflicts, orphans, or quarantined data")
+	} else {
+		var sample []string
+		for _, r := range ownership.Refused {
+			sample = append(sample, fmt.Sprintf("%s (%s: %s→%s)", r.Collection, r.Storage, r.StoredIntroducer, r.CurrentIntroducer))
+			if len(sample) >= 3 {
+				break
+			}
+		}
+		// A cross-owner refusal is the guard working (data protected, not
+		// applied); orphans are surfaced-not-deleted per design. Warn so both
+		// are visible without failing the sweep.
+		detail := fmt.Sprintf("%d refused, %d orphan(s) [%d reclaimable / %d retained / %d unmarked], %d quarantined file(s)",
+			ownership.RefusedCount, ownership.OrphanCount,
+			ownership.OrphansReclaimable, ownership.OrphansRetained, ownership.OrphansUnmarked,
+			ownership.QuarantinedCount)
+		if len(sample) > 0 {
+			detail += ": " + strings.Join(sample, "; ")
+		}
+		add("ownership", "warn", detail)
+	}
+
 	finish()
 }
 
