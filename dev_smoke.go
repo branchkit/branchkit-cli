@@ -332,6 +332,9 @@ func cmdDevSmoke(args []string) {
 		OrphansRetained    int  `json:"orphans_retained"`
 		OrphansUnmarked    int  `json:"orphans_unmarked"`
 		QuarantinedCount   int  `json:"quarantined_count"`
+		UnownedGroupCount  int  `json:"unowned_group_count"`
+		GroupCount         int  `json:"group_count"`
+		UnattributedRecs   int  `json:"unattributed_records"`
 		Clean              bool `json:"clean"`
 		Refused            []struct {
 			Collection        string `json:"collection"`
@@ -339,11 +342,24 @@ func cmdDevSmoke(args []string) {
 			StoredIntroducer  string `json:"stored_introducer"`
 			CurrentIntroducer string `json:"current_introducer"`
 		} `json:"refused"`
+		UnownedGroups []struct {
+			Collection string `json:"collection"`
+			Writer     string `json:"writer"`
+			Count      int    `json:"count"`
+		} `json:"unowned_groups"`
 	}
 	if err != nil || status != 200 || json.Unmarshal(raw, &ownership) != nil {
 		add("ownership", "fail", fmt.Sprintf("GET /inspector/ownership: status=%d err=%v", status, err))
 	} else if ownership.Clean {
-		add("ownership", "pass", "no cross-owner conflicts, orphans, or quarantined data")
+		detail := fmt.Sprintf(
+			"no cross-owner conflicts, orphans, quarantined data, or unowned record groups (%d group(s) inventoried)",
+			ownership.GroupCount)
+		// Pre-Record.writer records: unreachable by any writer filter, but not
+		// a lost plugin. Reported so they stay visible as they age out.
+		if ownership.UnattributedRecs > 0 {
+			detail += fmt.Sprintf("; %d unattributed record(s) predate the writer field", ownership.UnattributedRecs)
+		}
+		add("ownership", "pass", detail)
 	} else {
 		var sample []string
 		for _, r := range ownership.Refused {
@@ -352,13 +368,22 @@ func cmdDevSmoke(args []string) {
 				break
 			}
 		}
+		// An unowned group is records whose writer is gone — nothing will ever
+		// replace them, and the collection-level orphan pass cannot see it when
+		// the collection itself is alive under another owner.
+		for _, g := range ownership.UnownedGroups {
+			sample = append(sample, fmt.Sprintf("%s: %d record(s) owned by absent %q", g.Collection, g.Count, g.Writer))
+			if len(sample) >= 5 {
+				break
+			}
+		}
 		// A cross-owner refusal is the guard working (data protected, not
 		// applied); orphans are surfaced-not-deleted per design. Warn so both
 		// are visible without failing the sweep.
-		detail := fmt.Sprintf("%d refused, %d orphan(s) [%d reclaimable / %d retained / %d unmarked], %d quarantined file(s)",
+		detail := fmt.Sprintf("%d refused, %d orphan(s) [%d reclaimable / %d retained / %d unmarked], %d quarantined file(s), %d unowned group(s)",
 			ownership.RefusedCount, ownership.OrphanCount,
 			ownership.OrphansReclaimable, ownership.OrphansRetained, ownership.OrphansUnmarked,
-			ownership.QuarantinedCount)
+			ownership.QuarantinedCount, ownership.UnownedGroupCount)
 		if len(sample) > 0 {
 			detail += ": " + strings.Join(sample, "; ")
 		}
