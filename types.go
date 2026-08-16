@@ -21,6 +21,42 @@ type PluginManifest struct {
 	ActionPrefix  string       `json:"action_prefix,omitempty"`
 	HudTargets    []string     `json:"hud_targets,omitempty"`
 	Sockets       *SocketsCfg  `json:"sockets,omitempty"`
+	Provides      *ProvidesCfg `json:"provides,omitempty"`
+}
+
+// ProvidesCfg mirrors the actuator's `provides` field, deeply enough to read
+// the model declarations this CLI provisions. Everything else under `provides`
+// is the actuator's business.
+type ProvidesCfg struct {
+	Models map[string]ModelDeclaration `json:"models,omitempty"`
+}
+
+// ModelDeclaration is one model a plugin's stages can load — the recipe this
+// CLI executes. The actuator validates the shape at manifest load
+// (`plugins/validate/manifest.rs`); the checks here are the ones that matter
+// at fetch time, and they are enforced regardless of what validation ran.
+type ModelDeclaration struct {
+	Description string      `json:"description,omitempty"`
+	SizeBytes   int64       `json:"size_bytes"`
+	Parts       []ModelPart `json:"parts"`
+	Requires    []string    `json:"requires,omitempty"`
+}
+
+// ModelPart is one step in assembling a model directory. Kind-tagged, five
+// kinds; see notes/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
+type ModelPart struct {
+	Kind string `json:"kind"`
+	// hf_folder / hf_files
+	Repo     string   `json:"repo,omitempty"`
+	Path     string   `json:"path,omitempty"`
+	Revision string   `json:"revision,omitempty"`
+	Files    []string `json:"files,omitempty"`
+	// http_archive / http_file
+	URL     string   `json:"url,omitempty"`
+	SHA256  string   `json:"sha256,omitempty"`
+	Members []string `json:"members,omitempty"`
+	// where it lands, relative to the model dir
+	Dest string `json:"dest,omitempty"`
 }
 
 // SocketsCfg mirrors the actuator's `sockets` manifest field, just deeply

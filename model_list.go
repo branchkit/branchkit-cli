@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 type modelInfo struct {
@@ -16,16 +18,6 @@ type modelInfo struct {
 
 func cmdModelList() {
 	models := discoverModels()
-	if len(models) == 0 {
-		fmt.Println("No models installed.")
-		fmt.Println()
-		fmt.Println("Download a model:")
-		fmt.Println("  branchkit-cli model download whisperkit/openai_whisper-large-v3-v20240930")
-		fmt.Println("  branchkit-cli model download whisperkit/openai_whisper-large-v3-v20240930")
-		fmt.Println("  branchkit-cli model download sherpa/sherpa-offline-nemo")
-		return
-	}
-
 	useJSON := len(os.Args) >= 4 && os.Args[3] == "--json"
 	if useJSON {
 		data, _ := json.Marshal(models)
@@ -33,39 +25,57 @@ func cmdModelList() {
 		return
 	}
 
+	if len(models) == 0 {
+		fmt.Println("No models installed.")
+	}
 	for _, m := range models {
 		fmt.Printf("  %-10s %-45s %s\n", m.Engine, m.Name, m.Size)
 	}
+	printDeclaredModels(os.Stdout)
+	// Anything at the models root that is neither a plugin namespace nor a
+	// declared model is REPORTED, not hidden. Retired engines leave their model
+	// dirs behind, and a listing that quietly skips what it does not recognize
+	// is how `models/sherpa` and `models/sherpa-offline` sat unnoticed.
+	if unclaimed := unclaimedModelDirs(); len(unclaimed) > 0 {
+		fmt.Println("\nUnclaimed directories under models/ (no plugin claims these):")
+		for _, u := range unclaimed {
+			fmt.Printf("  %-45s %s\n", u, dirSize(filepath.Join(modelsDir(), u)))
+		}
+	}
 }
 
+// discoverModels walks `<models>/<plugin_id>/<model>`. The engine column is the
+// owning plugin, which is what the directory level actually means since model
+// dirs became namespaced.
 func discoverModels() []modelInfo {
 	base := modelsDir()
 	var models []modelInfo
 
-	engines, err := os.ReadDir(base)
+	owners, err := os.ReadDir(base)
 	if err != nil {
 		return nil
 	}
+	known := knownPluginIDs()
 
-	for _, eng := range engines {
-		if !eng.IsDir() {
+	for _, owner := range owners {
+		if !owner.IsDir() || strings.HasPrefix(owner.Name(), ".") {
 			continue
 		}
-		engineName := eng.Name()
-		engineDir := filepath.Join(base, engineName)
-
-		entries, err := os.ReadDir(engineDir)
+		if !known[owner.Name()] {
+			continue // reported separately as unclaimed
+		}
+		ownerDir := filepath.Join(base, owner.Name())
+		entries, err := os.ReadDir(ownerDir)
 		if err != nil {
 			continue
 		}
-
 		for _, entry := range entries {
-			if !entry.IsDir() {
+			if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 				continue
 			}
-			modelPath := filepath.Join(engineDir, entry.Name())
+			modelPath := filepath.Join(ownerDir, entry.Name())
 			models = append(models, modelInfo{
-				Engine: engineName,
+				Engine: owner.Name(),
 				Name:   entry.Name(),
 				Path:   modelPath,
 				Size:   dirSize(modelPath),
@@ -74,6 +84,31 @@ func discoverModels() []modelInfo {
 	}
 
 	return models
+}
+
+func knownPluginIDs() map[string]bool {
+	out := map[string]bool{}
+	for _, dp := range discoverPlugins() {
+		out[dp.Manifest.ID] = true
+	}
+	return out
+}
+
+func unclaimedModelDirs() []string {
+	entries, err := os.ReadDir(modelsDir())
+	if err != nil {
+		return nil
+	}
+	known := knownPluginIDs()
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || known[e.Name()] {
+			continue
+		}
+		out = append(out, e.Name())
+	}
+	sort.Strings(out)
+	return out
 }
 
 func dirSize(path string) string {

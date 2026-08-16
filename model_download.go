@@ -82,20 +82,25 @@ func modelsDir() string {
 }
 
 func cmdModelDownload(ref string) {
-	// Sherpa (NeMo) needs a multi-file assembly (two SHA-pinned downloads + four
-	// vendored small files) into a FLAT model dir, unlike the single-archive
-	// whisperkit/sherpa path below — handled separately.
-	if ref == sherpaModelRef {
-		assembleSherpaModel(ref)
+	// A model a PLUGIN declares wins: that is the path this tool is moving to,
+	// and the compiled-in catalog below is what it is replacing.
+	if m, ok := declaredModels()[ref]; ok {
+		provisionDeclaredModel(m)
 		return
 	}
 
+	// LEGACY — the compiled-in catalog. Deleted when the stt stage moves into
+	// voice and declares these three models itself; until then the WhisperKit
+	// models live at `models/whisperkit/<name>` and the actuator's hardcoded
+	// family grant is what admits them. See the sequence in
+	// notes/DESIGN_PLUGIN_MODEL_DECLARATION.md.
 	entry, ok := modelCatalog[ref]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Unknown model: %s\n\nAvailable models:\n", ref)
 		for key, e := range modelCatalog {
 			fmt.Fprintf(os.Stderr, "  %-50s %s\n", key, e.Size)
 		}
+		printDeclaredModels(os.Stderr)
 		os.Exit(1)
 	}
 
@@ -364,156 +369,6 @@ func downloadModelFile(ref, url, destPath string) error {
 	}
 
 	return nil
-}
-
-// --- Sherpa (NeMo) offline command model -------------------------------------
-//
-// Unlike whisperkit (one archive → models/<engine>/<model>), the sherpa
-// command model is assembled into a FLAT dir (models/sherpa-offline-nemo, where
-// the stage looks) from two SHA-pinned downloads plus the small generic tokenizer
-// files vendored in the app bundle. The big model.onnx is downloaded fresh; the
-// tokenizer (bpe.model + bpe.vocab) comes from the bundle so the user's machine
-// needs no Python build toolchain. No command grammar is vendored — the stage
-// self-seeds it in-process from the live vocabulary. Mirrors `just sherpa-model-nemo`.
-
-const (
-	sherpaModelRef  = "sherpa/sherpa-offline-nemo"
-	sherpaModelName = "sherpa-offline-nemo"
-)
-
-// sherpaDownload is one SHA-pinned fetch. If tarMembers is set, the download is a
-// .tar.bz2 and those basenames are extracted; otherwise it's a single file saved
-// as destName.
-type sherpaDownload struct {
-	url        string
-	sha256     string
-	tarMembers []string
-	destName   string
-}
-
-var sherpaDownloads = []sherpaDownload{
-	{
-		url:        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-ctc-en-conformer-medium.tar.bz2",
-		sha256:     "08cb7b6ebc516a2577c5b152230730ebf5f937507260305ea592c7accd7f899b",
-		tarMembers: []string{"model.onnx", "tokens.txt"},
-	},
-	{
-		url:      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
-		sha256:   "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
-		destName: "silero_vad.onnx",
-	},
-}
-
-// Small generic tokenizer files copied from the app bundle (sherpa-assets/<name>/),
-// not downloaded. The command grammar is not vendored — the stage self-seeds it.
-var sherpaBundledAssets = []string{"bpe.model", "bpe.vocab"}
-
-func assembleSherpaModel(ref string) {
-	destDir := filepath.Join(modelsDir(), sherpaModelName)
-	if fileExists(destDir) {
-		emitProgress(downloadProgress{Model: ref, Status: "exists"})
-		fmt.Fprintf(os.Stderr, "Model already downloaded: %s\n", destDir)
-		return
-	}
-
-	// The vendored tokenizer files ride in the app bundle next to this binary.
-	// Fail before any download if they're absent (a bare/unbundled CLI can't
-	// provision sherpa — dev uses `just sherpa-model-nemo`).
-	assetsDir, err := sherpaAssetsDir()
-	if err == nil {
-		for _, a := range sherpaBundledAssets {
-			if !fileExists(filepath.Join(assetsDir, a)) {
-				err = fmt.Errorf("bundled asset missing: %s", filepath.Join(assetsDir, a))
-				break
-			}
-		}
-	}
-	if err != nil {
-		sherpaFail(ref, fmt.Errorf("sherpa assets unavailable (provision from the bundled app): %w", err))
-	}
-
-	// Assemble in a sibling staging dir on the same filesystem, then rename into
-	// place atomically so a partial download never looks like a ready model.
-	staging := filepath.Join(modelsDir(), "."+sherpaModelName+".partial")
-	os.RemoveAll(staging)
-	if err := os.MkdirAll(staging, 0o755); err != nil {
-		sherpaFail(ref, err)
-	}
-	defer os.RemoveAll(staging)
-
-	emitProgress(downloadProgress{Model: ref, Status: "downloading", Pct: 0})
-	for _, d := range sherpaDownloads {
-		if len(d.tarMembers) > 0 {
-			tmp, err := os.CreateTemp("", "branchkit-sherpa-*.tar.bz2")
-			if err != nil {
-				sherpaFail(ref, err)
-			}
-			tmpPath := tmp.Name()
-			tmp.Close()
-			if err := downloadModelFile(ref, d.url, tmpPath); err != nil {
-				os.Remove(tmpPath)
-				sherpaFail(ref, err)
-			}
-			if err := verifySHA256(tmpPath, d.sha256); err != nil {
-				os.Remove(tmpPath)
-				sherpaFail(ref, err)
-			}
-			emitProgress(downloadProgress{Model: ref, Status: "extracting"})
-			if err := extractTarBz2Members(tmpPath, staging, d.tarMembers); err != nil {
-				os.Remove(tmpPath)
-				sherpaFail(ref, err)
-			}
-			os.Remove(tmpPath)
-		} else {
-			out := filepath.Join(staging, d.destName)
-			if err := downloadModelFile(ref, d.url, out); err != nil {
-				sherpaFail(ref, err)
-			}
-			if err := verifySHA256(out, d.sha256); err != nil {
-				sherpaFail(ref, err)
-			}
-		}
-	}
-
-	for _, a := range sherpaBundledAssets {
-		if err := copyFile(filepath.Join(assetsDir, a), filepath.Join(staging, a), 0o644); err != nil {
-			sherpaFail(ref, fmt.Errorf("copy bundled %s: %w", a, err))
-		}
-	}
-
-	// Completeness gate — every file the stage expects must be present. No HL.fst:
-	// the stage self-seeds the grammar from the live vocabulary at startup.
-	for _, f := range []string{"model.onnx", "tokens.txt", "silero_vad.onnx", "bpe.model", "bpe.vocab"} {
-		if !fileExists(filepath.Join(staging, f)) {
-			sherpaFail(ref, fmt.Errorf("assembled model missing %s", f))
-		}
-	}
-
-	if err := os.Rename(staging, destDir); err != nil {
-		sherpaFail(ref, err)
-	}
-
-	emitProgress(downloadProgress{Model: ref, Status: "done"})
-	fmt.Fprintf(os.Stderr, "Model assembled at %s\n", destDir)
-}
-
-func sherpaFail(ref string, err error) {
-	emitProgress(downloadProgress{Model: ref, Status: "error", Error: err.Error()})
-	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-	os.Exit(1)
-}
-
-// sherpaAssetsDir resolves the vendored sherpa assets bundled next to this binary
-// at <exe-dir>/sherpa-assets/<name>/ (the app bundle's Contents/Resources layout).
-func sherpaAssetsDir() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
-	}
-	return filepath.Join(filepath.Dir(exe), "sherpa-assets", sherpaModelName), nil
 }
 
 func verifySHA256(path, expected string) error {

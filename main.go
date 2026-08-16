@@ -172,8 +172,9 @@ func printModelUsage() {
 	fmt.Println("Usage: branchkit-cli model <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  download <engine/model>  Download a speech model (e.g., whisperkit/openai_whisper-large-v3-v20240930)")
-	fmt.Println("  list                     List downloaded models")
+	fmt.Println("  download <plugin/model>  Provision a model a plugin declares")
+	fmt.Println("  list                     List installed models and what plugins declare")
+	printDeclaredModels(os.Stdout)
 }
 
 func printDevUsage() {

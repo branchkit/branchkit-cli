@@ -19,10 +19,27 @@ func discoverPlugins() []DiscoveredPlugin {
 		{filepath.Join(appSupportDir(), "plugins"), SourceUser},
 	}
 
-	// Bundled: {executable}/../Contents/Resources/plugins
+	// Bundled: the plugins shipped inside the enclosing .app.
+	//
+	// Derived from the enclosing bundle rather than by counting `..` levels
+	// from the executable. The old spelling was
+	// `{exe}/../Contents/Resources/plugins`, which is only correct for a
+	// binary in `Contents/MacOS`; this CLI ships in `Contents/Resources`, so
+	// it resolved to `<app>/Contents/Contents/Resources/plugins` and the
+	// bundled plugins were never found. Invisible until model provisioning
+	// started depending on it — in development the app-support symlinks
+	// answer first, and every bundled run silently fell through to the dev
+	// path.
 	if exe, err := os.Executable(); err == nil {
-		bundled := filepath.Join(filepath.Dir(exe), "..", "Contents", "Resources", "plugins")
-		paths = append(paths, searchPath{bundled, SourceBundled})
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = resolved
+		}
+		if app := enclosingAppBundle(exe); app != "" {
+			paths = append(paths, searchPath{filepath.Join(app, "Contents", "Resources", "plugins"), SourceBundled})
+		} else {
+			// Non-macOS packaging: plugins sit next to the binary.
+			paths = append(paths, searchPath{filepath.Join(filepath.Dir(exe), "plugins"), SourceBundled})
+		}
 	}
 
 	// Dev fallback
@@ -127,4 +144,18 @@ func fetchPluginStates() (map[string]pluginState, bool) {
 		m[it.ID] = pluginState{Enabled: it.Enabled, Status: it.Status}
 	}
 	return m, true
+}
+
+// enclosingAppBundle returns the nearest ancestor directory ending in `.app`,
+// or "" when the path is not inside one (a development build tree).
+func enclosingAppBundle(path string) string {
+	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+		if strings.HasSuffix(dir, ".app") {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+	}
 }
