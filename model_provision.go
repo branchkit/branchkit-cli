@@ -119,25 +119,28 @@ func provisionDeclaredModel(m declaredModel) {
 		os.Exit(1)
 	}
 
-	// Pre-namespace layout: the model sat flat at <models>/<name> before model
-	// dirs were namespaced by owning plugin. Adopt it by rename rather than
-	// re-downloading gigabytes — but only if it is COMPLETE by the declaration's
+	// Pre-namespace layouts. Adopt by rename rather than re-downloading
+	// gigabytes — but only if the directory is COMPLETE by the declaration's
 	// own `requires`, so a half-finished legacy download is re-fetched instead
-	// of being blessed. Only fires for a directory whose name matches a declared
-	// model, which is exactly the old layout and nothing else.
-	if legacy := filepath.Join(modelsDir(), m.Name); fileExists(legacy) {
-		if err := checkRequires(legacy, m.Decl.Requires); err == nil {
-			if err := os.MkdirAll(pluginRoot, 0o755); err == nil {
-				if err := os.Rename(legacy, destDir); err == nil {
-					writeReceipt(pluginRoot, m, digest)
-					emitProgress(downloadProgress{Model: m.Ref, Status: "done"})
-					fmt.Fprintf(os.Stderr, "Adopted existing model %s -> %s\n", legacy, destDir)
-					return
-				}
-			}
-		} else {
-			fmt.Fprintf(os.Stderr, "Ignoring incomplete legacy model at %s (%v)\n", legacy, err)
+	// of being blessed.
+	for _, legacy := range legacyLocations(m.Name) {
+		if !fileExists(legacy) {
+			continue
 		}
+		if err := checkRequires(legacy, m.Decl.Requires); err != nil {
+			fmt.Fprintf(os.Stderr, "Ignoring incomplete legacy model at %s (%v)\n", legacy, err)
+			continue
+		}
+		if err := os.MkdirAll(pluginRoot, 0o755); err != nil {
+			break
+		}
+		if err := os.Rename(legacy, destDir); err != nil {
+			break
+		}
+		writeReceipt(pluginRoot, m, digest)
+		emitProgress(downloadProgress{Model: m.Ref, Status: "done"})
+		fmt.Fprintf(os.Stderr, "Adopted existing model %s -> %s\n", legacy, destDir)
+		return
 	}
 
 	emitProgress(downloadProgress{Model: m.Ref, Status: "downloading", Pct: 0})
@@ -180,6 +183,34 @@ func assembleModel(m declaredModel, pluginRoot, destDir, digest string) error {
 	}
 	writeReceipt(pluginRoot, m, digest)
 	return nil
+}
+
+// legacyLocations are the places a model of this name could be sitting from
+// before model dirs were namespaced by owning plugin:
+//
+//   - `<models>/<name>` — the flat layout (the sherpa command model).
+//   - `<models>/<engine>/<name>` — the per-ENGINE layout, where the directory
+//     level was a vendor name (`whisperkit/openai_whisper-…`).
+//
+// The engine form is scoped to directories that are NOT a known plugin id, so
+// this can never reach into a plugin's own namespace and take a model that
+// belongs to it. Together with the completeness check at the call site, the
+// worst case is that a stale directory is left alone.
+func legacyLocations(name string) []string {
+	root := modelsDir()
+	out := []string{filepath.Join(root, name)}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return out
+	}
+	known := knownPluginIDs()
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || known[e.Name()] {
+			continue
+		}
+		out = append(out, filepath.Join(root, e.Name(), name))
+	}
+	return out
 }
 
 func modelFail(ref string, err error) {

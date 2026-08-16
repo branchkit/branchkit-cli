@@ -3,55 +3,15 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-// Every WhisperKit model needs a tokenizer repo, and the failure mode for a
-// missing one is remote: the model downloads fine and the stage refuses to
-// load at first dictation, network-denied (see provisionTokenizer).
-func TestWhisperKitModelsDeclareATokenizerRepo(t *testing.T) {
-	for ref, entry := range modelCatalog {
-		if !strings.HasPrefix(ref, "whisperkit/") {
-			continue
-		}
-		if entry.TokenizerRepo == "" {
-			t.Errorf("%s: no TokenizerRepo — first dictation would fail under the stage sandbox", ref)
-			continue
-		}
-		if !strings.HasPrefix(entry.TokenizerRepo, "openai/whisper-") {
-			t.Errorf("%s: TokenizerRepo %q is not an openai/whisper-* repo", ref, entry.TokenizerRepo)
-		}
-	}
-}
-
-// Provisioning is skipped when a tokenizer is already on disk, so an existing
-// install (or one seeded by an earlier live load) is not re-downloaded. This
-// is the path `model download` takes on every already-present model.
-func TestProvisionTokenizerSkipsWhenPresent(t *testing.T) {
-	dest := t.TempDir()
-	entry := modelEntry{TokenizerRepo: "openai/whisper-small.en"}
-	dir := filepath.Join(dest, "models", "openai", "whisper-small.en")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "tokenizer.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// No network is available to this test; reaching the download path would
-	// error, so a nil return proves the skip.
-	if err := provisionTokenizer("whisperkit/openai_whisper-small.en", entry, dest); err != nil {
-		t.Fatalf("present tokenizer should short-circuit: %v", err)
-	}
-}
-
-// A model with no TokenizerRepo (sherpa, or any future in-folder tokenizer)
-// must not be dragged through the WhisperKit path.
-func TestProvisionTokenizerIgnoresModelsWithoutARepo(t *testing.T) {
-	if err := provisionTokenizer("sherpa/sherpa-offline-nemo", modelEntry{}, t.TempDir()); err != nil {
-		t.Fatalf("model without a tokenizer repo should be a no-op: %v", err)
-	}
-}
+// The invariant these three tests used to guard — "every WhisperKit model must
+// bring its tokenizer, or the first dictation fails network-denied" — is now
+// structural rather than tested here. The model declaration lists the
+// tokenizer as a part AND names it in `requires`, so a model missing it fails
+// the completeness gate at provisioning time instead of at first dictation.
+// See notes/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
 
 func TestVerifySHA256(t *testing.T) {
 	dir := t.TempDir()
