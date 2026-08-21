@@ -91,8 +91,21 @@ func cmdDevInit(args []string) {
 			os.Exit(1)
 		}
 
+		srcDir := filepath.Join(name, "src")
+		// Resolve the SDK to whatever is newest, rather than to a version
+		// baked into this binary months ago.
+		get := exec.Command("go", "get", "github.com/branchkit/plugin-sdk-go@latest")
+		get.Dir = srcDir
+		get.Stdout = os.Stdout
+		get.Stderr = os.Stderr
+		if err := get.Run(); err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintf(os.Stderr, "Error: resolving plugin-sdk-go failed: %v\n", err)
+			os.Exit(1)
+		}
+
 		cmd := exec.Command("go", "mod", "tidy")
-		cmd.Dir = filepath.Join(name, "src")
+		cmd.Dir = srcDir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
@@ -181,7 +194,12 @@ func scaffoldGoPlugin(dir string, data templateData) error {
 		f.Close()
 	}
 
-	goMod := fmt.Sprintf("module github.com/you/%s\n\ngo 1.24\n\nrequire github.com/branchkit/plugin-sdk-go v0.2.0\n", data.PluginID)
+	// No SDK version pinned here on purpose. `dev init` resolves it with
+	// `go get @latest` below, so a scaffolded plugin always starts on the
+	// newest published SDK — a hardcoded version silently ages, and Go's
+	// resolver prefers a stale tag over the branch, so the mistake is
+	// invisible until an author wonders why a documented API is missing.
+	goMod := fmt.Sprintf("module github.com/you/%s\n\ngo 1.24\n", data.PluginID)
 	if err := os.WriteFile(filepath.Join(dir, "src", "go.mod"), []byte(goMod), 0o644); err != nil {
 		return fmt.Errorf("write go.mod: %w", err)
 	}
