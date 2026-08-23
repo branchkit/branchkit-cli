@@ -90,6 +90,25 @@ func main() {
 			printModelUsage()
 			os.Exit(1)
 		}
+	case "runtime":
+		if len(os.Args) < 3 {
+			printRuntimeUsage()
+			os.Exit(1)
+		}
+		switch os.Args[2] {
+		case "install":
+			if len(os.Args) < 4 {
+				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli runtime install <name>")
+				os.Exit(1)
+			}
+			cmdRuntimeInstall(os.Args[3])
+		case "list":
+			cmdRuntimeList()
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown runtime command: %s\n", os.Args[2])
+			printRuntimeUsage()
+			os.Exit(1)
+		}
 	case "dev":
 		if len(os.Args) < 3 {
 			printDevUsage()
@@ -159,6 +178,8 @@ func printUsage() {
 	fmt.Println("  plugin update [plugin-id]          Update one or all plugins")
 	fmt.Println("  model download <engine/model>      Download a speech model")
 	fmt.Println("  model list                         List downloaded models")
+	fmt.Println("  runtime install <name>             Install a managed language runtime (python)")
+	fmt.Println("  runtime list                       List installed managed runtimes")
 	fmt.Println("  dev init [flags]                   Scaffold a new plugin from template")
 	fmt.Println("  dev build [path]                   Build a plugin from source")
 	fmt.Println("  dev test [path] [flags]            Run static analysis on a plugin")
@@ -166,6 +187,14 @@ func printUsage() {
 	fmt.Println("  dev logs [plugin-id] [flags]       Tail actuator log")
 	fmt.Println("  dev plog <plugin-id> [flags]       Query a plugin's debug log (--since/--tag/--exclude)")
 	fmt.Println("  help                               Show this help")
+}
+
+func printRuntimeUsage() {
+	fmt.Println("Usage: branchkit-cli runtime <command>")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  install <name>  Install a managed language runtime (available: python)")
+	fmt.Println("  list            List installed managed runtimes")
 }
 
 func printModelUsage() {
