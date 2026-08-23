@@ -6,13 +6,21 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
+// cmdDevWatch watches a plugin's sources and asks the running actuator to
+// rebuild and restart it on change.
+//
+// It does NOT build anything itself. It used to — `go build` when it saw a
+// src/go.mod, `bun install` when it saw a package.json — which made this a
+// third place in the tree carrying per-language build knowledge, alongside
+// the dev endpoint and the Justfile. The endpoint now runs the plugin's own
+// declared `dev.build`, so every language works here for free and this file
+// no longer has an opinion about toolchains.
 func cmdDevWatch(args []string) {
 	dir := "."
 	for _, a := range args {
@@ -47,16 +55,14 @@ func cmdDevWatch(args []string) {
 		os.Exit(1)
 	}
 
-	binaryName := manifest.ID + "-plugin"
-	if manifest.Run != "" {
-		binaryName = strings.TrimPrefix(manifest.Run, "./")
-	}
-	binaryPath := filepath.Join(absDir, binaryName)
-	srcDir := filepath.Join(absDir, "src")
-
-	if _, err := os.Stat(srcDir); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: no src/ directory found in %s\n", absDir)
-		os.Exit(1)
+	// An interpreted plugin has nothing to build, and the running app's file
+	// watcher already restarts it on save. Watching here would just be a
+	// slower second copy of that, so say so and stop.
+	if manifest.Run != "" && !isCompiledRun(absDir, manifest.Run) {
+		fmt.Printf("%s runs under an interpreter (`%s`), so there is nothing to build.\n",
+			manifest.ID, manifest.Run)
+		fmt.Println("Just save your file — the running app watches this plugin's source and restarts it.")
+		return
 	}
 
 	fmt.Printf("Watching %s for changes (Ctrl+C to stop)...\n", manifest.ID)
@@ -67,106 +73,85 @@ func cmdDevWatch(args []string) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	// Stamped after each rebuild, never before: a build step may rewrite
+	// sources (templ regenerates *_templ.go), and treating those as a fresh
+	// edit is a rebuild loop that never settles.
+	since := time.Now()
+
 	for {
 		select {
 		case <-sigCh:
 			fmt.Println("\nStopped watching.")
 			return
 		case <-ticker.C:
-			if !hasChanges(absDir, srcDir, binaryPath) {
+			if !hasChanges(absDir, since) {
 				continue
 			}
 
 			fmt.Printf("\nChange detected — rebuilding %s...\n", manifest.ID)
-			if !buildPlugin(absDir, srcDir, binaryPath, binaryName) {
-				fmt.Println("Build failed. Watching for next change...")
-				continue
-			}
-
 			token := readHostToken()
 			if token == "" {
-				fmt.Println("Built. No host token — actuator will load the plugin on next start.")
+				fmt.Println("No host token — is the app running with BRANCHKIT_DEV=1?")
+				since = time.Now()
 				continue
 			}
 
 			ok, manifestReloaded := reloadViaEndpoint(manifest.ID, token)
 			switch {
 			case ok && manifestReloaded:
-				fmt.Printf("Built and reloaded %s (manifest changes applied).\n", manifest.ID)
+				fmt.Printf("Rebuilt and reloaded %s (manifest changes applied).\n", manifest.ID)
 			case ok:
-				fmt.Printf("Built and reloaded %s.\n", manifest.ID)
+				fmt.Printf("Rebuilt and reloaded %s.\n", manifest.ID)
 			default:
-				fmt.Println("Built. Could not notify actuator — plugin will load on next restart.")
+				fmt.Println("Watching for next change...")
 			}
+			since = time.Now()
 		}
 	}
 }
 
-func hasChanges(pluginDir, srcDir, binaryPath string) bool {
-	binaryStat, err := os.Stat(binaryPath)
-	if err != nil {
-		return true
+// isCompiledRun reports whether the run command's program is a file inside
+// the plugin directory — the same derivation the actuator's file watcher
+// uses to tell a compiled plugin from an interpreted one, with no list of
+// languages on either side.
+func isCompiledRun(pluginDir, runCmd string) bool {
+	fields := strings.Fields(runCmd)
+	if len(fields) == 0 {
+		return false
 	}
-	binaryTime := binaryStat.ModTime()
-
-	entries, _ := os.ReadDir(srcDir)
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if strings.HasSuffix(name, ".go") || strings.HasSuffix(name, ".templ") ||
-			strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".css") ||
-			strings.HasSuffix(name, ".ts") || strings.HasSuffix(name, ".js") {
-			info, err := e.Info()
-			if err == nil && info.ModTime().After(binaryTime) {
-				return true
-			}
-		}
-	}
-
-	entries, _ = os.ReadDir(pluginDir)
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if strings.HasSuffix(e.Name(), ".json") {
-			info, err := e.Info()
-			if err == nil && info.ModTime().After(binaryTime) {
-				return true
-			}
-		}
-	}
-
-	return false
+	program := strings.TrimPrefix(fields[0], "./")
+	info, err := os.Stat(filepath.Join(pluginDir, program))
+	return err == nil && !info.IsDir()
 }
 
-func buildPlugin(absDir, srcDir, binaryPath, _ string) bool {
-	if fileExists(filepath.Join(srcDir, "go.mod")) {
-		cmd := exec.Command("go", "build", "-o", binaryPath, ".")
-		cmd.Dir = srcDir
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		return cmd.Run() == nil
-	}
-
-	pkgDir := srcDir
-	if !fileExists(filepath.Join(srcDir, "package.json")) {
-		pkgDir = absDir
-	}
-	if fileExists(filepath.Join(pkgDir, "package.json")) {
-		bunPath := "bun"
-		if managed := managedBunPath(); fileExists(managed) {
-			bunPath = managed
+// hasChanges reports whether any source or manifest file under the plugin
+// directory was modified after `since`. Walks the tree rather than one
+// flat src/, so a plugin that keeps sources anywhere is covered.
+func hasChanges(pluginDir string, since time.Time) bool {
+	found := false
+	_ = filepath.Walk(pluginDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || found {
+			return nil
 		}
-		cmd := exec.Command(bunPath, "install")
-		cmd.Dir = pkgDir
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		return cmd.Run() == nil
-	}
+		if !watchedSource(info.Name()) {
+			return nil
+		}
+		if info.ModTime().After(since) {
+			found = true
+		}
+		return nil
+	})
+	return found
+}
 
-	fmt.Fprintln(os.Stderr, "Unknown build system")
+func watchedSource(name string) bool {
+	for _, ext := range []string{".go", ".templ", ".rs", ".ts", ".js", ".html", ".css", ".json"} {
+		if strings.HasSuffix(name, ext) {
+			// connect.json is written by the plugin's own listener at
+			// runtime; treating it as an edit would rebuild on every start.
+			return name != "connect.json"
+		}
+	}
 	return false
 }
 
@@ -180,7 +165,7 @@ func readHostToken() string {
 }
 
 func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	url := fmt.Sprintf("http://127.0.0.1:21551/dev/plugins/%s/rebuild", pluginID)
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
@@ -199,6 +184,7 @@ func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
 	var result struct {
 		OK               bool   `json:"ok"`
 		Error            string `json:"error"`
+		Output           string `json:"output"`
 		ManifestReloaded bool   `json:"manifest_reloaded"`
 	}
 	if json.Unmarshal(body, &result) == nil && result.OK {
@@ -206,6 +192,11 @@ func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
 	}
 	if result.Error != "" {
 		fmt.Fprintf(os.Stderr, "Reload error: %s\n", result.Error)
+	}
+	// Compiler output is the whole point of a watch loop — without it the
+	// author sees "build failed" and has to go find the actual error.
+	if result.Output != "" {
+		fmt.Fprintln(os.Stderr, strings.TrimSpace(result.Output))
 	}
 	return false, false
 }
