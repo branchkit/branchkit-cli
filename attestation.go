@@ -54,9 +54,9 @@ type AuthorAttestation struct {
 	Verified bool
 	// RepoSlug the attestation resolved to ("owner/name"). Empty when unverified.
 	RepoSlug string
-	// SAN / Issuer for display + the audit trail.
-	SAN    string
-	Issuer string
+	// SAN for display + the audit trail. Issuer sat here too, under the same
+	// comment, and nothing ever displayed or recorded it.
+	SAN string
 	// Reason explains a non-verified outcome (absent bundle, digest mismatch,
 	// repo mismatch, crypto failure) — surfaced to the user, never swallowed.
 	Reason string
@@ -122,6 +122,5 @@ func verifyReleaseAttestation(
 		Verified: true,
 		RepoSlug: id.RepoSlug,
 		SAN:      id.SAN,
-		Issuer:   id.Issuer,
 	}, nil
 }

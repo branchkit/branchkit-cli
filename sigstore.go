@@ -49,17 +49,12 @@ type SigstoreIdentity struct {
 	// Certificate subject alternative name (workflow URI, or the generic
 	// release-infra identity).
 	SAN string
-	// OIDC issuer (e.g. "https://token.actions.githubusercontent.com"),
-	// from the Fulcio issuer extension. Empty for release-infra certs.
-	Issuer string
 	// Fulcio SourceRepositoryURI extension when present
 	// ("https://github.com/OWNER/REPO"). Empty for release attestations.
 	SourceRepo string
 	// "owner/name" resolved from whichever source carried it (cert extension
 	// or statement predicate). The normalized publisher-matching key.
 	RepoSlug string
-	// in-toto predicate type, for diagnostics / model detection.
-	PredicateType string
 }
 
 // verifyBundle verifies a Sigstore bundle against an artifact digest using
@@ -125,7 +120,6 @@ func verifyBundle(bundleJSON []byte, digestHex string, trustedRootJSONs [][]byte
 		if result.Signature != nil && result.Signature.Certificate != nil {
 			cert := result.Signature.Certificate
 			id.SAN = cert.SubjectAlternativeName
-			id.Issuer = cert.Extensions.Issuer       // Fulcio OID 1.3.6.1.4.1.57264.1.8
 			id.SourceRepo = cert.SourceRepositoryURI // OID .1.12; empty for release-infra certs
 		}
 		if id.SAN == "" {
@@ -137,7 +131,6 @@ func verifyBundle(bundleJSON []byte, digestHex string, trustedRootJSONs [][]byte
 		// model). Both normalize to "owner/name".
 		id.RepoSlug = repoSlugFromURI(id.SourceRepo)
 		if result.Statement != nil {
-			id.PredicateType = result.Statement.GetPredicateType()
 			if id.RepoSlug == "" {
 				id.RepoSlug = repoSlugFromStatement(result.Statement)
 			}

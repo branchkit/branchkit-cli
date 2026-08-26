@@ -10,9 +10,10 @@ import (
 const conformanceCheckName = "BranchKit Conformance"
 
 type conformanceStatus struct {
-	Status     string // "passed", "failed", "pending", "unknown"
-	Conclusion string // raw conclusion from GitHub
-	Tag        string
+	Status string // "passed", "failed", "pending", "unknown" — derived from
+	// GitHub's raw conclusion, which used to be kept beside it and read by
+	// nothing.
+	Tag string
 }
 
 type ghCheckRunsResponse struct {
@@ -57,11 +58,11 @@ func fetchConformanceStatus(source ResolvedSource, tag string) conformanceStatus
 		}
 		switch {
 		case run.Status != "completed":
-			return conformanceStatus{Status: "pending", Conclusion: run.Status, Tag: tag}
+			return conformanceStatus{Status: "pending", Tag: tag}
 		case run.Conclusion == "success":
-			return conformanceStatus{Status: "passed", Conclusion: run.Conclusion, Tag: tag}
+			return conformanceStatus{Status: "passed", Tag: tag}
 		default:
-			return conformanceStatus{Status: "failed", Conclusion: run.Conclusion, Tag: tag}
+			return conformanceStatus{Status: "failed", Tag: tag}
 		}
 	}
 

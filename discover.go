@@ -112,7 +112,6 @@ func discoverPlugins() []DiscoveredPlugin {
 // by the running actuator.
 type pluginState struct {
 	Enabled bool
-	Status  string
 }
 
 // fetchPluginStates queries the running actuator for authoritative
@@ -141,7 +140,7 @@ func fetchPluginStates() (map[string]pluginState, bool) {
 	}
 	m := make(map[string]pluginState, len(items))
 	for _, it := range items {
-		m[it.ID] = pluginState{Enabled: it.Enabled, Status: it.Status}
+		m[it.ID] = pluginState{Enabled: it.Enabled}
 	}
 	return m, true
 }
