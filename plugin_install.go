@@ -133,8 +133,16 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		return err
 	}
 
-	// Consent moment: disclose, and ask when a human is at the terminal.
-	if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
+	// Consent moment. A fresh install discloses everything and asks; an
+	// update asks only about the DIFF against the manifest it will replace
+	// (the old plugin.json is sitting right at the swap target) — nothing
+	// new means no question, an expansion needs a fresh yes.
+	if old, rerr := readManifest(filepath.Join(userPluginsDir(), manifest.ID, "plugin.json")); rerr == nil {
+		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY()); err != nil {
+			os.RemoveAll(tempDir)
+			return err
+		}
+	} else if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
 		os.RemoveAll(tempDir)
 		return err
 	}

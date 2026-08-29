@@ -27,3 +27,96 @@ func TestConfirmInstall(t *testing.T) {
 		}
 	}
 }
+
+func effectDecl(name, desc string, asserts ...string) EffectDeclaration {
+	e := EffectDeclaration{UserVisibleName: name, UserVisibleDescription: desc}
+	for _, a := range asserts {
+		e.Asserts = append(e.Asserts, []byte(`"`+a+`"`))
+	}
+	return e
+}
+
+// The diff is over the three consent axes only, and an effect's identity is
+// its asserted names — copy edits are not a consent change.
+func TestDiffConsent(t *testing.T) {
+	oldM := PluginManifest{
+		Privileges:         []string{"windows", "shell"},
+		OptionalPrivileges: []string{"power"},
+		Consumes: &ConsumesCfg{Effects: []EffectDeclaration{
+			effectDecl("Focus", "old copy", "suppress_notifications"),
+			effectDecl("Capture", "", "suppress_keybinds"),
+		}},
+	}
+	newM := PluginManifest{
+		Privileges:         []string{"windows", "screenshot"},
+		OptionalPrivileges: []string{"power", "clipboard"},
+		Consumes: &ConsumesCfg{Effects: []EffectDeclaration{
+			effectDecl("Focus Mode", "new copy", "suppress_notifications"),
+		}},
+	}
+	d := diffConsent(oldM, newM)
+
+	if len(d.AddedPrivileges) != 1 || d.AddedPrivileges[0] != "screenshot" {
+		t.Fatalf("added privileges: %v", d.AddedPrivileges)
+	}
+	if len(d.RemovedPrivileges) != 1 || d.RemovedPrivileges[0] != "shell" {
+		t.Fatalf("removed privileges: %v", d.RemovedPrivileges)
+	}
+	if len(d.AddedOptional) != 1 || d.AddedOptional[0] != "clipboard" {
+		t.Fatalf("added optional: %v", d.AddedOptional)
+	}
+	if len(d.AddedEffects) != 0 {
+		t.Fatalf("a copy edit is not a new effect: %v", d.AddedEffects)
+	}
+	if len(d.RemovedEffects) != 1 || d.RemovedEffects[0] != "Capture" {
+		t.Fatalf("removed effects: %v", d.RemovedEffects)
+	}
+	if !d.expands() || !d.contracts() {
+		t.Fatalf("expands=%v contracts=%v", d.expands(), d.contracts())
+	}
+
+	same := diffConsent(oldM, oldM)
+	if same.expands() || same.contracts() {
+		t.Fatalf("identical manifests must diff empty: %+v", same)
+	}
+}
+
+// Update consent is diff-driven: nothing new → no question anywhere; an
+// expansion asks on a TTY, is skipped by --yes, and BLOCKS a scripted
+// update — nobody was there to say no.
+func TestConfirmUpdate(t *testing.T) {
+	oldM := PluginManifest{ID: "x", Name: "X", Version: "1", Privileges: []string{"windows"}}
+	sameM := PluginManifest{ID: "x", Name: "X", Version: "2", Privileges: []string{"windows"}}
+	moreM := PluginManifest{ID: "x", Name: "X", Version: "2", Privileges: []string{"windows", "shell"}}
+	lessM := PluginManifest{ID: "x", Name: "X", Version: "2"}
+
+	// No expansion: proceeds without reading stdin, TTY or not.
+	for _, tty := range []bool{true, false} {
+		if err := confirmUpdate(sameM, oldM, strings.NewReader(""), false, tty); err != nil {
+			t.Fatalf("no-expansion update must not prompt (tty=%v): %v", tty, err)
+		}
+		if err := confirmUpdate(lessM, oldM, strings.NewReader(""), false, tty); err != nil {
+			t.Fatalf("contraction-only update must not prompt (tty=%v): %v", tty, err)
+		}
+	}
+
+	// Expansion, TTY: the answer decides.
+	if err := confirmUpdate(moreM, oldM, strings.NewReader("y\n"), false, true); err != nil {
+		t.Fatalf("yes must accept: %v", err)
+	}
+	if err := confirmUpdate(moreM, oldM, strings.NewReader("n\n"), false, true); err == nil {
+		t.Fatal("no must decline")
+	}
+
+	// Expansion, no TTY, no --yes: blocked.
+	if err := confirmUpdate(moreM, oldM, strings.NewReader("y\n"), false, false); err == nil {
+		t.Fatal("a scripted expanding update must block")
+	}
+
+	// --yes skips the question in either mode.
+	for _, tty := range []bool{true, false} {
+		if err := confirmUpdate(moreM, oldM, strings.NewReader(""), true, tty); err != nil {
+			t.Fatalf("--yes must proceed (tty=%v): %v", tty, err)
+		}
+	}
+}
