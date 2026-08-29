@@ -48,7 +48,7 @@ func cmdDevPlog(args []string) {
 		}
 	}
 	if pluginID == "" {
-		fmt.Fprintln(os.Stderr, "Usage: branchkit dev plog <plugin-id> [--since 30s|5m|ISO] [--tag GLOB[,GLOB]] [--exclude GLOB[,GLOB]] [--level warn] [--limit N] [--json]")
+		fmt.Fprintln(os.Stderr, "Usage: branchkit-cli dev plog <plugin-id> [--since 30s|5m|ISO] [--tag GLOB[,GLOB]] [--exclude GLOB[,GLOB]] [--level warn] [--limit N] [--json]")
 		fmt.Fprintln(os.Stderr, "One-shot query of plugin-logs/<id>.log via the running actuator.")
 		os.Exit(1)
 	}

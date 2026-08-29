@@ -146,9 +146,9 @@ func cmdDevInit(args []string) {
 	fmt.Println()
 	fmt.Println("  Next steps:")
 	fmt.Printf("    cd %s\n", name)
-	fmt.Println("    branchkit dev build")
-	fmt.Println("    branchkit dev test .")
-	fmt.Println("    branchkit plugin install . --build")
+	fmt.Println("    branchkit-cli dev build")
+	fmt.Println("    branchkit-cli dev test .")
+	fmt.Println("    branchkit-cli plugin install . --build")
 	fmt.Println()
 }
 

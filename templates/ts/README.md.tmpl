@@ -5,20 +5,20 @@
 ## Build
 
 ```bash
-branchkit dev build
+branchkit-cli dev build
 ```
 
 ## Test
 
 ```bash
-branchkit dev test .
+branchkit-cli dev test .
 bun test
 ```
 
 ## Install
 
 ```bash
-branchkit plugin install . --build
+branchkit-cli plugin install . --build
 ```
 
 ## Files
@@ -29,6 +29,28 @@ branchkit plugin install . --build
 | `commands.json` | Voice command patterns that trigger actions |
 | `src/index.ts` | Handler logic -- your plugin's behavior |
 | `run.sh` | Wrapper script that starts the plugin via Bun |
+
+## Platform documentation
+
+The full platform docs ship with the app as markdown. Grep them rather than
+guessing -- they are the reference for the manifest, the RPC surface, matching,
+collections, and the event bus.
+
+```bash
+branchkit-cli docs sync          # once, after installing or updating BranchKit
+grep -rl "requires_tags" "$(branchkit-cli docs path)"
+```
+
+## When it does not work
+
+The running app answers questions no document can, because the answer depends
+on what else is installed and what state the machine is in.
+
+```bash
+branchkit-cli dev smoke                    # side-effect-free health sweep
+branchkit-cli dev plog {{.PluginID}} --since 60s   # what this plugin logged
+branchkit-cli dev chain                    # recent command chains, then: dev chain <tr_id>
+```
 
 ## Learn more
 

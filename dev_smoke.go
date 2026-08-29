@@ -518,7 +518,7 @@ func cmdDevSay(args []string) {
 		}
 	}
 	if text == "" {
-		fmt.Fprintln(os.Stderr, "Usage: branchkit dev say <text> [--pipeline name]")
+		fmt.Fprintln(os.Stderr, "Usage: branchkit-cli dev say <text> [--pipeline name]")
 		fmt.Fprintln(os.Stderr, "Injects a synthetic transcript — matched commands REALLY execute.")
 		os.Exit(1)
 	}
@@ -536,7 +536,7 @@ func cmdDevSay(args []string) {
 		os.Exit(1)
 	}
 	fmt.Println(strings.TrimSpace(string(raw)))
-	fmt.Println("Trace: branchkit dev chain   (or grep the text in actuator.log)")
+	fmt.Println("Trace: branchkit-cli dev chain   (or grep the text in actuator.log)")
 }
 
 func cmdDevChain(args []string) {
@@ -619,7 +619,7 @@ func cmdDevChain(args []string) {
 			fmt.Printf("%s  %-8s %-10s %-24s %s\n", r.TsUTC, r.Severity, r.Source, r.EventType, params)
 		}
 		if len(result.PluginCallers) > 0 {
-			fmt.Printf("\nPlugin callers in chain: %s — sub-warn plugin logs don't reach the bus; see `branchkit dev logs`\n",
+			fmt.Printf("\nPlugin callers in chain: %s — sub-warn plugin logs don't reach the bus; see `branchkit-cli dev logs`\n",
 				strings.Join(result.PluginCallers, ", "))
 		}
 	} else {
