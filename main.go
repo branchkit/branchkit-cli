@@ -34,7 +34,7 @@ func main() {
 			cmdRemove(os.Args[3])
 		case "install":
 			if len(os.Args) < 4 {
-				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli plugin install <source> [--build] [--force] [--preview]")
+				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli plugin install <source> [--build] [--force] [--preview] [--yes]")
 				os.Exit(1)
 			}
 			source := os.Args[3]
@@ -47,6 +47,8 @@ func main() {
 					force = true
 				case "--preview":
 					preview = true
+				case "--yes", "-y":
+					installAssumeYes = true
 				}
 			}
 			if preview {
@@ -140,6 +142,8 @@ func main() {
 			printDevUsage()
 			os.Exit(1)
 		}
+	case "docs":
+		cmdDocs(os.Args[2:])
 	case "registry":
 		if len(os.Args) < 3 {
 			printRegistryUsage()
@@ -180,12 +184,22 @@ func printUsage() {
 	fmt.Println("  model list                         List downloaded models")
 	fmt.Println("  runtime install <name>             Install a managed language runtime (python)")
 	fmt.Println("  runtime list                       List installed managed runtimes")
+	fmt.Println("  docs path                          Print the platform docs directory (markdown — grep it)")
+	fmt.Println("  docs sync                          Copy bundled docs to a stable path")
+	fmt.Println()
 	fmt.Println("  dev init [flags]                   Scaffold a new plugin from template")
 	fmt.Println("  dev build [path]                   Build a plugin from source")
 	fmt.Println("  dev test [path] [flags]            Run static analysis on a plugin")
 	fmt.Println("  dev watch [path]                   Watch + rebuild + reload on changes")
+	fmt.Println()
+	fmt.Println("  Diagnose a plugin against the running app:")
+	fmt.Println("  dev smoke [--json]                 Side-effect-free health sweep — executes nothing")
 	fmt.Println("  dev logs [plugin-id] [flags]       Tail actuator log")
 	fmt.Println("  dev plog <plugin-id> [flags]       Query a plugin's debug log (--since/--tag/--exclude)")
+	fmt.Println("  dev chain [tr_id] [--json]         Follow one command's correlated event chain")
+	fmt.Println("  dev say <text>                     Inject a transcript — matched commands REALLY execute")
+	fmt.Println("  dev margins [--collection NAME]    Recognition-margin distribution")
+	fmt.Println()
 	fmt.Println("  help                               Show this help")
 }
 

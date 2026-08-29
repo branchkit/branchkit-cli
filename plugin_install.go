@@ -125,6 +125,12 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		return err
 	}
 
+	// Consent moment: disclose, and ask when a human is at the terminal.
+	if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
+		os.RemoveAll(tempDir)
+		return err
+	}
+
 	// Registry counter-signature: for a canonical-registry install with a
 	// verified author attestation, confirm BranchKit's counter-signature over
 	// this exact manifest + attestation. Present-but-invalid is a hard
@@ -385,7 +391,8 @@ func printInstallInfo(manifest PluginManifest, source ResolvedSource, tag string
 	cs := fetchConformanceStatus(source, tag)
 	fmt.Println(formatConformanceStatus(cs))
 
-	printConsentSummary(manifest)
+	// The consent summary already printed at the confirm moment before the
+	// files landed; only the post-install facts print here.
 
 	// Dependencies
 	checkDependencies(manifest)
