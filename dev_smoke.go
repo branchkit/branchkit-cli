@@ -501,6 +501,7 @@ func prefixCollisions(cmds []matchableCmd, exclusiveNamespaces []string) []strin
 
 func cmdDevSay(args []string) {
 	pipeline := "command_recognition"
+	simulate := false
 	var text string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -509,6 +510,8 @@ func cmdDevSay(args []string) {
 				i++
 				pipeline = args[i]
 			}
+		case "--simulate":
+			simulate = true
 		default:
 			if text == "" {
 				text = args[i]
@@ -518,8 +521,10 @@ func cmdDevSay(args []string) {
 		}
 	}
 	if text == "" {
-		fmt.Fprintln(os.Stderr, "Usage: branchkit-cli dev say <text> [--pipeline name]")
+		fmt.Fprintln(os.Stderr, "Usage: branchkit-cli dev say <text> [--pipeline name] [--simulate]")
 		fmt.Fprintln(os.Stderr, "Injects a synthetic transcript — matched commands REALLY execute.")
+		fmt.Fprintln(os.Stderr, "--simulate runs the identical path but sinks every action dispatch,")
+		fmt.Fprintln(os.Stderr, "reporting what WOULD have run. Matcher tag writes still apply.")
 		os.Exit(1)
 	}
 	token := readHostToken()
@@ -528,8 +533,9 @@ func cmdDevSay(args []string) {
 		os.Exit(1)
 	}
 	raw, status, err := devHTTP("POST", "/v1/pipelines/ingest-transcript", token, map[string]any{
-		"name": pipeline,
-		"text": text,
+		"name":     pipeline,
+		"text":     text,
+		"simulate": simulate,
 	})
 	if err != nil || status != 200 {
 		fmt.Fprintf(os.Stderr, "Error: status=%d err=%v body=%s\n", status, err, strings.TrimSpace(string(raw)))
