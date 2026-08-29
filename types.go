@@ -9,19 +9,60 @@ import (
 
 // PluginManifest represents the plugin.json manifest — only fields the CLI needs.
 type PluginManifest struct {
-	ID            string       `json:"id"`
-	Name          string       `json:"name"`
-	Version       string       `json:"version"`
-	Description   string       `json:"description"`
-	Author        string       `json:"author"`
-	MinAPIVersion string       `json:"min_api_version,omitempty"`
-	Run           string       `json:"run,omitempty"`
-	Capabilities  []string     `json:"capabilities,omitempty"`
-	DependsOn     []Dependency `json:"depends_on,omitempty"`
-	ActionPrefix  string       `json:"action_prefix,omitempty"`
-	HudTargets    []string     `json:"hud_targets,omitempty"`
-	Sockets       *SocketsCfg  `json:"sockets,omitempty"`
-	Provides      *ProvidesCfg `json:"provides,omitempty"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Version       string `json:"version"`
+	Description   string `json:"description"`
+	Author        string `json:"author"`
+	MinAPIVersion string `json:"min_api_version,omitempty"`
+	Run           string `json:"run,omitempty"`
+	// The manifest key was renamed capabilities → privileges platform-wide;
+	// this struct kept the old tag long enough that every "Privileges:" line
+	// the CLI printed was empty. The field name follows the wire.
+	Privileges         []string     `json:"privileges,omitempty"`
+	OptionalPrivileges []string     `json:"optional_privileges,omitempty"`
+	Consumes           *ConsumesCfg `json:"consumes,omitempty"`
+	DependsOn          []Dependency `json:"depends_on,omitempty"`
+	ActionPrefix       string       `json:"action_prefix,omitempty"`
+	HudTargets         []string     `json:"hud_targets,omitempty"`
+	Sockets            *SocketsCfg  `json:"sockets,omitempty"`
+	Provides           *ProvidesCfg `json:"provides,omitempty"`
+}
+
+// ConsumesCfg mirrors the actuator's `consumes` field, deeply enough to show
+// the consent-relevant declarations at install time. Everything else under
+// `consumes` is the actuator's business.
+type ConsumesCfg struct {
+	Effects []EffectDeclaration `json:"effects,omitempty"`
+}
+
+// EffectDeclaration is one consent unit of effects the plugin will assert:
+// the author-written user_visible_* copy is exactly what an install prompt
+// shows (the actuator validates both non-empty for that purpose).
+type EffectDeclaration struct {
+	Asserts                []json.RawMessage `json:"asserts,omitempty"`
+	UserVisibleName        string            `json:"user_visible_name,omitempty"`
+	UserVisibleDescription string            `json:"user_visible_description,omitempty"`
+}
+
+// AssertNames flattens the asserts entries — each is either a bare string or
+// an object {"name": ..., "args": ...} — into effect names.
+func (e *EffectDeclaration) AssertNames() []string {
+	var names []string
+	for _, raw := range e.Asserts {
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			names = append(names, s)
+			continue
+		}
+		var obj struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(raw, &obj); err == nil && obj.Name != "" {
+			names = append(names, obj.Name)
+		}
+	}
+	return names
 }
 
 // ProvidesCfg mirrors the actuator's `provides` field, deeply enough to read

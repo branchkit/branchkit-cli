@@ -78,9 +78,7 @@ func installFromLocal(source string) error {
 	}
 
 	fmt.Printf("Installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
-	if len(manifest.Capabilities) > 0 {
-		fmt.Printf("  Privileges: %s\n", strings.Join(manifest.Capabilities, ", "))
-	}
+	printConsentSummary(manifest)
 	checkDependencies(manifest)
 	checkRuntime(manifest)
 	notifyActuator()
@@ -127,33 +125,22 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		return err
 	}
 
-	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
-	os.MkdirAll(targetDir, 0o755)
-
-	if err := safeCopyDir(manifestDir, targetDir, 0); err != nil {
-		os.RemoveAll(targetDir)
-		os.RemoveAll(tempDir)
-		return fmt.Errorf("failed to copy plugin: %w", err)
-	}
-
-	if manifest.Run != "" {
-		setExecutable(targetDir, manifest.Run)
-	}
-
-	// Registry counter-signature: for a canonical-registry (short-name)
-	// install with a verified author attestation, confirm BranchKit's
-	// counter-signature over this exact manifest + attestation. Present-but-
-	// invalid is a hard failure (a forged or retargeted canonical listing);
-	// absent is fine (rollout / community). Only meaningful atop a verified
-	// author signature — the counter-sig signs the attestation's digest.
+	// Registry counter-signature: for a canonical-registry install with a
+	// verified author attestation, confirm BranchKit's counter-signature over
+	// this exact manifest + attestation. Present-but-invalid is a hard
+	// failure (a forged or retargeted canonical listing); absent is fine
+	// (rollout / community). Only meaningful atop a verified author signature
+	// — the counter-sig signs the attestation's digest. Verified against the
+	// EXTRACTED manifest, before the existing install is touched: a failed
+	// check on an update must not destroy the version already on disk (the
+	// post-copy ordering this replaced did exactly that).
 	registrySigned := false
 	if catalog != nil && attestation != nil && attestation.Verified {
-		manifestBytes, rerr := os.ReadFile(filepath.Join(targetDir, "plugin.json"))
+		manifestBytes, rerr := os.ReadFile(manifestPath)
 		pub, kerr := registryPublicKey()
 		if rerr == nil && kerr == nil {
 			ok, verr := verifyCatalogCounterSig(pub, *catalog, manifestBytes)
 			if verr != nil {
-				os.RemoveAll(targetDir)
 				os.RemoveAll(tempDir)
 				return fmt.Errorf("registry counter-signature check failed: %w", verr)
 			}
@@ -164,9 +151,39 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		}
 	}
 
-	// Save source metadata for update checking + the verified-author and
-	// registry-signed records the actuator's trust-tier resolution reads.
-	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation, registrySigned)
+	// Stage beside the target, then swap. The previous version stays intact
+	// until the new one is fully in place, and nothing from it survives the
+	// swap — updates used to overlay the old directory, accreting stale
+	// files across versions.
+	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
+	stageDir := targetDir + ".installing"
+	os.RemoveAll(stageDir)
+	if err := os.MkdirAll(stageDir, 0o755); err != nil {
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to create staging directory: %w", err)
+	}
+	if err := safeCopyDir(manifestDir, stageDir, 0); err != nil {
+		os.RemoveAll(stageDir)
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to copy plugin: %w", err)
+	}
+	if manifest.Run != "" {
+		setExecutable(stageDir, manifest.Run)
+	}
+	// Source metadata (update checking + the verified-author and
+	// registry-signed records the actuator's trust-tier resolution reads)
+	// goes into the stage so the swap lands it atomically with the files.
+	writeSourceMeta(stageDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation, registrySigned)
+	if err := os.RemoveAll(targetDir); err != nil {
+		os.RemoveAll(stageDir)
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to clear previous install: %w", err)
+	}
+	if err := os.Rename(stageDir, targetDir); err != nil {
+		os.RemoveAll(stageDir)
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to move plugin into place: %w", err)
+	}
 
 	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
 	printInstallInfo(manifest, parsed, tag)
@@ -368,13 +385,41 @@ func printInstallInfo(manifest PluginManifest, source ResolvedSource, tag string
 	cs := fetchConformanceStatus(source, tag)
 	fmt.Println(formatConformanceStatus(cs))
 
-	// Privileges
-	if len(manifest.Capabilities) > 0 {
-		fmt.Printf("  Privileges: %s\n", strings.Join(manifest.Capabilities, ", "))
-	}
+	printConsentSummary(manifest)
 
 	// Dependencies
 	checkDependencies(manifest)
+}
+
+// printConsentSummary prints what the plugin will be able to do: required and
+// optional privileges, and the effects it will assert with the author-written
+// user-visible copy. This is the disclosure half of install-time consent —
+// granting stays in Settings, where the spawn gate holds unapproved plugins.
+func printConsentSummary(manifest PluginManifest) {
+	if len(manifest.Privileges) > 0 {
+		fmt.Printf("  Privileges: %s\n", strings.Join(manifest.Privileges, ", "))
+	}
+	if len(manifest.OptionalPrivileges) > 0 {
+		fmt.Printf("  Optional privileges: %s\n", strings.Join(manifest.OptionalPrivileges, ", "))
+	}
+	if manifest.Consumes == nil {
+		return
+	}
+	for _, e := range manifest.Consumes.Effects {
+		names := e.AssertNames()
+		if len(names) == 0 {
+			continue
+		}
+		label := e.UserVisibleName
+		if label == "" {
+			label = strings.Join(names, ", ")
+		}
+		if e.UserVisibleDescription != "" {
+			fmt.Printf("  Effects — %s: %s\n", label, e.UserVisibleDescription)
+		} else {
+			fmt.Printf("  Effects — %s\n", label)
+		}
+	}
 }
 
 func lookupCatalogTier(pluginID string) string {

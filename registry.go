@@ -100,6 +100,27 @@ func resolveShortNameEntry(name string) (*catalogEntry, error) {
 	)
 }
 
+// findCatalogEntryBySource returns the catalog entry naming the same GitHub
+// repo, or nil. Best-effort: an unreachable catalog returns nil — the
+// counter-signature is soft-absent, matching install semantics — so updates
+// never fail on registry downtime. This is what lets `plugin update`
+// re-verify the counter-signature instead of passing catalog=nil and
+// silently downgrading a catalog install's registry_signed record.
+func findCatalogEntryBySource(source string) *catalogEntry {
+	want := strings.ToLower(strings.TrimPrefix(source, "github:"))
+	cat, err := fetchCatalog()
+	if err != nil {
+		return nil
+	}
+	for i := range cat.Plugins {
+		have := strings.ToLower(strings.TrimPrefix(cat.Plugins[i].Source, "github:"))
+		if have == want {
+			return &cat.Plugins[i]
+		}
+	}
+	return nil
+}
+
 func resolveShortName(name string) (string, error) {
 	entry, err := resolveShortNameEntry(name)
 	if err != nil {

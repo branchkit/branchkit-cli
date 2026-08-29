@@ -10,19 +10,29 @@ import (
 )
 
 type previewResult struct {
-	ID          string       `json:"id"`
-	Name        string       `json:"name"`
-	Version     string       `json:"version"`
-	Description string       `json:"description"`
-	Author      string       `json:"author"`
-	Privileges  []string     `json:"privileges"`
-	DependsOn   []previewDep `json:"depends_on"`
-	Conformance string       `json:"conformance"`
-	Tier        string       `json:"tier"`
-	Blocklisted bool         `json:"blocklisted"`
-	BlockReason string       `json:"block_reason,omitempty"`
-	Source      string       `json:"source"`
-	Tag         string       `json:"tag"`
+	ID                 string          `json:"id"`
+	Name               string          `json:"name"`
+	Version            string          `json:"version"`
+	Description        string          `json:"description"`
+	Author             string          `json:"author"`
+	Privileges         []string        `json:"privileges"`
+	OptionalPrivileges []string        `json:"optional_privileges"`
+	Effects            []previewEffect `json:"effects"`
+	DependsOn          []previewDep    `json:"depends_on"`
+	Conformance        string          `json:"conformance"`
+	Tier               string          `json:"tier"`
+	Blocklisted        bool            `json:"blocklisted"`
+	BlockReason        string          `json:"block_reason,omitempty"`
+	Source             string          `json:"source"`
+	Tag                string          `json:"tag"`
+}
+
+// previewEffect is one consent unit of effects, carrying the author-written
+// user-visible copy the install dialog renders.
+type previewEffect struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Asserts     []string `json:"asserts"`
 }
 
 type previewDep struct {
@@ -110,23 +120,38 @@ func cmdPreview(source string) {
 		deps = append(deps, pd)
 	}
 
+	effects := []previewEffect{}
+	if manifest.Consumes != nil {
+		for _, e := range manifest.Consumes.Effects {
+			effects = append(effects, previewEffect{
+				Name:        e.UserVisibleName,
+				Description: e.UserVisibleDescription,
+				Asserts:     e.AssertNames(),
+			})
+		}
+	}
 	result := previewResult{
-		ID:          manifest.ID,
-		Name:        manifest.Name,
-		Version:     manifest.Version,
-		Description: manifest.Description,
-		Author:      manifest.Author,
-		Privileges:  manifest.Capabilities,
-		DependsOn:   deps,
-		Conformance: cs.Status,
-		Tier:        tier,
-		Blocklisted: blocklisted,
-		BlockReason: blockReason,
-		Source:      source,
-		Tag:         tag,
+		ID:                 manifest.ID,
+		Name:               manifest.Name,
+		Version:            manifest.Version,
+		Description:        manifest.Description,
+		Author:             manifest.Author,
+		Privileges:         manifest.Privileges,
+		OptionalPrivileges: manifest.OptionalPrivileges,
+		Effects:            effects,
+		DependsOn:          deps,
+		Conformance:        cs.Status,
+		Tier:               tier,
+		Blocklisted:        blocklisted,
+		BlockReason:        blockReason,
+		Source:             source,
+		Tag:                tag,
 	}
 	if result.Privileges == nil {
 		result.Privileges = []string{}
+	}
+	if result.OptionalPrivileges == nil {
+		result.OptionalPrivileges = []string{}
 	}
 
 	data, _ := json.Marshal(result)

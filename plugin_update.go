@@ -37,7 +37,7 @@ func cmdUpdate(pluginID string) {
 	}
 
 	fmt.Printf("Updating %s from %s...\n", pluginID, meta.Source)
-	if err := installFromGitHub(meta.Source, nil); err != nil {
+	if err := installFromGitHub(meta.Source, findCatalogEntryBySource(meta.Source)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -55,7 +55,7 @@ func cmdUpdateAll() {
 	var failed int
 	for _, u := range updates {
 		fmt.Printf("--- %s (%s → %s) ---\n", u.ID, u.Current, u.Latest)
-		if err := installFromGitHub(u.Source, nil); err != nil {
+		if err := installFromGitHub(u.Source, findCatalogEntryBySource(u.Source)); err != nil {
 			fmt.Fprintf(os.Stderr, "Error updating %s: %v\n", u.ID, err)
 			failed++
 			continue

@@ -36,8 +36,11 @@ func cmdInfo(pluginID string) {
 	if m.ActionPrefix != "" {
 		fmt.Printf("Action prefix: %s\n", m.ActionPrefix)
 	}
-	if len(m.Capabilities) > 0 {
-		fmt.Printf("Capabilities: %s\n", strings.Join(m.Capabilities, ", "))
+	if len(m.Privileges) > 0 {
+		fmt.Printf("Privileges:  %s\n", strings.Join(m.Privileges, ", "))
+	}
+	if len(m.OptionalPrivileges) > 0 {
+		fmt.Printf("Optional:    %s\n", strings.Join(m.OptionalPrivileges, ", "))
 	}
 	if len(m.DependsOn) > 0 {
 		deps := make([]string, len(m.DependsOn))
