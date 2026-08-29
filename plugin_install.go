@@ -125,6 +125,14 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		return err
 	}
 
+	// Ownership claim vs. cryptographic identity — refuse a contradiction
+	// BEFORE the consent prompt, so the user is never asked to approve an
+	// install whose stated publisher the attestation disproves.
+	if err := checkPublisherClaim(manifest.Publisher, attestation); err != nil {
+		os.RemoveAll(tempDir)
+		return err
+	}
+
 	// Consent moment: disclose, and ask when a human is at the terminal.
 	if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
 		os.RemoveAll(tempDir)

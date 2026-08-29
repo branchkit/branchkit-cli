@@ -119,3 +119,41 @@ func TestReleaseAttestationBadDigestIsHard(t *testing.T) {
 		t.Fatal("a bundle that doesn't cover the downloaded bytes must be a hard error")
 	}
 }
+
+// checkPublisherClaim is the ownership-vs-identity cross-check. The one hard
+// outcome is a bare github: claim contradicted by a verified attestation;
+// every other combination must stay soft, or unsigned/community installs
+// would start failing on a field that promises nothing.
+func TestCheckPublisherClaim(t *testing.T) {
+	verified := func(slug string) *AuthorAttestation {
+		return &AuthorAttestation{Verified: true, RepoSlug: slug}
+	}
+	cases := []struct {
+		name        string
+		publisher   string
+		attestation *AuthorAttestation
+		wantErr     bool
+	}{
+		{"no claim, no attestation", "", nil, false},
+		{"no claim, verified", "", verified("branchkit/branchkit-plugin-keyboard"), false},
+		{"claim matches attested owner", "github:branchkit", verified("branchkit/branchkit-plugin-keyboard"), false},
+		{"claim matches, case-insensitive", "github:BranchKit", verified("branchkit/x"), false},
+		{"claim contradicted by attestation", "github:branchkit", verified("attacker/branchkit-plugin-keyboard"), true},
+		{"claim without attestation is unproven, soft", "github:branchkit", nil, false},
+		{"claim with unverified attestation is unproven, soft", "github:branchkit", &AuthorAttestation{Verified: false, Reason: "no attestation"}, false},
+		{"non-github provider cannot be corroborated, soft", "gitlab:janedoe", verified("attacker/x"), false},
+		{"self-hosted provider routes to unproven, soft", "gitea=git.janedoe.dev:janedoe", verified("attacker/x"), false},
+		{"malformed claim is no claim, soft", "just-a-name", verified("attacker/x"), false},
+		{"empty identity is malformed, soft", "github:", verified("attacker/x"), false},
+		{"identity with slash is malformed, soft", "github:owner/repo", verified("attacker/x"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkPublisherClaim(tc.publisher, tc.attestation)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("publisher=%q attestation=%+v: err=%v, wantErr=%v",
+					tc.publisher, tc.attestation, err, tc.wantErr)
+			}
+		})
+	}
+}

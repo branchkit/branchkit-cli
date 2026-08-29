@@ -124,3 +124,72 @@ func verifyReleaseAttestation(
 		SAN:      id.SAN,
 	}, nil
 }
+
+// checkPublisherClaim cross-checks the manifest's declared publisher against
+// the verified attestation identity. This closes the gap where a fork could
+// declare `publisher: "github:someone-else"` and still install verified — the
+// bundle honestly attests the fork's repo, so repo-vs-source matching alone
+// never catches a false ownership claim. The manifest travels inside the
+// signed tarball, so when the attestation verifies, the claim it contains is
+// exactly what the named repo's workflow shipped: comparing the two is sound.
+//
+// Rules, in order:
+//   - No publisher, or a malformed one → nothing to check. Malformed is
+//     treated as no provenance claim (matching the actuator validator's
+//     posture); a note is printed, never an error.
+//   - Publisher declared but no verified attestation → the claim is unproven.
+//     Noted, not fatal: unsigned installs stay on the community posture.
+//   - Publisher names a provider a GitHub attestation cannot corroborate
+//     (gitlab:, self-hosted, …) → noted as unproven, not fatal. The registry
+//     counter-signature is the layer that can vouch for those.
+//   - Publisher is `github:<owner>` and the attestation is verified → the
+//     attested repo's owner MUST equal <owner> (case-insensitive). Mismatch is
+//     a HARD error, same class as a present-but-invalid bundle: it is the
+//     impersonation signal this whole mechanism exists to catch.
+func checkPublisherClaim(publisher string, attestation *AuthorAttestation) error {
+	if publisher == "" {
+		return nil
+	}
+
+	provider, identity, ok := splitPublisher(publisher)
+	if !ok {
+		fmt.Printf("Note: malformed publisher %q — treated as no provenance claim.\n", publisher)
+		return nil
+	}
+
+	if attestation == nil || !attestation.Verified {
+		fmt.Printf("Note: publisher %q is declared but unproven (no verified attestation).\n", publisher)
+		return nil
+	}
+
+	if provider != "github" {
+		fmt.Printf("Note: publisher %q cannot be corroborated by a GitHub attestation; claim recorded as unproven.\n", publisher)
+		return nil
+	}
+
+	owner, _, found := strings.Cut(attestation.RepoSlug, "/")
+	if !found || !strings.EqualFold(owner, identity) {
+		return fmt.Errorf(
+			"publisher mismatch: manifest declares %q but the attestation was issued to %q — refusing to install an artifact whose verified identity contradicts its ownership claim",
+			publisher, attestation.RepoSlug)
+	}
+	return nil
+}
+
+// splitPublisher parses `provider:identity` (hosted) or rejects anything it
+// does not positively recognize. `provider=host:identity` (self-hosted) parses
+// too — the host is carried in the provider slot's suffix and can never equal
+// "github", so self-hosted claims route to the unproven path above. This is a
+// deliberately narrow parser: the actuator's publisher.rs owns the full
+// taxonomy; the CLI only needs to answer "is this a bare github claim, and
+// for whom?"
+func splitPublisher(s string) (provider, identity string, ok bool) {
+	provider, identity, found := strings.Cut(s, ":")
+	if !found || provider == "" || identity == "" {
+		return "", "", false
+	}
+	if strings.ContainsAny(identity, ":/ ") {
+		return "", "", false
+	}
+	return strings.ToLower(provider), identity, true
+}

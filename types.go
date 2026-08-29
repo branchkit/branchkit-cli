@@ -15,7 +15,12 @@ type PluginManifest struct {
 	Description   string `json:"description"`
 	Author        string `json:"author"`
 	MinAPIVersion string `json:"min_api_version,omitempty"`
-	Run           string `json:"run,omitempty"`
+	// Publisher is the provider-anchored identity claim (`github:spotify`),
+	// distinct from Author (free text). The install path cross-checks it
+	// against the Sigstore attestation's repo owner — see
+	// checkPublisherClaim in attestation.go.
+	Publisher string `json:"publisher,omitempty"`
+	Run       string `json:"run,omitempty"`
 	// The manifest key was renamed capabilities → privileges platform-wide;
 	// this struct kept the old tag long enough that every "Privileges:" line
 	// the CLI printed was empty. The field name follows the wire.
