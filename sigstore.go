@@ -1,8 +1,8 @@
 package main
 
 // Sigstore bundle verification — the author-signature half of the plugin
-// signing chain (notes/DESIGN_PLUGIN_SIGNING_CHAIN.md, step 0 of
-// notes/PLAN_SIGNING_CHAIN_IMPL.md).
+// signing chain (docs/design/DESIGN_PLUGIN_SIGNING_CHAIN.md, step 0 of
+// docs/design/PLAN_SIGNING_CHAIN_IMPL.md).
 //
 // verifyBundle answers: "was this exact artifact signed by an
 // OIDC-identified author, with the signature recorded in a transparency

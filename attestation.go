@@ -1,7 +1,7 @@
 package main
 
 // Author-attestation verification in the install path — step 3 of
-// notes/PLAN_SIGNING_CHAIN_IMPL.md, built on verifyBundle (sigstore.go).
+// docs/design/PLAN_SIGNING_CHAIN_IMPL.md, built on verifyBundle (sigstore.go).
 //
 // When a GitHub release publishes a Sigstore bundle beside the plugin
 // tarball (`<artifact>.sigstore.json`, the pinned attestation layout — see

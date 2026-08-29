@@ -84,7 +84,7 @@ type ModelDeclaration struct {
 }
 
 // ModelPart is one step in assembling a model directory. Kind-tagged, five
-// kinds; see notes/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
+// kinds; see docs/design/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
 type ModelPart struct {
 	Kind string `json:"kind"`
 	// hf_folder / hf_files

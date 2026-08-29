@@ -16,8 +16,8 @@ import (
 )
 
 // Managed Python runtime — the delivery half of the Python scripting skin
-// (notes/DESIGN_SCRIPTING_HOST_PLUGIN.md, "Python skin — subprocess shape";
-// runtime plan: notes/DESIGN_MANAGED_PYTHON_RUNTIME.md). The CLI is the only
+// (docs/design/DESIGN_SCRIPTING_HOST_PLUGIN.md, "Python skin — subprocess shape";
+// runtime plan: docs/design/DESIGN_MANAGED_PYTHON_RUNTIME.md). The CLI is the only
 // component with network access: it downloads python-build-standalone for
 // this OS/arch, verifies the pinned sha256, and unpacks the tree into
 // <app_support>/runtimes/python/ — the exact directory a plugin's manifest

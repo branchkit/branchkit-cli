@@ -11,7 +11,7 @@ import (
 // structural rather than tested here. The model declaration lists the
 // tokenizer as a part AND names it in `requires`, so a model missing it fails
 // the completeness gate at provisioning time instead of at first dictation.
-// See notes/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
+// See docs/design/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
 
 func TestVerifySHA256(t *testing.T) {
 	dir := t.TempDir()

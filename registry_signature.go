@@ -1,7 +1,7 @@
 package main
 
 // Registry counter-signature — the fork-resilience half of the signing chain
-// (notes/DESIGN_PLUGIN_SIGNING_CHAIN.md step 5). Where the author signature
+// (docs/design/DESIGN_PLUGIN_SIGNING_CHAIN.md step 5). Where the author signature
 // (sigstore.go) proves "who built this", the registry counter-signature
 // proves "BranchKit's canonical registry admitted this exact listing". Only
 // BranchKit holds the private key, so a cloned registry cannot mint a

@@ -299,7 +299,7 @@ func cmdDevSmoke(args []string) {
 	//     does not ("scroll down" resolves under "scroll down <number>");
 	//   - an exclusive mode suppresses everything outside it, so
 	//     commands are co-reachable only with EQUAL exclusive-gate sets.
-	// See branchkit-extension notes/PLAN_RELIABILITY_CONSOLIDATION.md
+	// See branchkit-extension docs/design/PLAN_RELIABILITY_CONSOLIDATION.md
 	// (prefix-free vocabulary arc). Warn-level while the first-party
 	// vocabulary pass is open.
 	collisions := prefixCollisions(append(matchable.Eligible, matchable.Gated...), matchable.ExclusiveNamespaces)

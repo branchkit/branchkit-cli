@@ -18,7 +18,7 @@ import (
 // folding of its own. Each folded record carries its final verdict (empty =
 // an unflagged match, "wrong" = a flagged mishear) and its worst-word margin;
 // we bin those into a population-vs-confirmed-wrong split and report the gap a
-// floor would sit in. See notes/DESIGN_LOG_ANNOTATION_PROJECTION.md.
+// floor would sit in. See docs/design/DESIGN_LOG_ANNOTATION_PROJECTION.md.
 //
 // This replaces the recognition_log half of scripts/margin-distribution.py:
 // the fold now lives only in the actuator, and this is a real consumer of it.

@@ -30,7 +30,7 @@ import (
 // namespace is what makes collisions impossible and what lets the actuator hand
 // the stage `BRANCHKIT_MODELS_DIR=<...>/models/<plugin_id>` while granting the
 // sandbox exactly the one model the pipeline named.
-// See notes/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
+// See docs/design/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
 
 // receiptName is the sidecar recording what a model dir was provisioned from.
 // A sibling dotfile rather than a file inside the model dir: the model dir is
