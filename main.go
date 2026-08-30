@@ -129,6 +129,8 @@ func main() {
 			cmdDevLogs(os.Args[3:])
 		case "plog":
 			cmdDevPlog(os.Args[3:])
+		case "events":
+			cmdDevEvents(os.Args[3:])
 		case "smoke":
 			cmdDevSmoke(os.Args[3:])
 		case "say":
@@ -196,6 +198,7 @@ func printUsage() {
 	fmt.Println("  dev smoke [--json]                 Side-effect-free health sweep — executes nothing")
 	fmt.Println("  dev logs [plugin-id] [flags]       Tail actuator log")
 	fmt.Println("  dev plog <plugin-id> [flags]       Query a plugin's debug log (--since/--tag/--exclude)")
+	fmt.Println("  dev events [flags]                 Query the structured event streams (--tr/--source/--types/--plugin)")
 	fmt.Println("  dev chain [tr_id] [--json]         Follow one command's correlated event chain")
 	fmt.Println("  dev say <text> [--simulate]        Inject a transcript; --simulate sinks dispatch, reports what would run")
 	fmt.Println("  dev margins [--collection NAME]    Recognition-margin distribution")
@@ -235,6 +238,7 @@ func printDevUsage() {
 	fmt.Println("  logs [plugin-id] [--source TAG] [--json]")
 	fmt.Println("        Tail actuator log, optionally filtered")
 	fmt.Println("  plog <plugin-id> [--since 30s] [--tag GLOB[,GLOB]] [--exclude GLOB[,GLOB]] [--level warn] [--limit N] [--json]")
+	fmt.Println("  events [--tr id] [--source show-all|audit] [--types consent.*] [--plugin id] [--severity warn] [--since 1h] [--limit N] [--json]")
 	fmt.Println("        One-shot query of plugin-logs/<id>.log — server does the time math")
 	fmt.Println("  smoke [--json]")
 	fmt.Println("        Side-effect-free health sweep of the running app (preview resolves,")
