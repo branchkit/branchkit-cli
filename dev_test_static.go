@@ -308,9 +308,20 @@ func checkCommandGrammar(dir string, m map[string]any) []TestResult {
 
 		action, ok := cmd["action"].(map[string]any)
 		if !ok {
+			// Tag-only commands are a documented, first-party-used shape:
+			// mode entry/exit carries sets_tags/clears_tags and no action
+			// (the platform's own validator rates a bare command Warn, not
+			// Error). This check used to hard-fail them — rejecting the
+			// docs' own worked example — found by the first
+			// differential-dogfood run, 2026-08-30.
+			setsTags, _ := cmd["sets_tags"].([]any)
+			clearsTags, _ := cmd["clears_tags"].([]any)
+			if len(setsTags) > 0 || len(clearsTags) > 0 {
+				continue // tag-only command: valid, nothing more to check
+			}
 			results = append(results, TestResult{
-				Name: fmt.Sprintf("command_%d", i), Status: "fail",
-				Detail: "command missing \"action\" object",
+				Name: fmt.Sprintf("command_%d", i), Status: "warn",
+				Detail: "command has no \"action\" and writes no tags — it will match but do nothing",
 			})
 			continue
 		}
