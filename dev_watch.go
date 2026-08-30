@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -159,14 +160,58 @@ func readHostToken() string {
 	path := filepath.Join(appSupportDir(), "host.token")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return ""
+		// No host token — not a dev build. A production install reaches
+		// the app through a per-plugin Developer Access grant instead
+		// (DESIGN_SCOPED_DEV_SURFACE.md): the app writes
+		// dev-access/<plugin-id>.json with {plugin_id, port, token} when
+		// the user flips the toggle. Scoped: the server answers only for
+		// that plugin, so which file we pick matters only when several
+		// grants exist — take the first, deterministic by name.
+		return readDevAccessToken()
 	}
 	return strings.TrimSpace(string(data))
 }
 
+// readDevAccessToken resolves the first Developer Access discovery file,
+// rewires devBaseURL to the app's real port, and returns the scoped token.
+// Empty string when no grant exists.
+func readDevAccessToken() string {
+	dir := filepath.Join(appSupportDir(), "dev-access")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		n := e.Name()
+		if strings.HasSuffix(n, ".json") && n != "enabled.json" {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		raw, err := os.ReadFile(filepath.Join(dir, n))
+		if err != nil {
+			continue
+		}
+		var d struct {
+			PluginID string `json:"plugin_id"`
+			Port     int    `json:"port"`
+			Token    string `json:"token"`
+		}
+		if json.Unmarshal(raw, &d) != nil || d.Token == "" || d.Port == 0 {
+			continue
+		}
+		devBaseURL = fmt.Sprintf("http://127.0.0.1:%d", d.Port)
+		fmt.Fprintf(os.Stderr, "(developer access: scoped to plugin '%s' via %s)\n", d.PluginID, n)
+		return d.Token
+	}
+	return ""
+}
+
 func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
 	client := &http.Client{Timeout: 60 * time.Second}
-	url := fmt.Sprintf("http://127.0.0.1:21551/dev/plugins/%s/rebuild", pluginID)
+	url := fmt.Sprintf("%s/dev/plugins/%s/rebuild", devBaseURL, pluginID)
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
 		return false, false

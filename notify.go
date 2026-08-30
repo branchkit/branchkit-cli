@@ -11,7 +11,7 @@ import (
 // Silently succeeds if the actuator is not running.
 func notifyActuator() {
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post("http://127.0.0.1:21551/settings/reload-plugins", "", nil)
+	resp, err := client.Post(devBaseURL+"/settings/reload-plugins", "", nil)
 	if err != nil {
 		fmt.Println("Actuator is not running — plugin will load on next start.")
 		return
