@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sort"
@@ -97,6 +98,20 @@ func cmdDevWatch(args []string) {
 				continue
 			}
 
+			// Scoped token: the app won't build for us — run the local
+			// build first (same as `dev build`), then the reload below
+			// becomes a restart of what we just wrote to disk.
+			if devAccessScope != "" {
+				build := exec.Command("go", "build", "-o",
+					filepath.Join(absDir, strings.TrimPrefix(manifest.Run, "./")), ".")
+				build.Dir = filepath.Join(absDir, "src")
+				if out, err := build.CombinedOutput(); err != nil {
+					fmt.Printf("Local build failed:\n%s\n", string(out))
+					since = time.Now()
+					continue
+				}
+			}
+
 			ok, manifestReloaded := reloadViaEndpoint(manifest.ID, token)
 			switch {
 			case ok && manifestReloaded:
@@ -172,6 +187,10 @@ func readHostToken() string {
 	return strings.TrimSpace(string(data))
 }
 
+// devAccessScope is set alongside readDevAccessToken's result: the plugin
+// id a scoped token answers for. Empty when running on a host token.
+var devAccessScope string
+
 // readDevAccessToken resolves the first Developer Access discovery file,
 // rewires devBaseURL to the app's real port, and returns the scoped token.
 // Empty string when no grant exists.
@@ -203,6 +222,7 @@ func readDevAccessToken() string {
 			continue
 		}
 		devBaseURL = fmt.Sprintf("http://127.0.0.1:%d", d.Port)
+		devAccessScope = d.PluginID
 		fmt.Fprintf(os.Stderr, "(developer access: scoped to plugin '%s' via %s)\n", d.PluginID, n)
 		return d.Token
 	}
@@ -210,6 +230,13 @@ func readDevAccessToken() string {
 }
 
 func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
+	// Scoped token (production install): the app will not run builds for
+	// us — `rebuild` is dev-build-only because it executes the manifest's
+	// build command unsandboxed. Build locally (`branchkit-cli dev build`)
+	// and ask the app only to RESTART, reloading what is on disk.
+	if devAccessScope != "" {
+		return restartViaEndpoint(pluginID, token), false
+	}
 	client := &http.Client{Timeout: 60 * time.Second}
 	url := fmt.Sprintf("%s/dev/plugins/%s/rebuild", devBaseURL, pluginID)
 	req, err := http.NewRequest("POST", url, nil)
@@ -244,4 +271,23 @@ func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
 		fmt.Fprintln(os.Stderr, strings.TrimSpace(result.Output))
 	}
 	return false, false
+}
+
+// restartViaEndpoint reloads a plugin's binary + manifest without asking the
+// app to build anything — the scoped-token half of the watch loop.
+func restartViaEndpoint(pluginID, token string) bool {
+	client := &http.Client{Timeout: 30 * time.Second}
+	url := fmt.Sprintf("%s/dev/plugins/%s/restart", devBaseURL, pluginID)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
