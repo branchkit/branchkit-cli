@@ -137,6 +137,8 @@ func main() {
 			cmdDevSay(os.Args[3:])
 		case "chain":
 			cmdDevChain(os.Args[3:])
+		case "vocab":
+			cmdDevVocab(os.Args[3:])
 		case "margins":
 			cmdDevMargins(os.Args[3:])
 		default:
@@ -201,6 +203,7 @@ func printUsage() {
 	fmt.Println("  dev events [--plugin ID] [flags]   Query matching events (--types/--since/--severity/--source audit)")
 	fmt.Println("  dev chain [tr_id] [--json]         Follow one command's correlated event chain")
 	fmt.Println("  dev say <text> [--simulate]        Inject a transcript; --simulate sinks dispatch, reports what would run")
+	fmt.Println("  dev vocab <word>...                Why is (or isn't) this word hearable — committed/staged/dropped")
 	fmt.Println("  dev margins [--collection NAME]    Recognition-margin distribution")
 	fmt.Println()
 	fmt.Println("  help                               Show this help")
@@ -252,6 +255,10 @@ func printDevUsage() {
 	fmt.Println("        Query matching event records across the streams (--tr = one causal chain).")
 	fmt.Println("        --source audit --types 'consent.**' is the pre-submission self-check:")
 	fmt.Println("        what your plugin attempted, what was refused, what the user decided")
+	fmt.Println("  vocab <word> [word...] [--json]")
+	fmt.Println("        Grammar-membership verdict per word: hearable now / staged /")
+	fmt.Println("        dropped (record exists, word absent from the union) / unknown —")
+	fmt.Println("        with your own contributing commands and entity collections named")
 	fmt.Println("  margins [--collection NAME]")
 	fmt.Println("        Recognition-margin distribution (verdict-split) of a keyed")
 	fmt.Println("        recognition log, read via its compacted projection — for floor siting")
