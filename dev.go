@@ -114,6 +114,23 @@ func cmdDevInit(args []string) {
 			os.Exit(1)
 		}
 
+		// A scaffold that does not compile is worse than no scaffold: the
+		// first thing a new developer would debug is the tool's output,
+		// and the natural conclusion — that they installed something
+		// wrong — is false. Build once; refuse to emit on failure.
+		build := exec.Command("go", "build", "./...")
+		build.Dir = srcDir
+		build.Stdout = os.Stdout
+		build.Stderr = os.Stderr
+		if err := build.Run(); err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintln(os.Stderr, "\nError: the generated scaffold does not compile against the")
+			fmt.Fprintln(os.Stderr, "published SDK. This is a template/SDK version mismatch in the")
+			fmt.Fprintln(os.Stderr, "tooling — not something you did wrong. Upgrade branchkit-cli,")
+			fmt.Fprintln(os.Stderr, "or report it: https://github.com/branchkit/branchkit-registry/issues")
+			os.Exit(1)
+		}
+
 	case "ts":
 		if err := scaffoldTSPlugin(name, data); err != nil {
 			os.RemoveAll(name)

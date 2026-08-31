@@ -69,7 +69,7 @@ jobs:
         run: |
           mkdir -p out
           GOOS=${{"{{"}} matrix.goos {{"}}"}} GOARCH=${{"{{"}} matrix.goarch {{"}}"}} \
-            go build -o out/{{.PluginID}}-plugin ./src
+            go build -C src -o ../out/{{.PluginID}}-plugin .
 
       # --- Shared: package + sign + upload. Same for every plugin. ---
       - name: Package, sign, release
