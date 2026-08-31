@@ -321,7 +321,8 @@ func runHarnessConformance(dir string, jsonOutput bool) int {
 	if binary == "" {
 		if !jsonOutput {
 			fmt.Println("Skipping conformance tests (branchkit-test-harness not found)")
-			fmt.Println("  Install: cargo build -p branchkit-test-harness")
+			fmt.Println("  The harness ships inside BranchKit.app (Contents/Resources); install")
+			fmt.Println("  the app, or point BRANCHKIT_TEST_HARNESS at a harness binary.")
 		}
 		return 0
 	}
@@ -349,12 +350,25 @@ func findHarnessBinary() string {
 		return env
 	}
 
-	candidates := []string{
+	var candidates []string
+	// The harness ships in the app bundle next to this CLI
+	// (Contents/Resources/), so a CLI launched from the bundle — or
+	// symlinked onto PATH from it — finds it beside its own executable.
+	if exe, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = resolved
+		}
+		candidates = append(candidates,
+			filepath.Join(filepath.Dir(exe), "branchkit-test-harness"))
+	}
+	candidates = append(candidates,
+		"/Applications/BranchKit.app/Contents/Resources/branchkit-test-harness",
+		filepath.Join(os.Getenv("HOME"), "Applications/BranchKit.app/Contents/Resources/branchkit-test-harness"),
 		"target/debug/branchkit-test-harness",
 		"target/release/branchkit-test-harness",
 		"../target/debug/branchkit-test-harness",
 		"../target/release/branchkit-test-harness",
-	}
+	)
 
 	for _, c := range candidates {
 		abs, err := filepath.Abs(c)
