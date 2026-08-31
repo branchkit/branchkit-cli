@@ -141,6 +141,8 @@ func main() {
 			cmdDevVocab(os.Args[3:])
 		case "margins":
 			cmdDevMargins(os.Args[3:])
+		case "help", "--help", "-h":
+			printDevUsage()
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown dev command: %s\n", os.Args[2])
 			printDevUsage()

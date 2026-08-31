@@ -49,9 +49,217 @@ func runStaticAnalysis(dir string) TestPhaseResult {
 	phase.Tests = append(phase.Tests, checkSettingsTabs(manifest)...)
 	phase.Tests = append(phase.Tests, checkCollectionDataFiles(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkCommandGrammar(dir, manifest)...)
+	phase.Tests = append(phase.Tests, checkProvidedCollections(manifest)...)
+	phase.Tests = append(phase.Tests, checkCaptureReferences(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkRunBinary(dir, manifest))
 
 	return phase
+}
+
+// checkProvidedCollections validates each provides.collections entry: the
+// preset must be one the platform knows, and a feeds_matching field
+// reference must name a declared field — a typo there is a collection
+// that silently never feeds the matcher. Field-reference problems are
+// warns, not failures: the platform accepts the manifest and the record
+// shape can be looser than `fields` at runtime.
+func checkProvidedCollections(m map[string]any) []TestResult {
+	provides, _ := m["provides"].(map[string]any)
+	colls, _ := provides["collections"].(map[string]any)
+	if len(colls) == 0 {
+		return nil
+	}
+
+	knownPresets := map[string]bool{
+		"tag": true, "log": true, "named_entities": true,
+		"command_set": true, "data": true, "settings": true,
+	}
+	fieldRefKeys := []string{
+		"key_field", "value_field", "aliases_field",
+		"from_field", "to_field", "name_field",
+	}
+
+	var results []TestResult
+	for name, v := range colls {
+		schema, ok := v.(map[string]any)
+		if !ok {
+			results = append(results, TestResult{
+				Name: "collection_" + name, Status: "fail",
+				Detail: "collection schema must be an object",
+			})
+			continue
+		}
+		if preset, ok := schema["preset"].(string); ok && !knownPresets[preset] {
+			results = append(results, TestResult{
+				Name: "collection_" + name, Status: "fail",
+				Detail: fmt.Sprintf("unknown preset %q (tag, log, named_entities, command_set, data, settings)", preset),
+			})
+			continue
+		}
+
+		declaredFields := map[string]bool{}
+		if fields, ok := schema["fields"].([]any); ok {
+			for _, f := range fields {
+				if fm, ok := f.(map[string]any); ok {
+					if key, ok := fm["key"].(string); ok {
+						declaredFields[key] = true
+					}
+				}
+			}
+		}
+
+		fm, _ := schema["feeds_matching"].(map[string]any)
+		if len(declaredFields) > 0 && fm != nil {
+			for _, refKey := range fieldRefKeys {
+				ref, ok := fm[refKey].(string)
+				if !ok || ref == "" {
+					continue
+				}
+				if !declaredFields[ref] {
+					results = append(results, TestResult{
+						Name: "collection_" + name, Status: "warn",
+						Detail: fmt.Sprintf("feeds_matching.%s %q is not a declared field — the matcher will find nothing under that key", refKey, ref),
+					})
+				}
+			}
+		}
+
+		if excl, ok := schema["exclusive"].(bool); ok && excl {
+			// The effective feeds type includes what the preset pins
+			// when the manifest doesn't say: tag collections feed
+			// as_gates by default.
+			fmType, _ := fm["type"].(string)
+			if fmType == "" {
+				switch preset, _ := schema["preset"].(string); preset {
+				case "tag":
+					fmType = "as_gates"
+				case "named_entities":
+					fmType = "as_named_entities"
+				case "command_set":
+					fmType = "as_command_set"
+				}
+			}
+			if fmType != "as_gates" {
+				results = append(results, TestResult{
+					Name: "collection_" + name, Status: "warn",
+					Detail: "exclusive: true is read by the matcher only on gate collections (feeds_matching type as_gates); here it does nothing",
+				})
+			}
+		}
+	}
+	if len(results) == 0 {
+		results = append(results, TestResult{
+			Name: "provided_collections", Status: "pass",
+			Detail: fmt.Sprintf("%d collection(s)", len(colls)),
+		})
+	}
+	return results
+}
+
+// checkCaptureReferences resolves every <capture> in the voice-commands
+// file against the collections this manifest provides or consumes. An
+// undeclared capture is legal — the platform registers the command and
+// classifies it dynamic — but it matches nothing until some plugin
+// introduces the collection, which is the documented silent failure mode.
+// So: warn, with the fix named.
+func checkCaptureReferences(dir string, m map[string]any) []TestResult {
+	declared := map[string]bool{}
+	if provides, ok := m["provides"].(map[string]any); ok {
+		if colls, ok := provides["collections"].(map[string]any); ok {
+			for name := range colls {
+				declared[name] = true
+			}
+		}
+	}
+	if consumes, ok := m["consumes"].(map[string]any); ok {
+		if colls, ok := consumes["collections"].([]any); ok {
+			for _, c := range colls {
+				if name, ok := c.(string); ok {
+					declared[name] = true
+				}
+			}
+		}
+	}
+
+	commands := loadVoiceCommands(dir, m)
+	if commands == nil {
+		return nil
+	}
+
+	var results []TestResult
+	seen := map[string]bool{}
+	for _, cmd := range commands {
+		pattern, _ := cmd["pattern"].([]any)
+		for _, tok := range flattenPatternTokens(pattern) {
+			if !strings.HasPrefix(tok, "<") || !strings.HasSuffix(tok, ">") {
+				continue
+			}
+			inner := tok[1 : len(tok)-1]
+			// A leading name: prefix is a binding, not a collection.
+			if i := strings.Index(inner, ":"); i >= 0 {
+				inner = inner[i+1:]
+			}
+			for _, member := range strings.Split(inner, "|") {
+				member = strings.TrimSpace(member)
+				// Cross-plugin refs (<x@target>) have their own
+				// validation; skip them here.
+				if member == "" || strings.Contains(member, "@") || seen[member] {
+					continue
+				}
+				seen[member] = true
+				if !declared[member] {
+					results = append(results, TestResult{
+						Name: "capture_" + member, Status: "warn",
+						Detail: fmt.Sprintf("capture references collection %q, which this manifest neither provides nor consumes — the capture matches nothing until a plugin introduces it; if it is the platform's or another plugin's, declare it under consumes.collections", member),
+					})
+				}
+			}
+		}
+	}
+	if len(results) == 0 && len(seen) > 0 {
+		results = append(results, TestResult{
+			Name: "capture_references", Status: "pass",
+			Detail: fmt.Sprintf("%d capture collection(s) resolved", len(seen)),
+		})
+	}
+	return results
+}
+
+// loadVoiceCommands reads the manifest's voice_commands collection_data
+// file, or nil if there is none.
+func loadVoiceCommands(dir string, m map[string]any) []map[string]any {
+	data, _ := m["collection_data"].(map[string]any)
+	vcFile, ok := data["voice_commands"].(string)
+	if !ok {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, vcFile))
+	if err != nil {
+		return nil
+	}
+	var commands []map[string]any
+	if err := json.Unmarshal(raw, &commands); err != nil {
+		return nil
+	}
+	return commands
+}
+
+// flattenPatternTokens yields every string token in a pattern, entering
+// one level of alternative-lists ([["focus","go to"], "<apps>"]).
+func flattenPatternTokens(pattern []any) []string {
+	var out []string
+	for _, p := range pattern {
+		switch t := p.(type) {
+		case string:
+			out = append(out, t)
+		case []any:
+			for _, alt := range t {
+				if s, ok := alt.(string); ok {
+					out = append(out, s)
+				}
+			}
+		}
+	}
+	return out
 }
 
 func checkRequiredFields(m map[string]any) []TestResult {
