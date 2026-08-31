@@ -50,6 +50,7 @@ func runStaticAnalysis(dir string) TestPhaseResult {
 	phase.Tests = append(phase.Tests, checkCollectionDataFiles(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkCommandGrammar(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkProvidedCollections(manifest)...)
+	phase.Tests = append(phase.Tests, checkConsumedCollections(manifest)...)
 	phase.Tests = append(phase.Tests, checkCaptureReferences(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkRunBinary(dir, manifest))
 
@@ -155,6 +156,139 @@ func checkProvidedCollections(m map[string]any) []TestResult {
 	return results
 }
 
+// consumedCollection is one `consumes.collections` entry in either of its
+// two wire forms: a bare name, or a name plus the fields the plugin reads
+// (docs/design/DESIGN_SHAPED_CONSUMPTION.md).
+type consumedCollection struct {
+	Name   string
+	Fields []string
+}
+
+// parseConsumedCollections reads `consumes.collections`, accepting both the
+// bare-string and the object form. Malformed entries are skipped here; the
+// shape check reports them.
+func parseConsumedCollections(m map[string]any) []consumedCollection {
+	consumes, ok := m["consumes"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	colls, ok := consumes["collections"].([]any)
+	if !ok {
+		return nil
+	}
+	var out []consumedCollection
+	for _, c := range colls {
+		switch v := c.(type) {
+		case string:
+			out = append(out, consumedCollection{Name: v})
+		case map[string]any:
+			name, _ := v["name"].(string)
+			if name == "" {
+				continue
+			}
+			entry := consumedCollection{Name: name}
+			if raw, ok := v["fields"].([]any); ok {
+				for _, f := range raw {
+					if s, ok := f.(string); ok {
+						entry.Fields = append(entry.Fields, s)
+					}
+				}
+			}
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+// checkConsumedCollections validates `consumes.collections` entries. The CLI
+// sees only this manifest, so a cross-plugin shape can only be verified by
+// the platform at load — but two things ARE checkable here, and both are
+// silent failures otherwise: a malformed entry, and a self-consumed
+// collection whose declared fields disagree with this manifest's own
+// provides.collections schema.
+func checkConsumedCollections(m map[string]any) []TestResult {
+	consumes, ok := m["consumes"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	raw, ok := consumes["collections"].([]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+
+	var results []TestResult
+	for i, c := range raw {
+		switch v := c.(type) {
+		case string:
+			if v == "" {
+				results = append(results, TestResult{
+					Name: "consumed_collections", Status: "fail",
+					Detail: fmt.Sprintf("entry %d is an empty name", i),
+				})
+			}
+		case map[string]any:
+			if name, _ := v["name"].(string); name == "" {
+				results = append(results, TestResult{
+					Name: "consumed_collections", Status: "fail",
+					Detail: fmt.Sprintf("entry %d is an object without a non-empty %q", i, "name"),
+				})
+			}
+		default:
+			results = append(results, TestResult{
+				Name: "consumed_collections", Status: "fail",
+				Detail: fmt.Sprintf("entry %d must be a name or {name, fields}", i),
+			})
+		}
+	}
+
+	// Self-consumption is fully checkable: both halves are in this file.
+	provides, _ := m["provides"].(map[string]any)
+	provided, _ := provides["collections"].(map[string]any)
+	shaped := 0
+	for _, consumed := range parseConsumedCollections(m) {
+		if len(consumed.Fields) == 0 {
+			continue
+		}
+		shaped++
+		schema, ok := provided[consumed.Name].(map[string]any)
+		if !ok {
+			continue // provider is another plugin — the platform checks it at load
+		}
+		declaredFields := map[string]bool{}
+		if fields, ok := schema["fields"].([]any); ok {
+			for _, f := range fields {
+				if fm, ok := f.(map[string]any); ok {
+					if key, ok := fm["key"].(string); ok {
+						declaredFields[key] = true
+					}
+				}
+			}
+		}
+		if len(declaredFields) == 0 {
+			continue // nothing declared to check against
+		}
+		for _, want := range consumed.Fields {
+			if !declaredFields[want] {
+				results = append(results, TestResult{
+					Name: "consumed_collections", Status: "fail",
+					Detail: fmt.Sprintf("consumes %q with field %q, but this manifest's own provides.collections.%s declares no such field — reads of it will find nothing", consumed.Name, want, consumed.Name),
+				})
+			}
+		}
+	}
+
+	if len(results) == 0 {
+		detail := fmt.Sprintf("%d consumed collection(s)", len(raw))
+		if shaped > 0 {
+			detail += fmt.Sprintf(", %d with declared fields (cross-plugin shapes are checked at load)", shaped)
+		}
+		results = append(results, TestResult{
+			Name: "consumed_collections", Status: "pass", Detail: detail,
+		})
+	}
+	return results
+}
+
 // checkCaptureReferences resolves every <capture> in the voice-commands
 // file against the collections this manifest provides or consumes. An
 // undeclared capture is legal — the platform registers the command and
@@ -170,14 +304,8 @@ func checkCaptureReferences(dir string, m map[string]any) []TestResult {
 			}
 		}
 	}
-	if consumes, ok := m["consumes"].(map[string]any); ok {
-		if colls, ok := consumes["collections"].([]any); ok {
-			for _, c := range colls {
-				if name, ok := c.(string); ok {
-					declared[name] = true
-				}
-			}
-		}
+	for _, c := range parseConsumedCollections(m) {
+		declared[c.Name] = true
 	}
 
 	commands := loadVoiceCommands(dir, m)
