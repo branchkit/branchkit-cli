@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -69,6 +71,58 @@ func TestCaptureReferenceSatisfiedByShapedConsumesEntry(t *testing.T) {
 	for _, r := range checkCaptureReferences(t.TempDir(), m) {
 		if r.Status == "warn" && strings.Contains(r.Detail, "apps") {
 			t.Fatalf("shaped consumes entry must satisfy the capture, got: %+v", r)
+		}
+	}
+}
+
+func TestBareCaptureOfADottedCollectionIsAnError(t *testing.T) {
+	// A bare capture takes the collection name as its binding name, and
+	// binding names cannot contain dots. Without this check the failure is
+	// silent: the action param keeps `{plugin.acme.widgets}` as a literal,
+	// and nothing reports it at load or at match time.
+	dir := t.TempDir()
+	cmds := `[{"pattern":["show","<plugin.acme.widgets>"],` +
+		`"action":{"type":"acme.show","target":"{plugin.acme.widgets}"}}]`
+	if err := os.WriteFile(filepath.Join(dir, "commands.json"), []byte(cmds), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := manifestFromJSON(t, `{
+		"id":"acme",
+		"provides":{"collections":{"plugin.acme.widgets":{}}},
+		"collection_data":{"voice_commands":"commands.json"}
+	}`)
+	var got *TestResult
+	for _, r := range checkCaptureReferences(dir, m) {
+		if r.Status == "error" && strings.Contains(r.Detail, "binding name") {
+			got = &r
+		}
+	}
+	if got == nil {
+		t.Fatal("a bare capture of a dotted collection must be reported")
+	}
+	if !strings.Contains(got.Detail, "<name:plugin.acme.widgets>") {
+		t.Fatalf("the report must name the fix, got: %s", got.Detail)
+	}
+}
+
+func TestExplicitBindingAllowsADottedCollection(t *testing.T) {
+	// The escape hatch, and how voice's tie-choice collection moved into
+	// `plugin.voice.*`: bind an explicit name and the dotted collection name
+	// never becomes a binding name.
+	dir := t.TempDir()
+	cmds := `[{"pattern":["pick","<choice:plugin.acme.widgets>"],` +
+		`"action":{"type":"acme.pick","target":"{choice}"}}]`
+	if err := os.WriteFile(filepath.Join(dir, "commands.json"), []byte(cmds), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := manifestFromJSON(t, `{
+		"id":"acme",
+		"provides":{"collections":{"plugin.acme.widgets":{}}},
+		"collection_data":{"voice_commands":"commands.json"}
+	}`)
+	for _, r := range checkCaptureReferences(dir, m) {
+		if r.Status == "error" {
+			t.Fatalf("an explicitly bound capture is legal, got: %+v", r)
 		}
 	}
 }

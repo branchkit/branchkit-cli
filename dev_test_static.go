@@ -323,8 +323,26 @@ func checkCaptureReferences(dir string, m map[string]any) []TestResult {
 			}
 			inner := tok[1 : len(tok)-1]
 			// A leading name: prefix is a binding, not a collection.
+			bound := false
 			if i := strings.Index(inner, ":"); i >= 0 {
 				inner = inner[i+1:]
+				bound = true
+			}
+			// A BARE capture takes the collection name as its binding name,
+			// and binding names cannot contain dots: the action-template
+			// regex accepts [a-zA-Z_][a-zA-Z0-9_]* and `${a.b}` splits on the
+			// first dot to separate binding from field. So a namespaced
+			// collection captured bare produces a binding nothing can address
+			// — `{plugin.acme.widgets}` stays a literal in the action params,
+			// with no error at load or at match time.
+			if !bound && strings.Contains(inner, ".") && !strings.Contains(inner, "${") {
+				if !seen["bare."+inner] {
+					seen["bare."+inner] = true
+					results = append(results, TestResult{
+						Name: "capture_binding_" + inner, Status: "error",
+						Detail: fmt.Sprintf("capture %q is bare, so its binding name is the collection name %q — but binding names cannot contain dots, and the action template would keep {%s} as a literal. Give the capture an explicit binding name: <name:%s>", tok, inner, inner, inner),
+					})
+				}
 			}
 			for _, member := range strings.Split(inner, "|") {
 				member = strings.TrimSpace(member)
