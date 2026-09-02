@@ -180,8 +180,53 @@ func cmdDevSmoke(args []string) {
 	}
 	add("connectivity", "pass", "app up, host token present")
 
+	// --- 1b. Every enabled plugin reached Running ---
+	// The check that was missing when two manifest defects kept plugins
+	// rejected at boot for a day (2026-09-01/02): nothing here read plugin
+	// statuses, so a plugin that failed validation simply wasn't anywhere.
+	// `/v1/plugins` now lists Rejected rows too, with the first error as
+	// `reason`.
+	raw, status, err := devHTTP("GET", "/v1/plugins", token, nil)
+	var plist []struct {
+		ID      string `json:"id"`
+		Enabled bool   `json:"enabled"`
+		Status  string `json:"status"`
+		Reason  string `json:"reason"`
+	}
+	if err != nil || status != 200 || json.Unmarshal(raw, &plist) != nil {
+		add("plugins", "fail", fmt.Sprintf("GET /v1/plugins: status=%d err=%v", status, err))
+	} else {
+		var broken, pending []string
+		running := 0
+		for _, p := range plist {
+			if !p.Enabled {
+				continue
+			}
+			switch p.Status {
+			case "Running":
+				running++
+			case "Pending", "Initializing", "NeedsApproval":
+				pending = append(pending, p.ID+"="+p.Status)
+			default: // Errored, Degraded, Rejected, unknown
+				d := p.ID + "=" + p.Status
+				if p.Reason != "" {
+					d += " (" + p.Reason + ")"
+				}
+				broken = append(broken, d)
+			}
+		}
+		switch {
+		case len(broken) > 0:
+			add("plugins", "fail", strings.Join(broken, "; "))
+		case len(pending) > 0:
+			add("plugins", "warn", fmt.Sprintf("%d running; not settled: %s", running, strings.Join(pending, "; ")))
+		default:
+			add("plugins", "pass", fmt.Sprintf("all %d enabled plugins Running", running))
+		}
+	}
+
 	// --- 2. Layer-2 state: matchable inspector ---
-	raw, status, err := devHTTP("GET", "/inspector/matchable", "", nil)
+	raw, status, err = devHTTP("GET", "/inspector/matchable", "", nil)
 	var matchable struct {
 		ActiveTags          []string       `json:"active_tags"`
 		ExclusiveTags       []string       `json:"exclusive_tags"`
