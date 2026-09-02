@@ -19,8 +19,8 @@ func TestDiffConsentSandboxAxis(t *testing.T) {
 	if !d.expands() {
 		t.Fatal("added network hosts must read as an expansion")
 	}
-	if len(d.AddedNetwork) != 2 {
-		t.Fatalf("expected both hosts in the diff, got %v", d.AddedNetwork)
+	if len(d.axis("network").Added) != 2 {
+		t.Fatalf("expected both hosts in the diff, got %v", d.axis("network").Added)
 	}
 
 	// Same set, reordered: not a change.
@@ -113,7 +113,7 @@ func effectDecl(name, desc string, asserts ...string) EffectDeclaration {
 	return e
 }
 
-// The diff is over the three consent axes only, and an effect's identity is
+// The diff iterates the consent-axis registry, and an effect's identity is
 // its asserted names — copy edits are not a consent change.
 func TestDiffConsent(t *testing.T) {
 	oldM := PluginManifest{
@@ -133,14 +133,14 @@ func TestDiffConsent(t *testing.T) {
 	}
 	d := diffConsent(oldM, newM)
 
-	if len(d.AddedPrivileges) != 1 || d.AddedPrivileges[0] != "screenshot" {
-		t.Fatalf("added privileges: %v", d.AddedPrivileges)
+	if len(d.axis("privileges").Added) != 1 || d.axis("privileges").Added[0] != "screenshot" {
+		t.Fatalf("added privileges: %v", d.axis("privileges").Added)
 	}
-	if len(d.RemovedPrivileges) != 1 || d.RemovedPrivileges[0] != "shell" {
-		t.Fatalf("removed privileges: %v", d.RemovedPrivileges)
+	if len(d.axis("privileges").Removed) != 1 || d.axis("privileges").Removed[0] != "shell" {
+		t.Fatalf("removed privileges: %v", d.axis("privileges").Removed)
 	}
-	if len(d.AddedOptional) != 1 || d.AddedOptional[0] != "clipboard" {
-		t.Fatalf("added optional: %v", d.AddedOptional)
+	if len(d.axis("optional_privileges").Added) != 1 || d.axis("optional_privileges").Added[0] != "clipboard" {
+		t.Fatalf("added optional: %v", d.axis("optional_privileges").Added)
 	}
 	if len(d.AddedEffects) != 0 {
 		t.Fatalf("a copy edit is not a new effect: %v", d.AddedEffects)

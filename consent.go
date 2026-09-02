@@ -146,45 +146,126 @@ func socketsSet(m PluginManifest) []string {
 	return out
 }
 
+// consentAxis is one set-shaped consent axis: a canonical extractor and
+// the copy each surface uses. The diff, the install summary, the update
+// prompt, and the preview all iterate `consentAxes`
+// (DESIGN_PERMISSIONS_ARCHITECTURE.md step 3), so a new axis registers
+// here once and every surface carries it — the sandbox axes were invisible
+// everywhere precisely because each surface enumerated by hand.
+//
+// Two consent units stay outside the table on their own shape: effects
+// (declaration objects whose author-written copy the surfaces render, with
+// the sorted-assert-set identity) and the run command (a scalar whose
+// change is always expansion-class — there is no "narrower" program).
+type consentAxis struct {
+	name    string
+	extract func(PluginManifest) []string
+	display func(string) string
+	// Full summary line for the install disclosure; "" suppresses.
+	summary func([]string) string
+	addFmt  string // one "+" line per added member (display applied)
+	delFmt  string // one "-" line per removed member
+}
+
+func plainDisplay(s string) string { return s }
+
+var consentAxes = []consentAxis{
+	{
+		name:    "privileges",
+		extract: func(m PluginManifest) []string { return m.Privileges },
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Privileges: %s\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + %s\n",
+		delFmt: "  - %s\n",
+	},
+	{
+		name:    "optional_privileges",
+		extract: func(m PluginManifest) []string { return m.OptionalPrivileges },
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Optional privileges: %s\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + %s (optional — granted only if you approve a later request)\n",
+		delFmt: "  - %s (optional)\n",
+	},
+	// The sandbox axes: enforced from the manifest with no later grant
+	// moment anywhere, so these surfaces are the only time a user sees
+	// them (DESIGN_SANDBOX_CONSENT_SURFACE.md). Nothing printed means the
+	// tightest sandbox.
+	{
+		name:    "network",
+		extract: networkSet,
+		display: networkDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Network: %s\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + network: %s (enforced by the sandbox at next start)\n",
+		delFmt: "  - network: %s\n",
+	},
+	{
+		name:    "sockets",
+		extract: socketsSet,
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Listen sockets: %d loopback listener(s)\n", len(v))
+		},
+		addFmt: "  + listen socket: %s\n",
+		delFmt: "  - listen socket: %s\n",
+	},
+	{
+		name:    "runtimes",
+		extract: func(m PluginManifest) []string { return m.Runtimes },
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Managed runtimes: %s\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + runtime: %s (read+exec of the managed runtime)\n",
+		delFmt: "  - runtime: %s\n",
+	},
+}
+
+// axisDiff is one axis's added/removed members, canonical form.
+type axisDiff struct {
+	Added   []string
+	Removed []string
+}
+
 // consentDiff is what changed, consent-wise, between the installed manifest
-// and the one an update wants to put in its place. Four axes: privileges,
-// optional privileges, effects, and sandbox scope (network, listen sockets,
-// managed runtimes, the run command) — the last because it has NO later
-// consent moment anywhere: the manifest declaration is the entire
-// authority, enforced at next spawn (DESIGN_SANDBOX_CONSENT_SURFACE.md).
-// Everything else about an update is the author's business.
+// and the one an update wants to put in its place. Everything else about an
+// update is the author's business.
 type consentDiff struct {
-	AddedPrivileges   []string
-	AddedOptional     []string
-	AddedEffects      []EffectDeclaration
-	RemovedPrivileges []string
-	RemovedOptional   []string
-	RemovedEffects    []string // display labels
-	AddedNetwork      []string
-	RemovedNetwork    []string
-	AddedSockets      []string
-	RemovedSockets    []string
-	AddedRuntimes     []string
-	RemovedRuntimes   []string
-	// The run command changing is a changed code identity — expansion-class
-	// always (there is no "narrower" program).
-	RunChanged bool
-	RunOld     string
-	RunNew     string
+	Axes           map[string]axisDiff
+	AddedEffects   []EffectDeclaration
+	RemovedEffects []string // display labels
+	RunChanged     bool
+	RunOld         string
+	RunNew         string
 }
 
 // expands reports whether the update asks for anything the installed version
 // did not — the condition that requires fresh consent.
 func (d consentDiff) expands() bool {
-	return len(d.AddedPrivileges) > 0 || len(d.AddedOptional) > 0 || len(d.AddedEffects) > 0 ||
-		len(d.AddedNetwork) > 0 || len(d.AddedSockets) > 0 || len(d.AddedRuntimes) > 0 ||
-		d.RunChanged
+	for _, ad := range d.Axes {
+		if len(ad.Added) > 0 {
+			return true
+		}
+	}
+	return len(d.AddedEffects) > 0 || d.RunChanged
 }
 
 func (d consentDiff) contracts() bool {
-	return len(d.RemovedPrivileges) > 0 || len(d.RemovedOptional) > 0 || len(d.RemovedEffects) > 0 ||
-		len(d.RemovedNetwork) > 0 || len(d.RemovedSockets) > 0 || len(d.RemovedRuntimes) > 0
+	for _, ad := range d.Axes {
+		if len(ad.Removed) > 0 {
+			return true
+		}
+	}
+	return len(d.RemovedEffects) > 0
 }
+
+// axis returns one axis's diff by registry name (empty if none).
+func (d consentDiff) axis(name string) axisDiff { return d.Axes[name] }
 
 // effectKey is an effect declaration's consent identity: the sorted set of
 // asserted names. Copy edits (user_visible_*) are not a consent change.
@@ -231,9 +312,13 @@ func manifestEffects(m PluginManifest) []EffectDeclaration {
 }
 
 func diffConsent(oldM, newM PluginManifest) consentDiff {
-	var d consentDiff
-	d.AddedPrivileges, d.RemovedPrivileges = diffStrings(oldM.Privileges, newM.Privileges)
-	d.AddedOptional, d.RemovedOptional = diffStrings(oldM.OptionalPrivileges, newM.OptionalPrivileges)
+	d := consentDiff{Axes: map[string]axisDiff{}}
+	for _, ax := range consentAxes {
+		added, removed := diffStrings(ax.extract(oldM), ax.extract(newM))
+		if len(added) > 0 || len(removed) > 0 {
+			d.Axes[ax.name] = axisDiff{Added: added, Removed: removed}
+		}
+	}
 
 	oldEffects := map[string]bool{}
 	for _, e := range manifestEffects(oldM) {
@@ -253,9 +338,6 @@ func diffConsent(oldM, newM PluginManifest) consentDiff {
 	}
 	sort.Strings(d.RemovedEffects)
 
-	d.AddedNetwork, d.RemovedNetwork = diffStrings(networkSet(oldM), networkSet(newM))
-	d.AddedSockets, d.RemovedSockets = diffStrings(socketsSet(oldM), socketsSet(newM))
-	d.AddedRuntimes, d.RemovedRuntimes = diffStrings(oldM.Runtimes, newM.Runtimes)
 	if oldM.Run != newM.Run {
 		d.RunChanged = true
 		d.RunOld = oldM.Run
@@ -278,23 +360,13 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty bool)
 
 	if d.contracts() {
 		fmt.Println("No longer requests (grants will be revoked):")
-		for _, p := range d.RemovedPrivileges {
-			fmt.Printf("  - %s\n", p)
-		}
-		for _, p := range d.RemovedOptional {
-			fmt.Printf("  - %s (optional)\n", p)
+		for _, ax := range consentAxes {
+			for _, m := range d.axis(ax.name).Removed {
+				fmt.Printf(ax.delFmt, ax.display(m))
+			}
 		}
 		for _, e := range d.RemovedEffects {
 			fmt.Printf("  - effect: %s\n", e)
-		}
-		for _, n := range d.RemovedNetwork {
-			fmt.Printf("  - network: %s\n", networkDisplay(n))
-		}
-		for _, l := range d.RemovedSockets {
-			fmt.Printf("  - listen socket: %s\n", l)
-		}
-		for _, r := range d.RemovedRuntimes {
-			fmt.Printf("  - runtime: %s\n", r)
 		}
 	}
 
@@ -304,11 +376,10 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty bool)
 	}
 
 	fmt.Println("This update NEWLY requests:")
-	for _, p := range d.AddedPrivileges {
-		fmt.Printf("  + %s\n", p)
-	}
-	for _, p := range d.AddedOptional {
-		fmt.Printf("  + %s (optional — granted only if you approve a later request)\n", p)
+	for _, ax := range consentAxes {
+		for _, m := range d.axis(ax.name).Added {
+			fmt.Printf(ax.addFmt, ax.display(m))
+		}
 	}
 	for _, e := range d.AddedEffects {
 		if e.UserVisibleDescription != "" {
@@ -316,18 +387,6 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty bool)
 		} else {
 			fmt.Printf("  + effect: %s\n", effectLabel(e))
 		}
-	}
-	// Sandbox scope has no later consent moment — the manifest is the
-	// whole authority — so a widening here is exactly as consequential as
-	// a new privilege and reads the same way.
-	for _, n := range d.AddedNetwork {
-		fmt.Printf("  + network: %s (enforced by the sandbox at next start)\n", networkDisplay(n))
-	}
-	for _, l := range d.AddedSockets {
-		fmt.Printf("  + listen socket: %s\n", l)
-	}
-	for _, r := range d.AddedRuntimes {
-		fmt.Printf("  + runtime: %s (read+exec of the managed runtime)\n", r)
 	}
 	if d.RunChanged {
 		fmt.Printf("  + run command changed: %q → %q\n", d.RunOld, d.RunNew)

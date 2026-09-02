@@ -473,28 +473,18 @@ func printInstallInfo(manifest PluginManifest, source ResolvedSource, tag string
 // user-visible copy. This is the disclosure half of install-time consent —
 // granting stays in Settings, where the spawn gate holds unapproved plugins.
 func printConsentSummary(manifest PluginManifest) {
-	if len(manifest.Privileges) > 0 {
-		fmt.Printf("  Privileges: %s\n", strings.Join(manifest.Privileges, ", "))
-	}
-	if len(manifest.OptionalPrivileges) > 0 {
-		fmt.Printf("  Optional privileges: %s\n", strings.Join(manifest.OptionalPrivileges, ", "))
-	}
-	// Sandbox scope: enforced from the manifest with no later grant moment
-	// anywhere, so this disclosure is the only time a user sees it
-	// (DESIGN_SANDBOX_CONSENT_SURFACE.md). Nothing printed means the
-	// tightest sandbox: no network, no listeners.
-	if net := networkSet(manifest); len(net) > 0 {
-		display := make([]string, len(net))
-		for i, n := range net {
-			display[i] = networkDisplay(n)
+	// One loop over the consent-axis registry — a new axis registers in
+	// consentAxes and this disclosure carries it without edits here.
+	for _, ax := range consentAxes {
+		values := ax.extract(manifest)
+		if len(values) == 0 {
+			continue
 		}
-		fmt.Printf("  Network: %s\n", strings.Join(display, ", "))
-	}
-	if socks := socketsSet(manifest); len(socks) > 0 {
-		fmt.Printf("  Listen sockets: %d loopback listener(s)\n", len(socks))
-	}
-	if len(manifest.Runtimes) > 0 {
-		fmt.Printf("  Managed runtimes: %s\n", strings.Join(manifest.Runtimes, ", "))
+		display := make([]string, len(values))
+		for i, v := range values {
+			display[i] = ax.display(v)
+		}
+		fmt.Print(ax.summary(display))
 	}
 	if manifest.Consumes == nil {
 		return

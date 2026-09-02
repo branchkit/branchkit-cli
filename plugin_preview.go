@@ -196,20 +196,22 @@ func cmdPreview(source string) {
 	// install path's confirmUpdate: the manifest at the swap target.
 	if old, err := readManifest(filepath.Join(userPluginsDir(), manifest.ID, "plugin.json")); err == nil {
 		d := diffConsent(old, manifest)
+		// The wire field names are a fixed contract with the settings
+		// panel; the VALUES come from the axis registry's diff.
 		up := previewUpdate{
 			InstalledVersion:  old.Version,
-			AddedPrivileges:   emptyNotNil(d.AddedPrivileges),
-			AddedOptional:     emptyNotNil(d.AddedOptional),
+			AddedPrivileges:   emptyNotNil(d.axis("privileges").Added),
+			AddedOptional:     emptyNotNil(d.axis("optional_privileges").Added),
 			AddedEffects:      []previewEffect{},
-			RemovedPrivileges: emptyNotNil(d.RemovedPrivileges),
-			RemovedOptional:   emptyNotNil(d.RemovedOptional),
+			RemovedPrivileges: emptyNotNil(d.axis("privileges").Removed),
+			RemovedOptional:   emptyNotNil(d.axis("optional_privileges").Removed),
 			RemovedEffects:    emptyNotNil(d.RemovedEffects),
-			AddedNetwork:      displayNetworkList(d.AddedNetwork),
-			RemovedNetwork:    displayNetworkList(d.RemovedNetwork),
-			AddedSockets:      emptyNotNil(d.AddedSockets),
-			RemovedSockets:    emptyNotNil(d.RemovedSockets),
-			AddedRuntimes:     emptyNotNil(d.AddedRuntimes),
-			RemovedRuntimes:   emptyNotNil(d.RemovedRuntimes),
+			AddedNetwork:      displayNetworkList(d.axis("network").Added),
+			RemovedNetwork:    displayNetworkList(d.axis("network").Removed),
+			AddedSockets:      emptyNotNil(d.axis("sockets").Added),
+			RemovedSockets:    emptyNotNil(d.axis("sockets").Removed),
+			AddedRuntimes:     emptyNotNil(d.axis("runtimes").Added),
+			RemovedRuntimes:   emptyNotNil(d.axis("runtimes").Removed),
 			RunChanged:        d.RunChanged,
 			Expands:           d.expands(),
 		}
