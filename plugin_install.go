@@ -65,7 +65,20 @@ func installFromLocal(source string) error {
 	}
 	source = filepath.Dir(manifestPath)
 
+	// The consent moment, same shape as the GitHub path — this used to be
+	// the hole in "nothing installs unseen": files landed first and the
+	// disclosure printed after, with no question even on a TTY. A local
+	// re-install over an existing version asks about the diff, like any
+	// other update.
 	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
+	if old, rerr := readManifest(filepath.Join(targetDir, "plugin.json")); rerr == nil {
+		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY()); err != nil {
+			return err
+		}
+	} else if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
+		return err
+	}
+
 	os.MkdirAll(targetDir, 0o755)
 
 	if err := safeCopyDir(source, targetDir, 0); err != nil {
@@ -78,7 +91,6 @@ func installFromLocal(source string) error {
 	}
 
 	fmt.Printf("Installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
-	printConsentSummary(manifest)
 	checkDependencies(manifest)
 	checkRuntime(manifest)
 	notifyActuator()
@@ -306,7 +318,21 @@ func installFromSource(source string) error {
 		return err
 	}
 
+	// The consent moment — after the build (so the question covers the
+	// manifest that actually installs) and before anything lands in the
+	// plugins directory. This path used to install without ever printing
+	// the disclosure, let alone asking.
 	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
+	if old, rerr := readManifest(filepath.Join(targetDir, "plugin.json")); rerr == nil {
+		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY()); err != nil {
+			os.RemoveAll(tempDir)
+			return err
+		}
+	} else if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
+		os.RemoveAll(tempDir)
+		return err
+	}
+
 	os.MkdirAll(targetDir, 0o755)
 
 	// Copy plugin.json
