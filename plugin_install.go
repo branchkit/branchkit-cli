@@ -106,7 +106,15 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 	}
 	pluginName := pluginNameFromRepo(parsed.Repo)
 
-	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("branchkit-install-%s", pluginName))
+	// Unpredictable per-invocation directory, not a fixed name in shared
+	// /tmp: the tarball is digest-verified in memory, then sits extracted
+	// here through the consent prompt — a fixed path would let any local
+	// process swap the contents during that pause, and nothing re-verifies
+	// at copy time.
+	tempDir, err := os.MkdirTemp("", fmt.Sprintf("branchkit-install-%s-", pluginName))
+	if err != nil {
+		return fmt.Errorf("failed to create staging directory: %w", err)
+	}
 	os.RemoveAll(tempDir)
 	os.MkdirAll(tempDir, 0o755)
 
@@ -251,8 +259,13 @@ func installFromSource(source string) error {
 	}
 	pluginName := pluginNameFromRepo(parsed.Repo)
 
-	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("branchkit-build-%s", pluginName))
-	os.RemoveAll(tempDir)
+	// Same reasoning as the install staging dir: per-invocation, not a
+	// fixed guessable path in shared /tmp. `git clone` accepts an existing
+	// empty directory.
+	tempDir, err := os.MkdirTemp("", fmt.Sprintf("branchkit-build-%s-", pluginName))
+	if err != nil {
+		return fmt.Errorf("failed to create build directory: %w", err)
+	}
 
 	fmt.Printf("Cloning %s/%s...\n", parsed.Owner, parsed.Repo)
 	cloneArgs := []string{"clone", "--depth", "1"}
