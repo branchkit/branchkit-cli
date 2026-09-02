@@ -479,6 +479,23 @@ func printConsentSummary(manifest PluginManifest) {
 	if len(manifest.OptionalPrivileges) > 0 {
 		fmt.Printf("  Optional privileges: %s\n", strings.Join(manifest.OptionalPrivileges, ", "))
 	}
+	// Sandbox scope: enforced from the manifest with no later grant moment
+	// anywhere, so this disclosure is the only time a user sees it
+	// (DESIGN_SANDBOX_CONSENT_SURFACE.md). Nothing printed means the
+	// tightest sandbox: no network, no listeners.
+	if net := networkSet(manifest); len(net) > 0 {
+		display := make([]string, len(net))
+		for i, n := range net {
+			display[i] = networkDisplay(n)
+		}
+		fmt.Printf("  Network: %s\n", strings.Join(display, ", "))
+	}
+	if socks := socketsSet(manifest); len(socks) > 0 {
+		fmt.Printf("  Listen sockets: %d loopback listener(s)\n", len(socks))
+	}
+	if len(manifest.Runtimes) > 0 {
+		fmt.Printf("  Managed runtimes: %s\n", strings.Join(manifest.Runtimes, ", "))
+	}
 	if manifest.Consumes == nil {
 		return
 	}

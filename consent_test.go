@@ -5,6 +5,64 @@ import (
 	"testing"
 )
 
+// Sandbox scope is the fourth diff axis — the one with no later consent
+// moment anywhere, so a widening must count as an expansion and a scripted
+// update must block on it (DESIGN_SANDBOX_CONSENT_SURFACE.md).
+func TestDiffConsentSandboxAxis(t *testing.T) {
+	old := PluginManifest{ID: "p", Run: "./p"}
+	newM := PluginManifest{
+		ID:      "p",
+		Run:     "./p",
+		Network: []byte(`{"hosts":["collect.example","api.example"]}`),
+	}
+	d := diffConsent(old, newM)
+	if !d.expands() {
+		t.Fatal("added network hosts must read as an expansion")
+	}
+	if len(d.AddedNetwork) != 2 {
+		t.Fatalf("expected both hosts in the diff, got %v", d.AddedNetwork)
+	}
+
+	// Same set, reordered: not a change.
+	reordered := PluginManifest{
+		ID:      "p",
+		Run:     "./p",
+		Network: []byte(`{"hosts":["api.example","collect.example"]}`),
+	}
+	d = diffConsent(newM, reordered)
+	if d.expands() || d.contracts() {
+		t.Fatalf("reordering the host set is not a consent change: %+v", d)
+	}
+
+	// Preset widening localhost → outbound is an expansion (and a
+	// contraction of the old member — both print).
+	d = diffConsent(
+		PluginManifest{ID: "p", Network: []byte(`"localhost"`)},
+		PluginManifest{ID: "p", Network: []byte(`"outbound"`)},
+	)
+	if !d.expands() {
+		t.Fatal("localhost → outbound must expand")
+	}
+
+	// A changed run command is expansion-class always.
+	d = diffConsent(
+		PluginManifest{ID: "p", Run: "./p"},
+		PluginManifest{ID: "p", Run: "./other"},
+	)
+	if !d.expands() || !d.RunChanged {
+		t.Fatal("a changed run command must require fresh consent")
+	}
+
+	// Dropping the network is a contraction, not an expansion.
+	d = diffConsent(newM, old)
+	if d.expands() {
+		t.Fatalf("narrowing must not prompt as expansion: %+v", d)
+	}
+	if !d.contracts() {
+		t.Fatal("dropped hosts must print as a contraction")
+	}
+}
+
 // The downgrade gate is the inverse of the others: non-interactive REFUSES
 // (a security regression is not a consent formality --yes may skip), and
 // interactively the default is no.

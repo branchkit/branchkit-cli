@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -78,10 +80,79 @@ func confirmInstall(manifest PluginManifest, in io.Reader, interactive bool) err
 	}
 }
 
+// networkSet canonicalizes the manifest's `network` declaration for
+// disclosure and diffing: absent → empty (no network, the tightest
+// sandbox); a string preset → one "preset:" member; the host-scoped form →
+// one member per host. Set-shaped so the update diff is order-insensitive.
+func networkSet(m PluginManifest) []string {
+	if len(m.Network) == 0 || string(m.Network) == "null" {
+		return nil
+	}
+	var preset string
+	if json.Unmarshal(m.Network, &preset) == nil {
+		return []string{"preset:" + preset}
+	}
+	var obj struct {
+		Hosts []string `json:"hosts"`
+	}
+	if json.Unmarshal(m.Network, &obj) == nil {
+		hosts := append([]string(nil), obj.Hosts...)
+		sort.Strings(hosts)
+		return hosts
+	}
+	// Unparseable network declarations are refused at load by the
+	// actuator; showing the raw bytes keeps the diff honest until then.
+	return []string{string(m.Network)}
+}
+
+// displayNetworkList maps a networkSet slice through networkDisplay,
+// non-nil for JSON.
+func displayNetworkList(members []string) []string {
+	out := []string{}
+	for _, m := range members {
+		out = append(out, networkDisplay(m))
+	}
+	return out
+}
+
+// networkDisplay renders one networkSet member for a human.
+func networkDisplay(member string) string {
+	switch member {
+	case "preset:localhost":
+		return "localhost only"
+	case "preset:outbound":
+		return "ANY host (outbound)"
+	default:
+		return member
+	}
+}
+
+// socketsSet canonicalizes `sockets.listen` entries (whitespace-compacted
+// raw JSON) so the diff compares declarations, not formatting.
+func socketsSet(m PluginManifest) []string {
+	if m.Sockets == nil {
+		return nil
+	}
+	out := make([]string, 0, len(m.Sockets.Listen))
+	for _, l := range m.Sockets.Listen {
+		var buf bytes.Buffer
+		if err := json.Compact(&buf, l); err == nil {
+			out = append(out, buf.String())
+		} else {
+			out = append(out, string(l))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // consentDiff is what changed, consent-wise, between the installed manifest
-// and the one an update wants to put in its place. Only the three consent
-// axes appear here — everything else about an update is the author's
-// business.
+// and the one an update wants to put in its place. Four axes: privileges,
+// optional privileges, effects, and sandbox scope (network, listen sockets,
+// managed runtimes, the run command) — the last because it has NO later
+// consent moment anywhere: the manifest declaration is the entire
+// authority, enforced at next spawn (DESIGN_SANDBOX_CONSENT_SURFACE.md).
+// Everything else about an update is the author's business.
 type consentDiff struct {
 	AddedPrivileges   []string
 	AddedOptional     []string
@@ -89,16 +160,30 @@ type consentDiff struct {
 	RemovedPrivileges []string
 	RemovedOptional   []string
 	RemovedEffects    []string // display labels
+	AddedNetwork      []string
+	RemovedNetwork    []string
+	AddedSockets      []string
+	RemovedSockets    []string
+	AddedRuntimes     []string
+	RemovedRuntimes   []string
+	// The run command changing is a changed code identity — expansion-class
+	// always (there is no "narrower" program).
+	RunChanged bool
+	RunOld     string
+	RunNew     string
 }
 
 // expands reports whether the update asks for anything the installed version
 // did not — the condition that requires fresh consent.
 func (d consentDiff) expands() bool {
-	return len(d.AddedPrivileges) > 0 || len(d.AddedOptional) > 0 || len(d.AddedEffects) > 0
+	return len(d.AddedPrivileges) > 0 || len(d.AddedOptional) > 0 || len(d.AddedEffects) > 0 ||
+		len(d.AddedNetwork) > 0 || len(d.AddedSockets) > 0 || len(d.AddedRuntimes) > 0 ||
+		d.RunChanged
 }
 
 func (d consentDiff) contracts() bool {
-	return len(d.RemovedPrivileges) > 0 || len(d.RemovedOptional) > 0 || len(d.RemovedEffects) > 0
+	return len(d.RemovedPrivileges) > 0 || len(d.RemovedOptional) > 0 || len(d.RemovedEffects) > 0 ||
+		len(d.RemovedNetwork) > 0 || len(d.RemovedSockets) > 0 || len(d.RemovedRuntimes) > 0
 }
 
 // effectKey is an effect declaration's consent identity: the sorted set of
@@ -167,6 +252,15 @@ func diffConsent(oldM, newM PluginManifest) consentDiff {
 		}
 	}
 	sort.Strings(d.RemovedEffects)
+
+	d.AddedNetwork, d.RemovedNetwork = diffStrings(networkSet(oldM), networkSet(newM))
+	d.AddedSockets, d.RemovedSockets = diffStrings(socketsSet(oldM), socketsSet(newM))
+	d.AddedRuntimes, d.RemovedRuntimes = diffStrings(oldM.Runtimes, newM.Runtimes)
+	if oldM.Run != newM.Run {
+		d.RunChanged = true
+		d.RunOld = oldM.Run
+		d.RunNew = newM.Run
+	}
 	return d
 }
 
@@ -193,10 +287,19 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty bool)
 		for _, e := range d.RemovedEffects {
 			fmt.Printf("  - effect: %s\n", e)
 		}
+		for _, n := range d.RemovedNetwork {
+			fmt.Printf("  - network: %s\n", networkDisplay(n))
+		}
+		for _, l := range d.RemovedSockets {
+			fmt.Printf("  - listen socket: %s\n", l)
+		}
+		for _, r := range d.RemovedRuntimes {
+			fmt.Printf("  - runtime: %s\n", r)
+		}
 	}
 
 	if !d.expands() {
-		fmt.Println("No new privileges or effects.")
+		fmt.Println("No new privileges, effects, or sandbox scope.")
 		return nil
 	}
 
@@ -213,6 +316,21 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty bool)
 		} else {
 			fmt.Printf("  + effect: %s\n", effectLabel(e))
 		}
+	}
+	// Sandbox scope has no later consent moment — the manifest is the
+	// whole authority — so a widening here is exactly as consequential as
+	// a new privilege and reads the same way.
+	for _, n := range d.AddedNetwork {
+		fmt.Printf("  + network: %s (enforced by the sandbox at next start)\n", networkDisplay(n))
+	}
+	for _, l := range d.AddedSockets {
+		fmt.Printf("  + listen socket: %s\n", l)
+	}
+	for _, r := range d.AddedRuntimes {
+		fmt.Printf("  + runtime: %s (read+exec of the managed runtime)\n", r)
+	}
+	if d.RunChanged {
+		fmt.Printf("  + run command changed: %q → %q\n", d.RunOld, d.RunNew)
 	}
 
 	if assumeYes {

@@ -11,21 +11,26 @@ import (
 )
 
 type previewResult struct {
-	ID                 string          `json:"id"`
-	Name               string          `json:"name"`
-	Version            string          `json:"version"`
-	Description        string          `json:"description"`
-	Author             string          `json:"author"`
-	Privileges         []string        `json:"privileges"`
-	OptionalPrivileges []string        `json:"optional_privileges"`
-	Effects            []previewEffect `json:"effects"`
-	DependsOn          []previewDep    `json:"depends_on"`
-	Conformance        string          `json:"conformance"`
-	Tier               string          `json:"tier"`
-	Blocklisted        bool            `json:"blocklisted"`
-	BlockReason        string          `json:"block_reason,omitempty"`
-	Source             string          `json:"source"`
-	Tag                string          `json:"tag"`
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Version            string   `json:"version"`
+	Description        string   `json:"description"`
+	Author             string   `json:"author"`
+	Privileges         []string `json:"privileges"`
+	OptionalPrivileges []string `json:"optional_privileges"`
+	// Sandbox scope, display-ready: enforced from the manifest with no
+	// later grant moment, so the panel is the only place a user sees it.
+	Network     []string        `json:"network"`
+	Sockets     int             `json:"sockets"`
+	Runtimes    []string        `json:"runtimes"`
+	Effects     []previewEffect `json:"effects"`
+	DependsOn   []previewDep    `json:"depends_on"`
+	Conformance string          `json:"conformance"`
+	Tier        string          `json:"tier"`
+	Blocklisted bool            `json:"blocklisted"`
+	BlockReason string          `json:"block_reason,omitempty"`
+	Source      string          `json:"source"`
+	Tag         string          `json:"tag"`
 	// Update is present when this plugin is already installed: the consent
 	// DIFF against the manifest the install would replace. The settings
 	// panel renders this instead of the full summary — standing consent
@@ -43,6 +48,13 @@ type previewUpdate struct {
 	RemovedPrivileges []string        `json:"removed_privileges"`
 	RemovedOptional   []string        `json:"removed_optional_privileges"`
 	RemovedEffects    []string        `json:"removed_effects"`
+	AddedNetwork      []string        `json:"added_network"`
+	RemovedNetwork    []string        `json:"removed_network"`
+	AddedSockets      []string        `json:"added_sockets"`
+	RemovedSockets    []string        `json:"removed_sockets"`
+	AddedRuntimes     []string        `json:"added_runtimes"`
+	RemovedRuntimes   []string        `json:"removed_runtimes"`
+	RunChanged        bool            `json:"run_changed"`
 	Expands           bool            `json:"expands"`
 }
 
@@ -172,6 +184,13 @@ func cmdPreview(source string) {
 	if result.OptionalPrivileges == nil {
 		result.OptionalPrivileges = []string{}
 	}
+	netDisplay := []string{}
+	for _, n := range networkSet(manifest) {
+		netDisplay = append(netDisplay, networkDisplay(n))
+	}
+	result.Network = netDisplay
+	result.Sockets = len(socketsSet(manifest))
+	result.Runtimes = emptyNotNil(manifest.Runtimes)
 
 	// Already installed → attach the consent diff, same basis as the
 	// install path's confirmUpdate: the manifest at the swap target.
@@ -185,6 +204,13 @@ func cmdPreview(source string) {
 			RemovedPrivileges: emptyNotNil(d.RemovedPrivileges),
 			RemovedOptional:   emptyNotNil(d.RemovedOptional),
 			RemovedEffects:    emptyNotNil(d.RemovedEffects),
+			AddedNetwork:      displayNetworkList(d.AddedNetwork),
+			RemovedNetwork:    displayNetworkList(d.RemovedNetwork),
+			AddedSockets:      emptyNotNil(d.AddedSockets),
+			RemovedSockets:    emptyNotNil(d.RemovedSockets),
+			AddedRuntimes:     emptyNotNil(d.AddedRuntimes),
+			RemovedRuntimes:   emptyNotNil(d.RemovedRuntimes),
+			RunChanged:        d.RunChanged,
 			Expands:           d.expands(),
 		}
 		for _, e := range d.AddedEffects {

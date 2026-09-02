@@ -32,6 +32,14 @@ type PluginManifest struct {
 	HudTargets         []string     `json:"hud_targets,omitempty"`
 	Sockets            *SocketsCfg  `json:"sockets,omitempty"`
 	Provides           *ProvidesCfg `json:"provides,omitempty"`
+	// Network mirrors the actuator's `network` field — the string presets
+	// ("localhost", "outbound") or the host-scoped `{ "hosts": [...] }`
+	// form. Raw because both shapes are legal; `networkSet` canonicalizes.
+	// Sandbox scope is consent surface: disclosed at install, diffed at
+	// update (DESIGN_SANDBOX_CONSENT_SURFACE.md).
+	Network json.RawMessage `json:"network,omitempty"`
+	// Managed runtimes the sandbox grants read+exec on.
+	Runtimes []string `json:"runtimes,omitempty"`
 }
 
 // ConsumesCfg mirrors the actuator's `consumes` field, deeply enough to show
