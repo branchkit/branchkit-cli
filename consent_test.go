@@ -5,6 +5,25 @@ import (
 	"testing"
 )
 
+// The downgrade gate is the inverse of the others: non-interactive REFUSES
+// (a security regression is not a consent formality --yes may skip), and
+// interactively the default is no.
+func TestConfirmAttestationDowngrade(t *testing.T) {
+	if err := confirmAttestationDowngrade("Example", strings.NewReader(""), false); err == nil {
+		t.Fatal("scripted downgrade must refuse")
+	}
+	for _, no := range []string{"n\n", "\n", "nope\n", ""} {
+		if err := confirmAttestationDowngrade("Example", strings.NewReader(no), true); err == nil {
+			t.Fatalf("%q must decline", no)
+		}
+	}
+	for _, yes := range []string{"y\n", "YES\n"} {
+		if err := confirmAttestationDowngrade("Example", strings.NewReader(yes), true); err != nil {
+			t.Fatalf("%q must accept a deliberate override: %v", yes, err)
+		}
+	}
+}
+
 // The consent moment: disclosure always, question only when interactive.
 // Decline (or an empty/closed stdin) refuses the install.
 func TestConfirmInstall(t *testing.T) {

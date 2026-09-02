@@ -133,6 +133,21 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		return err
 	}
 
+	// Attestation downgrade gate: an update whose predecessor was
+	// author-verified must not quietly become unverified — writeSourceMeta
+	// would record author_verified:false and the trust tier would drop
+	// without a word. Checked before the consent prompt, like the
+	// publisher claim: a security regression is not something to bundle
+	// into a diff question.
+	if prior, ok := readSourceMeta(filepath.Join(userPluginsDir(), manifest.ID)); ok {
+		if prior.AuthorVerified && (attestation == nil || !attestation.Verified) {
+			if err := confirmAttestationDowngrade(manifest.Name, os.Stdin, stdinIsTTY()); err != nil {
+				os.RemoveAll(tempDir)
+				return err
+			}
+		}
+	}
+
 	// Consent moment. A fresh install discloses everything and asks; an
 	// update asks only about the DIFF against the manifest it will replace
 	// (the old plugin.json is sitting right at the swap target) — nothing

@@ -19,6 +19,39 @@ func stdinIsTTY() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
+// confirmAttestationDowngrade gates the oldest downgrade there is: the
+// installed version was author-verified, and the release replacing it
+// carries no valid attestation. That is exactly what a compromised release
+// pipeline without the signing key looks like, so it is never waved through
+// silently — not even by --yes, which suppresses consent formalities, not
+// security regressions. Interactive: explicit y/N, default no. Scripted:
+// hard refusal naming the transition.
+func confirmAttestationDowngrade(pluginName string, in io.Reader, interactive bool) error {
+	fmt.Printf(
+		"\nWARNING: the installed %s was author-verified; this release has NO valid\n"+
+			"author attestation. A signing key does not disappear by accident — this is\n"+
+			"what a compromised release pipeline looks like.\n",
+		pluginName,
+	)
+	if !interactive {
+		return fmt.Errorf(
+			"refusing unattested update over an author-verified install of '%s' — "+
+				"rerun in an interactive terminal to override deliberately",
+			pluginName,
+		)
+	}
+	fmt.Print("Install it anyway? [y/N] ")
+	sc := bufio.NewScanner(in)
+	ans := ""
+	if sc.Scan() {
+		ans = strings.ToLower(strings.TrimSpace(sc.Text()))
+	}
+	if ans != "y" && ans != "yes" {
+		return fmt.Errorf("update declined: attestation downgrade on '%s'", pluginName)
+	}
+	return nil
+}
+
 // confirmInstall shows what the plugin will be able to do and — when a human
 // is at the terminal — asks before anything lands on disk. The disclosure
 // always prints; the question is TTY-only, so scripted installs and the
