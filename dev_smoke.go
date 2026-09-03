@@ -438,6 +438,65 @@ func cmdDevSmoke(args []string) {
 		add("ownership", "warn", detail)
 	}
 
+	// --- 8. Model namespace: every installed model sits under a live plugin.
+	// Model dirs are `models/<plugin>/<model>`, namespaced by owner since
+	// 2026-08-16. An install predating that relayout leaves the files under a
+	// non-plugin directory (`models/whisperkit/…`) where nothing resolves
+	// them: the stage exits with modelsUnavailable before handshake, the
+	// pipeline reports `eof before capability`, and setup offers to
+	// re-download files already sitting on disk.
+	//
+	// Nothing else in this sweep notices. The transport check rides synthetic
+	// ingest_transcript, which never loads an audio model — so dictation and
+	// command recognition can both be dead while every other check passes.
+	// That is not hypothetical: it happened on 2026-09-02 and cost a full
+	// debugging session that started from a green smoke run.
+	raw, status, err = devHTTP("GET", "/v1/plugins", token, nil)
+	var plugins []struct {
+		ID string `json:"id"`
+	}
+	if err != nil || status != 200 || json.Unmarshal(raw, &plugins) != nil {
+		add("models", "fail", fmt.Sprintf("GET /v1/plugins: status=%d err=%v", status, err))
+	} else {
+		known := make(map[string]bool, len(plugins))
+		for _, p := range plugins {
+			known[p.ID] = true
+		}
+		raw, status, err = devHTTP("GET", "/host/models/installed", token, nil)
+		var installed struct {
+			Refs []string `json:"refs"`
+		}
+		if err != nil || status != 200 || json.Unmarshal(raw, &installed) != nil {
+			add("models", "fail", fmt.Sprintf("GET /host/models/installed: status=%d err=%v", status, err))
+		} else {
+			owners := map[string]bool{}
+			var orphans []string
+			for _, ref := range installed.Refs {
+				owner, _, ok := strings.Cut(ref, "/")
+				if !ok || !known[owner] {
+					if len(orphans) < 5 {
+						orphans = append(orphans, ref)
+					}
+					continue
+				}
+				owners[owner] = true
+			}
+			switch {
+			case len(orphans) > 0:
+				add("models", "fail", fmt.Sprintf(
+					"%d model(s) outside any plugin namespace — unreachable, and setup will offer to re-download them: %s",
+					len(orphans), strings.Join(orphans, ", ")))
+			case len(installed.Refs) == 0:
+				// Legitimate on a machine that has never downloaded one, so
+				// this warns rather than failing the sweep.
+				add("models", "warn", "no models installed — dictation and command recognition cannot run")
+			default:
+				add("models", "pass", fmt.Sprintf("%d model(s) installed, all under a live plugin namespace (%d owner(s))",
+					len(installed.Refs), len(owners)))
+			}
+		}
+	}
+
 	finish()
 }
 
