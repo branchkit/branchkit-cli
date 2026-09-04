@@ -254,12 +254,19 @@ func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
 	body, _ := io.ReadAll(resp.Body)
 
 	var result struct {
-		OK               bool   `json:"ok"`
-		Error            string `json:"error"`
-		Output           string `json:"output"`
-		ManifestReloaded bool   `json:"manifest_reloaded"`
+		OK               bool     `json:"ok"`
+		Error            string   `json:"error"`
+		Output           string   `json:"output"`
+		ManifestReloaded bool     `json:"manifest_reloaded"`
+		Warnings         []string `json:"warnings"`
 	}
 	if json.Unmarshal(body, &result) == nil && result.OK {
+		// Warns don't block the reload, but they must reach the terminal
+		// the author is watching — the reload's own warnings plus any
+		// cross-plugin warnings the edit introduced.
+		for _, w := range result.Warnings {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+		}
 		return true, result.ManifestReloaded
 	}
 	if result.Error != "" {
