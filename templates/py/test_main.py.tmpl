@@ -1,0 +1,26 @@
+import unittest
+
+from branchkit.harness import Harness
+
+# The tests exercise what this plugin OWNS: its exact-phrase command and
+# the params it carries. The "hello <apps>" capture is deliberately not
+# unit-tested — it matches against the apps collection, which the system
+# plugin provides in a running BranchKit; verify it live with
+# `branchkit-cli dev say "hello safari" --simulate`.
+
+
+class GreetTests(unittest.TestCase):
+    def test_greet_matches(self):
+        with Harness.start(".") as h:
+            result = h.must_simulate_command("hello branchkit")
+            self.assertEqual(result.action_type(), "{{.ActionPrefix}}.greet")
+            self.assertEqual(result.action_params().get("name"), "BranchKit")
+
+    def test_unknown_phrase_does_not_match(self):
+        with Harness.start(".") as h:
+            result = h.simulate_command("goodbye branchkit")
+            self.assertFalse(result.matched)
+
+
+if __name__ == "__main__":
+    unittest.main()

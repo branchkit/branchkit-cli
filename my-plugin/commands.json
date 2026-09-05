@@ -1,0 +1,12 @@
+[
+  {
+    "pattern": ["hello", "branchkit"],
+    "action": { "type": "myplugin.greet", "name": "BranchKit" },
+    "description": "Say Hello BranchKit"
+  },
+  {
+    "pattern": ["hello", "<apps>"],
+    "action": { "type": "myplugin.greet", "name": "{apps}" },
+    "description": "Greet an installed app by name"
+  }
+]

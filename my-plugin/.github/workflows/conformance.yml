@@ -1,0 +1,81 @@
+name: BranchKit Conformance
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download branchkit-cli
+        run: |
+          CLI_VERSION="latest"
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; fi
+          if [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+
+          DOWNLOAD_URL="https://github.com/branchkit/branchkit-cli/releases/${CLI_VERSION}/download/branchkit-cli-${OS}-${ARCH}.tar.gz"
+          curl -fsSL "$DOWNLOAD_URL" -o /tmp/branchkit-cli.tar.gz
+          tar -xzf /tmp/branchkit-cli.tar.gz -C /usr/local/bin/
+          chmod +x /usr/local/bin/branchkit-cli
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install dependencies
+        run: cd src && go mod download
+
+      - name: Run conformance checks
+        run: branchkit-cli dev test . --static-only
+
+  # --- Signed release ------------------------------------------------------
+  # Builds a binary per platform, then hands each to the shared BranchKit
+  # release action, which packages, signs (Sigstore keyless — no keys to
+  # manage), and uploads it. Signing uses THIS repo's GitHub OIDC identity,
+  # so the attestation names your repository — what BranchKit's install path
+  # checks against your plugin's `publisher` field. The ONLY part you own is
+  # the `go build` step; everything after is shared and identical for every
+  # plugin, in any language.
+  #
+  # Set your plugin's `publisher` in plugin.json to "github:YOUR-ORG".
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # upload release assets
+      id-token: write      # OIDC for keyless signing
+      attestations: write  # record the attestation
+    strategy:
+      matrix:
+        include:
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: linux, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      # --- The one language-specific step: build your binary. ---
+      - name: Build
+        run: |
+          mkdir -p out
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -C src -o ../out/my-plugin-plugin .
+
+      # --- Shared: package + sign + upload. Same for every plugin. ---
+      - name: Package, sign, release
+        uses: branchkit/registry/release-action@main
+        with:
+          binary: out/my-plugin-plugin
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          tag: ${{ github.ref_name }}

@@ -1,0 +1,60 @@
+# {{.PluginName}}
+
+{{.Description}}
+
+## Setup
+
+The SDK is vendored into the plugin directory — there is no install-time pip
+on users' machines:
+
+```bash
+python3 -m pip install --target . branchkit
+branchkit-cli runtime install python    # once per machine: the managed CPython
+```
+
+## Test
+
+```bash
+branchkit-cli dev test .
+```
+
+## Install
+
+```bash
+branchkit-cli plugin install .
+```
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `plugin.json` | Manifest — declares actions, keybinds, voice commands, the python runtime |
+| `commands.json` | Voice command patterns that trigger actions |
+| `main.py` | Handler logic — your plugin's behavior |
+
+## Platform documentation
+
+The full platform docs ship with the app as markdown. Grep them rather than
+guessing — they are the reference for the manifest, the RPC surface, matching,
+collections, and the event bus.
+
+```bash
+branchkit-cli docs sync          # once, after installing or updating BranchKit
+grep -rl "requires_tags" "$(branchkit-cli docs path)"
+```
+
+## When it does not work
+
+The running app answers questions no document can, because the answer depends
+on what else is installed and what state the machine is in.
+
+```bash
+branchkit-cli dev smoke                    # side-effect-free health sweep
+branchkit-cli dev plog {{.PluginID}} --since 60s   # what this plugin logged
+branchkit-cli dev chain                    # recent command chains, then: dev chain <tr_id>
+```
+
+## Learn more
+
+- [Your First Plugin](https://branchkit.dev/guide/getting-started/your-first-plugin)
+- [Plugin SDK (Python)](https://github.com/branchkit/plugin-sdk-py)

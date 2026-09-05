@@ -1,20 +1,14 @@
 {
   "$schema": "https://branchkit.dev/schemas/manifest.json",
-  "id": "{{.PluginID}}",
-  "name": "{{.PluginName}}",
+  "id": "my-plugin",
+  "name": "My Plugin",
   "version": "0.1.0",
   "min_api_version": "0.1.0",
-  "description": "{{.Description}}",
+  "description": "A BranchKit plugin",
   "author": "Your Name",
   "privileges": ["input"],
-  "dev": {
-    "build": [
-      ["go", "build", "-o", "../{{.PluginID}}-plugin", "."]
-    ],
-    "build_dir": "src"
-  },
-  "run": "./{{.PluginID}}-plugin",
-  "action_prefix": "{{.ActionPrefix}}",
+  "run": "./my-plugin-plugin",
+  "action_prefix": "myplugin",
   "action_types": {
     "greet": {
       "label": "Greet",
@@ -33,7 +27,7 @@
   "collection_data": {
     "voice_commands": "commands.json",
     "keybinds": {
-      "alt+shift+h": { "action": "{{.ActionPrefix}}.greet", "name": "BranchKit" }
+      "alt+shift+h": { "action": "myplugin.greet", "name": "BranchKit" }
     }
   },
   "implements": {

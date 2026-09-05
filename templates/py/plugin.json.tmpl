@@ -7,13 +7,8 @@
   "description": "{{.Description}}",
   "author": "Your Name",
   "privileges": ["input"],
-  "dev": {
-    "build": [
-      ["go", "build", "-o", "../{{.PluginID}}-plugin", "."]
-    ],
-    "build_dir": "src"
-  },
-  "run": "./{{.PluginID}}-plugin",
+  "run": "python3 main.py",
+  "runtimes": ["python"],
   "action_prefix": "{{.ActionPrefix}}",
   "action_types": {
     "greet": {

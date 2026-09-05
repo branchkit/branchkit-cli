@@ -232,7 +232,7 @@ func printDevUsage() {
 	fmt.Println("Usage: branchkit-cli dev <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  init [--name NAME] [--template go] [--description DESC]")
+	fmt.Println("  init [--name NAME] [--template go|ts|py] [--description DESC]")
 	fmt.Println("        Scaffold a new plugin from template")
 	fmt.Println("  build [path]")
 	fmt.Println("        Detect build system and build plugin binary")

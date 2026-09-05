@@ -1,0 +1,39 @@
+import asyncio
+
+import branchkit
+from actions_gen import GreetParams
+
+plugin = branchkit.Plugin()
+
+
+@plugin.handle_action("{{.ActionPrefix}}.greet")
+async def greet(req):
+    p: GreetParams = req["params"] or {}
+    name = p.get("name") or "BranchKit"
+    await plugin.input_type_text(f"Hello, {name}!")
+    return {"status": "ok"}
+
+
+@plugin.handle("render_settings")
+async def render_settings(params):
+    return {
+        "html": """<div style="padding: 16px; font-family: system-ui;">
+	<h2 style="margin: 0 0 12px 0;">{{.PluginName}}</h2>
+	<p style="color: #888; margin: 0 0 16px 0;">{{.Description}}</p>
+
+	<h3 style="margin: 0 0 8px 0;">Voice Commands</h3>
+	<table style="border-collapse: collapse; width: 100%;">
+		<tr>
+			<td style="padding: 6px 12px; border-bottom: 1px solid #333;"><em>"hello branchkit"</em></td>
+			<td style="padding: 6px 12px; border-bottom: 1px solid #333; color: #888;">Types "Hello, BranchKit!"</td>
+		</tr>
+		<tr>
+			<td style="padding: 6px 12px;"><em>"hello &lt;name&gt;"</em></td>
+			<td style="padding: 6px 12px; color: #888;">Types "Hello, &lt;name&gt;!" with any spoken word</td>
+		</tr>
+	</table>
+</div>"""
+    }
+
+
+asyncio.run(plugin.run())

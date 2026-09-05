@@ -22,6 +22,10 @@ var goTemplateFS embed.FS
 //go:embed templates/ts/.github/workflows/*
 var tsTemplateFS embed.FS
 
+//go:embed templates/py/*
+//go:embed templates/py/.github/workflows/*
+var pyTemplateFS embed.FS
+
 type templateData struct {
 	PluginID     string
 	PluginName   string
@@ -60,10 +64,10 @@ func cmdDevInit(args []string) {
 	}
 
 	if tmpl == "" {
-		tmpl = promptInput("Template (go or ts)", "go")
+		tmpl = promptInput("Template (go, ts, or py)", "go")
 	}
-	if tmpl != "go" && tmpl != "ts" {
-		fmt.Fprintf(os.Stderr, "Error: template must be 'go' or 'ts' (got %q)\n", tmpl)
+	if tmpl != "go" && tmpl != "ts" && tmpl != "py" {
+		fmt.Fprintf(os.Stderr, "Error: template must be 'go', 'ts', or 'py' (got %q)\n", tmpl)
 		os.Exit(1)
 	}
 
@@ -117,8 +121,11 @@ func cmdDevInit(args []string) {
 		// A scaffold that does not compile is worse than no scaffold: the
 		// first thing a new developer would debug is the tool's output,
 		// and the natural conclusion — that they installed something
-		// wrong — is false. Build once; refuse to emit on failure.
-		build := exec.Command("go", "build", "./...")
+		// wrong — is false. Build once; refuse to emit on failure. Build
+		// the REAL binary the manifest's `run` names — a compile-only
+		// check left the scaffold unspawnable, so its own harness tests
+		// failed out of the box.
+		build := exec.Command("go", "build", "-o", "../"+name+"-plugin", ".")
 		build.Dir = srcDir
 		build.Stdout = os.Stdout
 		build.Stderr = os.Stderr
@@ -157,6 +164,59 @@ func cmdDevInit(args []string) {
 			fmt.Fprintf(os.Stderr, "Error: bun install failed: %v\n", err)
 			os.Exit(1)
 		}
+
+	case "py":
+		if err := scaffoldPyPlugin(name, data); err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Vendor the SDK into the plugin directory — the runtime model has
+		// no install-time pip on users' machines, so the author's checkout
+		// carries the SDK the way a Go plugin carries its binary. Prefer the
+		// managed CPython (the interpreter the plugin will actually run
+		// under); fall back to a system python3 for machines that have not
+		// run `runtime install python` yet.
+		pyPath := "python3"
+		if managed := managedPythonPath(); fileExists(managed) {
+			pyPath = managed
+		}
+		vendor := exec.Command(pyPath, "-m", "pip", "install", "--target", ".", "branchkit")
+		vendor.Dir = name
+		vendor.Stdout = os.Stdout
+		vendor.Stderr = os.Stderr
+		if err := vendor.Run(); err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintf(os.Stderr, "Error: vendoring plugin-sdk-py failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		// The Python analogue of build-once-refuse-on-failure: compile every
+		// file and prove the vendored SDK imports. A scaffold that cannot
+		// import its own SDK would send a new developer debugging the
+		// tool's output as if it were their mistake.
+		check := exec.Command(pyPath, "-c",
+			"import compileall, sys; sys.exit(0 if compileall.compile_dir('.', quiet=1) else 1)")
+		check.Dir = name
+		check.Stdout = os.Stdout
+		check.Stderr = os.Stderr
+		if err := check.Run(); err == nil {
+			imp := exec.Command(pyPath, "-c", "import branchkit, actions_gen")
+			imp.Dir = name
+			imp.Stdout = os.Stdout
+			imp.Stderr = os.Stderr
+			err = imp.Run()
+			if err == nil {
+				break
+			}
+		}
+		os.RemoveAll(name)
+		fmt.Fprintln(os.Stderr, "\nError: the generated scaffold does not compile against the")
+		fmt.Fprintln(os.Stderr, "published SDK. This is a template/SDK version mismatch in the")
+		fmt.Fprintln(os.Stderr, "tooling — not something you did wrong. Upgrade branchkit-cli,")
+		fmt.Fprintln(os.Stderr, "or report it: https://github.com/branchkit/branchkit-registry/issues")
+		os.Exit(1)
 	}
 
 	fmt.Printf("\nCreated plugin %s/ (%s template)\n", name, tmpl)
@@ -246,6 +306,51 @@ func scaffoldTSPlugin(dir string, data templateData) error {
 		}
 
 		content, err := tsTemplateFS.ReadFile(tf.src)
+		if err != nil {
+			return fmt.Errorf("read template %s: %w", tf.src, err)
+		}
+
+		tmpl, err := template.New(tf.src).Parse(string(content))
+		if err != nil {
+			return fmt.Errorf("parse template %s: %w", tf.src, err)
+		}
+
+		f, err := os.Create(destPath)
+		if err != nil {
+			return fmt.Errorf("create %s: %w", destPath, err)
+		}
+
+		if err := tmpl.Execute(f, data); err != nil {
+			f.Close()
+			return fmt.Errorf("execute template %s: %w", tf.src, err)
+		}
+		f.Close()
+	}
+
+	return nil
+}
+
+func scaffoldPyPlugin(dir string, data templateData) error {
+	templateFiles := []struct {
+		src  string
+		dest string
+	}{
+		{"templates/py/plugin.json.tmpl", "plugin.json"},
+		{"templates/py/commands.json.tmpl", "commands.json"},
+		{"templates/py/main.py.tmpl", "main.py"},
+		{"templates/py/actions_gen.py.tmpl", "actions_gen.py"},
+		{"templates/py/test_main.py.tmpl", "test_main.py"},
+		{"templates/py/README.md.tmpl", "README.md"},
+		{"templates/py/.github/workflows/conformance.yml.tmpl", ".github/workflows/conformance.yml"},
+	}
+
+	for _, tf := range templateFiles {
+		destPath := filepath.Join(dir, tf.dest)
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", filepath.Dir(destPath), err)
+		}
+
+		content, err := pyTemplateFS.ReadFile(tf.src)
 		if err != nil {
 			return fmt.Errorf("read template %s: %w", tf.src, err)
 		}
