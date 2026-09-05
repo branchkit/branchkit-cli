@@ -207,3 +207,65 @@ func TestConsumedCollectionsMalformedEntryFails(t *testing.T) {
 		}
 	}
 }
+
+// The one-params dialect envelope check mirrors the platform's
+// parse_action_or_template, sequences included, recursing into steps
+// (DESIGN_ONE_PARAMS_DIALECT.md).
+func TestActionEnvelopeErrors(t *testing.T) {
+	obj := func(s string) map[string]any {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			t.Fatalf("bad test action: %v", err)
+		}
+		return m
+	}
+	cases := []struct {
+		name    string
+		action  string
+		wantErr string // substring; "" = valid
+	}{
+		{"nested is valid", `{"type": "x.y", "params": {"a": 1}}`, ""},
+		{"phase-only is valid", `{"type": "x.y", "phase": "start"}`, ""},
+		{"flat payload key refused", `{"type": "x.y", "text": "hi"}`, "unknown key"},
+		{"non-object params refused", `{"type": "x.y", "params": "hi"}`, "must be an object"},
+		{"sequence is valid", `{"type": "sequence", "actions": [{"type": "x.y"}]}`, ""},
+		{"sequence stray key refused", `{"type": "sequence", "actions": [], "repeat": 3}`, "unknown key"},
+		{"sequence params refused", `{"type": "sequence", "actions": [], "params": {}}`, "unknown key"},
+		{"sequence missing actions refused", `{"type": "sequence"}`, "requires an \"actions\" array"},
+		{"flat sequence step refused", `{"type": "sequence", "actions": [{"type": "x.y", "text": "hi"}]}`, "sequence step 0"},
+	}
+	for _, tc := range cases {
+		errs := actionEnvelopeErrors(obj(tc.action))
+		if tc.wantErr == "" {
+			if len(errs) != 0 {
+				t.Errorf("%s: expected valid, got %v", tc.name, errs)
+			}
+			continue
+		}
+		if len(errs) == 0 {
+			t.Errorf("%s: expected error containing %q, got none", tc.name, tc.wantErr)
+			continue
+		}
+		if !strings.Contains(strings.Join(errs, "; "), tc.wantErr) {
+			t.Errorf("%s: expected error containing %q, got %v", tc.name, tc.wantErr, errs)
+		}
+	}
+}
+
+// A keybind binding's params must be an object, mirroring the seeder.
+func TestKeybindNonObjectParamsFails(t *testing.T) {
+	m := manifestFromJSON(t, `{
+		"collection_data": {"keybinds": {
+			"alt+p": {"action": "x.y", "params": "flat"},
+			"alt+n": {"action": "x.y", "params": {"a": 1}}
+		}}
+	}`)
+	results := checkKeybindBindings(m)
+	bad := findResult(results, "keybind_alt+p")
+	if bad == nil || bad.Status != "fail" {
+		t.Fatalf("expected keybind_alt+p to fail, got %+v", results)
+	}
+	if good := findResult(results, "keybind_alt+n"); good != nil && good.Status == "fail" {
+		t.Fatalf("nested binding should not fail: %+v", good)
+	}
+}

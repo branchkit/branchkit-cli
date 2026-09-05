@@ -692,29 +692,15 @@ func checkCommandGrammar(dir string, m map[string]any) []TestResult {
 		}
 
 		// One params dialect (DESIGN_ONE_PARAMS_DIALECT.md): the action
-		// envelope is closed — type / params / phase (+ actions on a
-		// sequence). A stray key is refused by the platform at load, so
-		// refuse it here first, at author time.
-		var unknown []string
-		for k := range action {
-			switch k {
-			case "type", "params", "phase":
-			case "actions":
-				if actionType != "sequence" {
-					unknown = append(unknown, k)
-				}
-			default:
-				unknown = append(unknown, k)
+		// envelope is closed, sequences included, and the check recurses
+		// into sequence steps — a stray key is refused by the platform at
+		// load, so refuse it here first, at author time.
+		if errs := actionEnvelopeErrors(action); len(errs) > 0 {
+			for _, e := range errs {
+				results = append(results, TestResult{
+					Name: fmt.Sprintf("command_%d", i), Status: "fail", Detail: e,
+				})
 			}
-		}
-		if len(unknown) > 0 {
-			sort.Strings(unknown)
-			results = append(results, TestResult{
-				Name: fmt.Sprintf("command_%d", i), Status: "fail",
-				Detail: fmt.Sprintf(
-					"action has unknown key(s) %v — params nest under \"params\": {\"type\": %q, \"params\": {…}}",
-					unknown, actionType),
-			})
 			continue
 		}
 
@@ -734,6 +720,71 @@ func checkCommandGrammar(dir string, m map[string]any) []TestResult {
 		})
 	}
 	return results
+}
+
+// actionEnvelopeErrors validates one action object against the one-params
+// dialect (DESIGN_ONE_PARAMS_DIALECT.md), mirroring the platform's
+// parse_action_or_template: the envelope is type/params/phase; a sequence
+// is exactly {"type": "sequence", "actions": […]} and the check recurses
+// into each step; "params", when present, must be an object. Empty means
+// valid.
+func actionEnvelopeErrors(action map[string]any) []string {
+	actionType, _ := action["type"].(string)
+	if actionType == "" {
+		return []string{"action missing \"type\" field"}
+	}
+	if actionType == "sequence" {
+		var errs []string
+		var unknown []string
+		for k := range action {
+			if k != "type" && k != "actions" {
+				unknown = append(unknown, k)
+			}
+		}
+		if len(unknown) > 0 {
+			sort.Strings(unknown)
+			errs = append(errs, fmt.Sprintf(
+				"sequence has unknown key(s) %v — a sequence is {\"type\": \"sequence\", \"actions\": […]}",
+				unknown))
+		}
+		steps, ok := action["actions"].([]any)
+		if !ok {
+			errs = append(errs, "sequence requires an \"actions\" array")
+			return errs
+		}
+		for j, step := range steps {
+			stepObj, ok := step.(map[string]any)
+			if !ok {
+				errs = append(errs, fmt.Sprintf("sequence step %d must be an action object", j))
+				continue
+			}
+			for _, e := range actionEnvelopeErrors(stepObj) {
+				errs = append(errs, fmt.Sprintf("sequence step %d: %s", j, e))
+			}
+		}
+		return errs
+	}
+	var errs []string
+	var unknown []string
+	for k := range action {
+		switch k {
+		case "type", "params", "phase":
+		default:
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		errs = append(errs, fmt.Sprintf(
+			"action has unknown key(s) %v — params nest under \"params\": {\"type\": %q, \"params\": {…}}",
+			unknown, actionType))
+	}
+	if p, present := action["params"]; present {
+		if _, ok := p.(map[string]any); !ok {
+			errs = append(errs, fmt.Sprintf("action %q: \"params\" must be an object", actionType))
+		}
+	}
+	return errs
 }
 
 // checkKeybindBindings enforces the one-params dialect on collection_data
@@ -780,6 +831,15 @@ func checkKeybindBindings(m map[string]any) []TestResult {
 				Detail: fmt.Sprintf(
 					"binding has unknown key(s) %v — params nest under \"params\"", unknown),
 			})
+			continue
+		}
+		if p, present := binding["params"]; present {
+			if _, ok := p.(map[string]any); !ok {
+				results = append(results, TestResult{
+					Name: "keybind_" + combo, Status: "fail",
+					Detail: "binding \"params\" must be an object",
+				})
+			}
 		}
 	}
 	if len(results) == 0 {
