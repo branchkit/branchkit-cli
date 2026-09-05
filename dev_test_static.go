@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -49,6 +50,7 @@ func runStaticAnalysis(dir string) TestPhaseResult {
 	phase.Tests = append(phase.Tests, checkSettingsTabs(manifest)...)
 	phase.Tests = append(phase.Tests, checkCollectionDataFiles(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkCommandGrammar(dir, manifest)...)
+	phase.Tests = append(phase.Tests, checkKeybindBindings(manifest)...)
 	phase.Tests = append(phase.Tests, checkProvidedCollections(manifest)...)
 	phase.Tests = append(phase.Tests, checkConsumedCollections(manifest)...)
 	phase.Tests = append(phase.Tests, checkCaptureReferences(dir, manifest)...)
@@ -689,6 +691,33 @@ func checkCommandGrammar(dir string, m map[string]any) []TestResult {
 			continue
 		}
 
+		// One params dialect (DESIGN_ONE_PARAMS_DIALECT.md): the action
+		// envelope is closed — type / params / phase (+ actions on a
+		// sequence). A stray key is refused by the platform at load, so
+		// refuse it here first, at author time.
+		var unknown []string
+		for k := range action {
+			switch k {
+			case "type", "params", "phase":
+			case "actions":
+				if actionType != "sequence" {
+					unknown = append(unknown, k)
+				}
+			default:
+				unknown = append(unknown, k)
+			}
+		}
+		if len(unknown) > 0 {
+			sort.Strings(unknown)
+			results = append(results, TestResult{
+				Name: fmt.Sprintf("command_%d", i), Status: "fail",
+				Detail: fmt.Sprintf(
+					"action has unknown key(s) %v — params nest under \"params\": {\"type\": %q, \"params\": {…}}",
+					unknown, actionType),
+			})
+			continue
+		}
+
 		if prefix != "" && !strings.HasPrefix(actionType, prefix+".") {
 			results = append(results, TestResult{
 				Name: fmt.Sprintf("command_%d", i), Status: "warn",
@@ -702,6 +731,61 @@ func checkCommandGrammar(dir string, m map[string]any) []TestResult {
 		results = append(results, TestResult{
 			Name: "command_grammar", Status: "pass",
 			Detail: fmt.Sprintf("%d command(s)", len(commands)),
+		})
+	}
+	return results
+}
+
+// checkKeybindBindings enforces the one-params dialect on collection_data
+// keybinds: a binding's envelope is closed (action / params) and the
+// platform refuses stray keys at load — refuse them here first.
+func checkKeybindBindings(m map[string]any) []TestResult {
+	cd, _ := m["collection_data"].(map[string]any)
+	kb, _ := cd["keybinds"].(map[string]any)
+	if len(kb) == 0 {
+		return nil
+	}
+	var results []TestResult
+	combos := make([]string, 0, len(kb))
+	for combo := range kb {
+		combos = append(combos, combo)
+	}
+	sort.Strings(combos)
+	for _, combo := range combos {
+		binding, ok := kb[combo].(map[string]any)
+		if !ok {
+			results = append(results, TestResult{
+				Name: "keybind_" + combo, Status: "fail",
+				Detail: "binding must be an object: {\"action\": \"<dotted.type>\", \"params\": {…}}",
+			})
+			continue
+		}
+		if s, _ := binding["action"].(string); s == "" {
+			results = append(results, TestResult{
+				Name: "keybind_" + combo, Status: "fail",
+				Detail: "binding missing \"action\"",
+			})
+			continue
+		}
+		var unknown []string
+		for k := range binding {
+			if k != "action" && k != "params" {
+				unknown = append(unknown, k)
+			}
+		}
+		if len(unknown) > 0 {
+			sort.Strings(unknown)
+			results = append(results, TestResult{
+				Name: "keybind_" + combo, Status: "fail",
+				Detail: fmt.Sprintf(
+					"binding has unknown key(s) %v — params nest under \"params\"", unknown),
+			})
+		}
+	}
+	if len(results) == 0 {
+		results = append(results, TestResult{
+			Name: "keybinds", Status: "pass",
+			Detail: fmt.Sprintf("%d binding(s)", len(kb)),
 		})
 	}
 	return results

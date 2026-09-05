@@ -1,12 +1,12 @@
 [
   {
     "pattern": ["hello", "branchkit"],
-    "action": { "type": "{{.ActionPrefix}}.greet", "name": "BranchKit" },
+    "action": { "type": "{{.ActionPrefix}}.greet", "params": { "name": "BranchKit" } },
     "description": "Say Hello BranchKit"
   },
   {
     "pattern": ["hello", "<apps>"],
-    "action": { "type": "{{.ActionPrefix}}.greet", "name": "{apps}" },
+    "action": { "type": "{{.ActionPrefix}}.greet", "params": { "name": "{apps}" } },
     "description": "Greet an installed app by name"
   }
 ]
