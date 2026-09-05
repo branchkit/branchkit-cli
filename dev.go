@@ -35,6 +35,7 @@ type templateData struct {
 
 func cmdDevInit(args []string) {
 	var name, tmpl, desc string
+	var bare bool
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--name":
@@ -52,6 +53,12 @@ func cmdDevInit(args []string) {
 				i++
 				desc = args[i]
 			}
+		case "--bare":
+			// Scaffold files only: no dependency resolution, no build, no
+			// network. For offline use and for the scaffold-mirror drift
+			// gate (`just check-scaffold-mirrors`), which diffs the
+			// helloworld repos against exactly this output.
+			bare = true
 		}
 	}
 
@@ -85,6 +92,28 @@ func cmdDevInit(args []string) {
 		PluginName:   toTitleCase(name),
 		Description:  desc,
 		ActionPrefix: strings.ReplaceAll(name, "-", ""),
+	}
+
+	if bare {
+		var err error
+		switch tmpl {
+		case "go":
+			err = scaffoldGoPlugin(name, data)
+		case "ts":
+			err = scaffoldTSPlugin(name, data)
+			if err == nil {
+				err = os.Chmod(filepath.Join(name, "run.sh"), 0o755)
+			}
+		case "py":
+			err = scaffoldPyPlugin(name, data)
+		}
+		if err != nil {
+			os.RemoveAll(name)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("\nCreated plugin %s/ (%s template, bare — resolve dependencies before building)\n", name, tmpl)
+		return
 	}
 
 	switch tmpl {

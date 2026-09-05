@@ -9,17 +9,19 @@ type RenderSettingsRequest struct {
 func main() {
 	plugin := branchkit.NewPlugin()
 
-	plugin.HandleAction("{{.ActionPrefix}}.greet", func(req *branchkit.OnActionRequest) (any, error) {
-		var p GreetParams
-		req.UnmarshalParams(&p)
-
+	// HandleGreet and GreetParams are generated from plugin.json into
+	// actions_gen.go, so the action string is never spelled here and the
+	// params arrive typed. Edit action_types in plugin.json and re-run
+	// branchkit-gen to change them.
+	HandleGreet(plugin, func(p GreetParams, _ *branchkit.OnActionRequest) (any, error) {
 		name := "BranchKit"
 		if p.Name != nil {
 			name = *p.Name
 		}
 
-		plugin.Call("input.type_text", map[string]any{"text": "Hello, " + name + "!"}, nil)
-		return nil, nil
+		// Generated wrapper — the method name and argument shape are
+		// checked at compile time, unlike a raw plugin.Call.
+		return nil, plugin.InputTypeText("Hello, " + name + "!")
 	})
 
 	branchkit.HandleTyped(plugin, "render_settings", func(_ *RenderSettingsRequest) (any, error) {
