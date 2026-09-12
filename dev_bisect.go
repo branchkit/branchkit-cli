@@ -41,8 +41,53 @@ type bisectPhase struct {
 	} `json:"finding"`
 }
 
+// bisectCheck is a scripted oracle: a phrase and the plugin it must resolve
+// to. When present, the CLI answers each round itself via the side-effect-free
+// commands.resolve preview instead of asking a human — the routing symptom
+// ("I say X and the wrong thing answers") is mechanically checkable.
+type bisectCheck struct {
+	phrase   string
+	expected string
+}
+
+// parseCheckSpec parses "--check" syntax: "<phrase> => <plugin-id>" (or ->).
+func parseCheckSpec(spec string) (bisectCheck, error) {
+	sep := "=>"
+	i := strings.Index(spec, sep)
+	if i < 0 {
+		sep = "->"
+		i = strings.Index(spec, sep)
+	}
+	if i < 0 {
+		return bisectCheck{}, fmt.Errorf("expected \"<phrase> => <plugin-id>\", got %q", spec)
+	}
+	c := bisectCheck{
+		phrase:   strings.TrimSpace(spec[:i]),
+		expected: strings.TrimSpace(spec[i+len(sep):]),
+	}
+	if c.phrase == "" || c.expected == "" {
+		return bisectCheck{}, fmt.Errorf("expected \"<phrase> => <plugin-id>\", got %q", spec)
+	}
+	return c, nil
+}
+
+// checkAnswer turns a resolve verdict into the oracle's answer. The symptom
+// is "the phrase does not route to the expected plugin" — so a match by the
+// right owner means gone, and anything else (wrong owner, or no match at
+// all) means still happening.
+func checkAnswer(matched bool, owner, expected string) (answer, verdict string) {
+	if matched && owner == expected {
+		return "gone", fmt.Sprintf("routes to %s — gone", expected)
+	}
+	if matched {
+		return "still_happening", fmt.Sprintf("routes to %s — still happening", owner)
+	}
+	return "still_happening", "no match — still happening"
+}
+
 func cmdDevBisect(args []string) {
 	var pinned []string
+	var check *bisectCheck
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "restore":
@@ -59,6 +104,18 @@ func cmdDevBisect(args []string) {
 			}
 			i++
 			pinned = append(pinned, args[i])
+		case "--check":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "Error: --check needs \"<phrase> => <plugin-id>\"")
+				os.Exit(1)
+			}
+			i++
+			c, err := parseCheckSpec(args[i])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: --check: %v\n", err)
+				os.Exit(1)
+			}
+			check = &c
 		case "help", "--help", "-h":
 			printDevBisectUsage()
 			return
@@ -68,6 +125,14 @@ func cmdDevBisect(args []string) {
 			os.Exit(1)
 		}
 	}
+	if check != nil {
+		// The expected owner must stay enabled for the check to mean
+		// anything: disabling it would make every round read "not routing
+		// to it" — the experiment breaking its own instrument. The pin is a
+		// property of how the bisect is driven (design doc), and a
+		// check-driven bisect is driven by this plugin's answers.
+		pinned = append(pinned, check.expected)
+	}
 
 	// A crash's leftovers block a new start; say so plainly instead of 409ing.
 	st := devBisectGet("/v1/bisect/status")
@@ -75,6 +140,23 @@ func cmdDevBisect(args []string) {
 		fmt.Println("An earlier bisect was interrupted and the fleet may still be half-disabled.")
 		fmt.Println("Run `branchkit-cli dev bisect restore` first.")
 		os.Exit(1)
+	}
+
+	if check != nil && !st.Session {
+		// Baseline: confirm the symptom exists BEFORE touching the fleet.
+		// A phrase that already routes where it should would send the
+		// search chasing nothing — the honest output is "no symptom".
+		matched, owner, err := resolveOwnerPreview(check.phrase)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: baseline resolve failed: %v\n", err)
+			os.Exit(1)
+		}
+		answer, verdict := checkAnswer(matched, owner, check.expected)
+		fmt.Printf("Baseline — %q %s\n", check.phrase, verdict)
+		if answer == "gone" {
+			fmt.Printf("No symptom: the phrase already routes to %s. Nothing to bisect.\n", check.expected)
+			return
+		}
 	}
 
 	var start bisectStatus
@@ -89,8 +171,13 @@ func cmdDevBisect(args []string) {
 		fmt.Printf("Not testable this run (pinned, or a pinned plugin depends on them): %s\n",
 			strings.Join(start.Untestable, ", "))
 	}
-	fmt.Println("Reproduce the symptom after each round, then answer the question.")
-	fmt.Println("Answers: y = still happening · n = gone · u = not sure · q = quit (restores everything)")
+	if check == nil {
+		fmt.Println("Reproduce the symptom after each round, then answer the question.")
+		fmt.Println("Answers: y = still happening · n = gone · u = not sure · q = quit (restores everything)")
+	} else {
+		fmt.Printf("Scripted oracle: does %q route to %s? Each round answers itself.\n",
+			check.phrase, check.expected)
+	}
 	fmt.Println()
 
 	in := bufio.NewScanner(os.Stdin)
@@ -98,27 +185,42 @@ func cmdDevBisect(args []string) {
 	for {
 		fmt.Printf("Round %d — disabled: %s\n", cur.Round, orNone(cur.RoundDisabled))
 		fmt.Printf("         suspects: %s\n", orNone(cur.Suspects))
-		fmt.Print("Is it still happening? [y/n/u/q] ")
-		if !in.Scan() {
-			fmt.Println("\nInput closed — cancelling and restoring your original set.")
-			devBisectPost("/v1/bisect/cancel", nil)
-			return
-		}
 		var answer string
-		switch strings.ToLower(strings.TrimSpace(in.Text())) {
-		case "y", "yes":
-			answer = "still_happening"
-		case "n", "no":
-			answer = "gone"
-		case "u", "unsure", "not sure":
-			answer = "not_sure"
-		case "q", "quit":
-			devBisectPost("/v1/bisect/cancel", nil)
-			fmt.Println("Cancelled — your original enabled/disabled set is restored.")
-			return
-		default:
-			fmt.Println("Please answer y, n, u, or q.")
-			continue
+		if check != nil {
+			matched, owner, err := resolveOwnerPreview(check.phrase)
+			if err != nil {
+				// Leave nothing half-applied on the way out: a scripted run
+				// has no human to notice a modified fleet.
+				fmt.Fprintf(os.Stderr, "Error: resolve failed mid-bisect: %v\n", err)
+				fmt.Fprintln(os.Stderr, "Cancelling and restoring your original set.")
+				devBisectPost("/v1/bisect/cancel", nil)
+				os.Exit(1)
+			}
+			var verdict string
+			answer, verdict = checkAnswer(matched, owner, check.expected)
+			fmt.Printf("         %q %s\n", check.phrase, verdict)
+		} else {
+			fmt.Print("Is it still happening? [y/n/u/q] ")
+			if !in.Scan() {
+				fmt.Println("\nInput closed — cancelling and restoring your original set.")
+				devBisectPost("/v1/bisect/cancel", nil)
+				return
+			}
+			switch strings.ToLower(strings.TrimSpace(in.Text())) {
+			case "y", "yes":
+				answer = "still_happening"
+			case "n", "no":
+				answer = "gone"
+			case "u", "unsure", "not sure":
+				answer = "not_sure"
+			case "q", "quit":
+				devBisectPost("/v1/bisect/cancel", nil)
+				fmt.Println("Cancelled — your original enabled/disabled set is restored.")
+				return
+			default:
+				fmt.Println("Please answer y, n, u, or q.")
+				continue
+			}
 		}
 		cur = devBisectPost("/v1/bisect/answer", map[string]any{"answer": answer})
 		var ph bisectPhase
@@ -185,6 +287,35 @@ func orNone(v []string) string {
 		return "(none)"
 	}
 	return strings.Join(v, ", ")
+}
+
+// resolveOwnerPreview asks the matcher, side-effect-free, who would claim
+// the phrase right now. Distinct from dev_smoke's resolvePreview: the oracle
+// needs the OWNER, not just whether something matched — "matched by the
+// wrong plugin" is exactly the symptom.
+func resolveOwnerPreview(phrase string) (matched bool, owner string, err error) {
+	token := readHostToken()
+	if token == "" {
+		return false, "", fmt.Errorf("no host token or Developer Access grant — is BranchKit running?")
+	}
+	raw, status, err := devHTTP("POST", "/v1/commands/resolve", token, map[string]any{
+		"words":   strings.Fields(phrase),
+		"preview": true,
+	})
+	if err != nil {
+		return false, "", err
+	}
+	if status != 200 {
+		return false, "", fmt.Errorf("resolve returned %d: %s", status, strings.TrimSpace(string(raw)))
+	}
+	var result struct {
+		Matched     bool   `json:"matched"`
+		OwnerPlugin string `json:"owner_plugin"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return false, "", err
+	}
+	return result.Matched, result.OwnerPlugin, nil
 }
 
 func devBisectGet(path string) bisectStatus {
@@ -254,16 +385,23 @@ func bisectHTTP(method, path, token string, body any) ([]byte, int, error) {
 }
 
 func printDevBisectUsage() {
-	fmt.Println("Usage: branchkit-cli dev bisect [--pin PLUGIN_ID]...")
+	fmt.Println("Usage: branchkit-cli dev bisect [--pin PLUGIN_ID]... [--check \"PHRASE => PLUGIN_ID\"]")
 	fmt.Println("       branchkit-cli dev bisect restore")
 	fmt.Println("       branchkit-cli dev bisect cancel")
 	fmt.Println()
 	fmt.Println("Find WHICH plugin causes a symptom no health check can see, by")
-	fmt.Println("disabling dependency-closed halves and asking you after each round.")
+	fmt.Println("disabling dependency-closed halves and asking after each round.")
 	fmt.Println("You are the oracle; reproduce the symptom before answering.")
 	fmt.Println()
 	fmt.Println("  --pin ID   Never disable this plugin (repeatable) — e.g. one you")
 	fmt.Println("             need in order to reproduce the symptom at all.")
+	fmt.Println("  --check \"next tab => browser\"")
+	fmt.Println("             Scripted oracle for routing symptoms: each round asks")
+	fmt.Println("             the matcher (side-effect-free) whether the phrase")
+	fmt.Println("             resolves to that plugin, instead of asking you. The")
+	fmt.Println("             expected plugin is pinned automatically; the run is")
+	fmt.Println("             unattended and takes seconds. Refuses to start when")
+	fmt.Println("             the phrase already routes correctly (no symptom).")
 	fmt.Println("  restore    Recover after a crash left a bisect half-applied.")
 	fmt.Println("  cancel     Abandon the running bisect and restore everything.")
 }
