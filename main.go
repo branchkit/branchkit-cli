@@ -141,6 +141,8 @@ func main() {
 			cmdDevVocab(os.Args[3:])
 		case "margins":
 			cmdDevMargins(os.Args[3:])
+		case "bisect":
+			cmdDevBisect(os.Args[3:])
 		case "help", "--help", "-h":
 			printDevUsage()
 		default:
@@ -264,6 +266,9 @@ func printDevUsage() {
 	fmt.Println("  margins [--collection NAME]")
 	fmt.Println("        Recognition-margin distribution (verdict-split) of a keyed")
 	fmt.Println("        recognition log, read via its compacted projection — for floor siting")
+	fmt.Println("  bisect [--pin ID]... | bisect restore | bisect cancel")
+	fmt.Println("        Find WHICH plugin causes a symptom by disabling dependency-closed")
+	fmt.Println("        halves and asking you after each round — you are the oracle")
 }
 
 func printPluginUsage() {
