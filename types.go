@@ -27,7 +27,6 @@ type PluginManifest struct {
 	Privileges         []string     `json:"privileges,omitempty"`
 	OptionalPrivileges []string     `json:"optional_privileges,omitempty"`
 	Consumes           *ConsumesCfg `json:"consumes,omitempty"`
-	DependsOn          []Dependency `json:"depends_on,omitempty"`
 	ActionPrefix       string       `json:"action_prefix,omitempty"`
 	HudTargets         []string     `json:"hud_targets,omitempty"`
 	Sockets            *SocketsCfg  `json:"sockets,omitempty"`
@@ -119,37 +118,6 @@ type ModelPart struct {
 // Bun; see runtime.go's needsNode).
 type SocketsCfg struct {
 	Listen []json.RawMessage `json:"listen,omitempty"`
-}
-
-// Dependency is an explicit plugin dependency with optional version constraint and source hint.
-// Accepts either a bare string ("keyboard") or an object ({"plugin": "keyboard", "version": ">=1.0.0", "source": "github:owner/repo"}).
-type Dependency struct {
-	Plugin  string `json:"plugin"`
-	Version string `json:"version,omitempty"`
-	Source  string `json:"source,omitempty"`
-}
-
-func (d *Dependency) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
-		d.Plugin = s
-		d.Version = ""
-		d.Source = ""
-		return nil
-	}
-	type depObj struct {
-		Plugin  string `json:"plugin"`
-		Version string `json:"version,omitempty"`
-		Source  string `json:"source,omitempty"`
-	}
-	var obj depObj
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return err
-	}
-	d.Plugin = obj.Plugin
-	d.Version = obj.Version
-	d.Source = obj.Source
-	return nil
 }
 
 // PluginSource indicates where a plugin was discovered.

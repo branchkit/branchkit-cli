@@ -24,7 +24,6 @@ type previewResult struct {
 	Sockets     int             `json:"sockets"`
 	Runtimes    []string        `json:"runtimes"`
 	Effects     []previewEffect `json:"effects"`
-	DependsOn   []previewDep    `json:"depends_on"`
 	Conformance string          `json:"conformance"`
 	Tier        string          `json:"tier"`
 	Blocklisted bool            `json:"blocklisted"`
@@ -64,14 +63,6 @@ type previewEffect struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Asserts     []string `json:"asserts"`
-}
-
-type previewDep struct {
-	Plugin           string `json:"plugin"`
-	Version          string `json:"version,omitempty"`
-	Installed        bool   `json:"installed"`
-	InstalledVersion string `json:"installed_version,omitempty"`
-	Satisfied        *bool  `json:"satisfied,omitempty"`
 }
 
 func cmdPreview(source string) {
@@ -126,31 +117,6 @@ func cmdPreview(source string) {
 	// Check catalog tier
 	tier := lookupCatalogTier(manifest.ID)
 
-	// Check dependencies against installed plugins
-	installedVersions := map[string]string{}
-	for _, dp := range discoverPlugins() {
-		installedVersions[dp.Manifest.ID] = dp.Manifest.Version
-	}
-
-	deps := make([]previewDep, 0, len(manifest.DependsOn))
-	for _, dep := range manifest.DependsOn {
-		pd := previewDep{
-			Plugin:  dep.Plugin,
-			Version: dep.Version,
-		}
-		if v, found := installedVersions[dep.Plugin]; found {
-			pd.Installed = true
-			pd.InstalledVersion = v
-			if dep.Version != "" && v != "" {
-				ok, err := satisfiesConstraint(v, dep.Version)
-				if err == nil {
-					pd.Satisfied = &ok
-				}
-			}
-		}
-		deps = append(deps, pd)
-	}
-
 	effects := []previewEffect{}
 	if manifest.Consumes != nil {
 		for _, e := range manifest.Consumes.Effects {
@@ -170,7 +136,6 @@ func cmdPreview(source string) {
 		Privileges:         manifest.Privileges,
 		OptionalPrivileges: manifest.OptionalPrivileges,
 		Effects:            effects,
-		DependsOn:          deps,
 		Conformance:        cs.Status,
 		Tier:               tier,
 		Blocklisted:        blocklisted,

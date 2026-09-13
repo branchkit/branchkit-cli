@@ -91,7 +91,6 @@ func installFromLocal(source string) error {
 	}
 
 	fmt.Printf("Installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
-	checkDependencies(manifest)
 	checkRuntime(manifest)
 	notifyActuator()
 	return nil
@@ -402,54 +401,6 @@ func readManifest(path string) (PluginManifest, error) {
 	return m, nil
 }
 
-func checkDependencies(manifest PluginManifest) {
-	if len(manifest.DependsOn) == 0 {
-		return
-	}
-	installedVersions := map[string]string{}
-	for _, dp := range discoverPlugins() {
-		installedVersions[dp.Manifest.ID] = dp.Manifest.Version
-	}
-	var missing []string
-	var mismatched []string
-	for _, dep := range manifest.DependsOn {
-		version, found := installedVersions[dep.Plugin]
-		if !found {
-			label := dep.Plugin
-			if dep.Version != "" {
-				label += " " + dep.Version
-			}
-			if dep.Source != "" {
-				label += " (" + dep.Source + ")"
-			}
-			missing = append(missing, label)
-			continue
-		}
-		if dep.Version != "" && version != "" {
-			ok, err := satisfiesConstraint(version, dep.Version)
-			if err == nil && !ok {
-				mismatched = append(mismatched, fmt.Sprintf(
-					"%s: requires %s, installed %s", dep.Plugin, dep.Version, version))
-			}
-		}
-	}
-	if len(missing) > 0 {
-		fmt.Println()
-		fmt.Println("This plugin depends on plugins that are not installed:")
-		for _, m := range missing {
-			fmt.Printf("  - %s\n", m)
-		}
-		fmt.Println("Install them with: branchkit-cli plugin install <source>")
-	}
-	if len(mismatched) > 0 {
-		fmt.Println()
-		fmt.Println("Version mismatches:")
-		for _, m := range mismatched {
-			fmt.Printf("  - %s\n", m)
-		}
-	}
-}
-
 func printInstallInfo(manifest PluginManifest, source ResolvedSource, tag string) {
 	// Catalog tier
 	tier := lookupCatalogTier(manifest.ID)
@@ -464,8 +415,6 @@ func printInstallInfo(manifest PluginManifest, source ResolvedSource, tag string
 	// The consent summary already printed at the confirm moment before the
 	// files landed; only the post-install facts print here.
 
-	// Dependencies
-	checkDependencies(manifest)
 }
 
 // printConsentSummary prints what the plugin will be able to do: required and
