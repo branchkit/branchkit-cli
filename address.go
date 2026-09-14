@@ -5,7 +5,7 @@ package main
 // A running app writes <app support>/run/address.json with its UI port, the
 // operator socket path once it exists, the dev listener's port under a dev
 // build, and its pid. Every operator reads that file instead of guessing a
-// port; the old hardcoded 127.0.0.1:21551 default is gone. Tokens are not
+// port; there is no hardcoded default. Tokens are not
 // in the file — host.token and the Developer Access files carry those.
 
 import (
@@ -50,9 +50,6 @@ type appAddress struct {
 	Operator *struct {
 		Socket string `json:"socket"`
 	} `json:"operator,omitempty"`
-	Dev *struct {
-		Port int `json:"port"`
-	} `json:"dev,omitempty"`
 }
 
 var errNoAddress = errors.New("no address file — is BranchKit running?")
@@ -84,12 +81,10 @@ func pidAlive(pid int) bool {
 	return p.Signal(syscall.Signal(0)) == nil
 }
 
-// resolveDevBaseURL sets devBaseURL from the address file. The UI port
-// serves the UI routes plus the Developer Access operations — what a
-// production install offers. A dev build's listener on `dev.port` serves
-// the full router (every /v1 and /dev route), so it is preferred when
-// present; the operator socket takes that role once it exists
-// (DESIGN_ONE_LOCAL_ADDRESS.md 3b).
+// resolveDevBaseURL sets devBaseURL from the address file: the operator
+// socket when the app offers one, else the UI port. A development build
+// serves the full router on that port; a production install serves the UI
+// routes plus the Developer Access operations there, and the socket.
 func resolveDevBaseURL() error {
 	a, err := readAppAddress()
 	if err != nil {
@@ -101,10 +96,6 @@ func resolveDevBaseURL() error {
 		return nil
 	}
 	devUnixSocket = ""
-	port := a.UI.Port
-	if a.Dev != nil && a.Dev.Port != 0 {
-		port = a.Dev.Port
-	}
-	devBaseURL = fmt.Sprintf("http://127.0.0.1:%d", port)
+	devBaseURL = fmt.Sprintf("http://127.0.0.1:%d", a.UI.Port)
 	return nil
 }

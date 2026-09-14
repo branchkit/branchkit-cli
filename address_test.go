@@ -18,31 +18,15 @@ func TestAddressFileResolvesTheUIPort(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	body := `{"v":1,"pid":` + itoa(os.Getpid()) + `,"started_at":1,"ui":{"port":55123},"dev":{"port":21551}}`
+	body := `{"v":1,"pid":` + itoa(os.Getpid()) + `,"started_at":1,"ui":{"port":55123}}`
 	if err := os.WriteFile(filepath.Join(dir, "address.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := resolveDevBaseURL(); err != nil {
 		t.Fatal(err)
 	}
-	if devBaseURL != "http://127.0.0.1:21551" {
-		t.Fatalf("base = %q, want the dev listener while one is listed", devBaseURL)
-	}
-}
-
-func TestAddressFileWithoutDevBlockUsesTheUIPort(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("BRANCHKIT_DEV", "")
-	dir := filepath.Join(appSupportDir(), "run")
-	_ = os.MkdirAll(dir, 0o700)
-	body := `{"v":1,"pid":` + itoa(os.Getpid()) + `,"ui":{"port":55123}}`
-	_ = os.WriteFile(filepath.Join(dir, "address.json"), []byte(body), 0o600)
-	if err := resolveDevBaseURL(); err != nil {
-		t.Fatal(err)
-	}
 	if devBaseURL != "http://127.0.0.1:55123" {
-		t.Fatalf("base = %q, want the UI port on a production install", devBaseURL)
+		t.Fatalf("base = %q, want the UI port", devBaseURL)
 	}
 }
 
@@ -103,7 +87,7 @@ func TestOperatorSocketIsPreferredAndDialed(t *testing.T) {
 	})}
 	go func() { _ = srv.Serve(l) }()
 	defer srv.Close()
-	body := `{"v":1,"pid":` + itoa(os.Getpid()) + `,"ui":{"port":1},"dev":{"port":21551},"operator":{"socket":"` + sock + `"}}`
+	body := `{"v":1,"pid":` + itoa(os.Getpid()) + `,"ui":{"port":1},"operator":{"socket":"` + sock + `"}}`
 	_ = os.WriteFile(filepath.Join(dir, "address.json"), []byte(body), 0o600)
 	if err := resolveDevBaseURL(); err != nil {
 		t.Fatal(err)

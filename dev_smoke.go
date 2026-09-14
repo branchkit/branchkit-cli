@@ -1,7 +1,7 @@
 package main
 
 // dev smoke / dev say / dev chain — dev-loop verification against the
-// RUNNING BranchKit instance on :21551.
+// RUNNING BranchKit instance, found through its address file.
 //
 // `dev smoke` is entirely side-effect-free: every "would this match?"
 // assertion goes through commands.resolve with preview=true (computes the
@@ -28,11 +28,9 @@ import (
 	"time"
 )
 
-// Reachable base of the running app's API. Dev builds bind :21551; a
-// production install is reached through a per-plugin Developer Access
-// discovery file, which carries the UI server's random port —
-// Set by readHostToken() from the app's address file
-// (run/address.json); there is no default — a port is never guessed.
+// Reachable base of the running app's API. Set by readHostToken() from the
+// address file (run/address.json): the operator socket when the app offers
+// one, else the UI port. There is no default — a port is never guessed.
 var devBaseURL = ""
 
 func devHTTP(method, path, token string, body any) ([]byte, int, error) {
