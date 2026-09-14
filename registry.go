@@ -26,6 +26,11 @@ type catalogEntry struct {
 	Description string   `yaml:"description"`
 	Categories  []string `yaml:"categories"`
 	Tier        string   `yaml:"tier"`
+	// Bare collection names this plugin introduces — the commons it claims.
+	// Recorded so an author can learn a vocabulary exists before inventing a
+	// rival name (`plugin package` warns on overlap). Owned `plugin.<id>.*`
+	// names cannot collide and are not listed.
+	Collections []string `yaml:"collections,omitempty"`
 	// Registry counter-signature, written by `registry sign` when a plugin is
 	// admitted (DESIGN_PLUGIN_SIGNING_CHAIN step 5). It signs the manifest hash
 	// (platform- and version-independent). Absent until counter-signed; the

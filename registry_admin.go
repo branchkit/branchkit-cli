@@ -25,6 +25,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // registrySigner produces a registry counter-signature. Local key today;
@@ -163,9 +164,17 @@ func cmdRegistrySign(args []string) {
 		os.Exit(1)
 	}
 
-	// Print the fields to record in the plugin's catalog.yaml entry.
+	// Print the fields to record in the plugin's catalog.yaml entry —
+	// including the bare collections it introduces, so the catalog can tell
+	// the next author a vocabulary already exists.
 	fmt.Printf("manifest_sha256:    %s\n", manifestHash)
 	fmt.Printf("registry_signature: %s\n", sig)
+	if m, err := readManifest(manifestPath); err == nil {
+		if bare := bareCollections(&m); len(bare) > 0 {
+			fmt.Printf("collections:        [%s]\n", strings.Join(bare, ", "))
+		}
+		reportNamespace(&m)
+	}
 }
 
 func printRegistryUsage() {

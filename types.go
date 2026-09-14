@@ -82,6 +82,10 @@ func (e *EffectDeclaration) AssertNames() []string {
 // is the actuator's business.
 type ProvidesCfg struct {
 	Models map[string]ModelDeclaration `json:"models,omitempty"`
+	// Collections this plugin introduces, by name. Only the NAMES are read
+	// here — for the shared-name check against the catalog
+	// (namespace_check.go); shapes are the actuator's business.
+	Collections map[string]any `json:"collections,omitempty"`
 }
 
 // ModelDeclaration is one model a plugin's stages can load — the recipe this

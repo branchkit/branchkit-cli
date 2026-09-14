@@ -272,6 +272,9 @@ func cmdPluginPackage(args []string) {
 		fmt.Fprintf(os.Stderr, "Error reading plugin.json: %v\n", err)
 		os.Exit(1)
 	}
+	// Before anything ships: is a bare collection name this plugin
+	// introduces already someone else's in the catalog? Warn, never block.
+	reportNamespace(&manifest)
 	if name == "" {
 		// Default to the manifest ID — the canonical short name the catalog
 		// and the `branchkit-plugin-{name}` repo convention use.
