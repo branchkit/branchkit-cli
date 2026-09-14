@@ -1,9 +1,13 @@
 package main
 
 import (
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAddressFileResolvesTheUIPort(t *testing.T) {
@@ -73,4 +77,47 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+func TestOperatorSocketIsPreferredAndDialed(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("BRANCHKIT_DEV", "")
+	dir := filepath.Join(appSupportDir(), "run")
+	_ = os.MkdirAll(dir, 0o700)
+	// t.TempDir() nests deep under /var/folders on macOS and can exceed the
+	// 104-byte socket path cap; a short /tmp dir keeps the path legal.
+	sdir, err := os.MkdirTemp("/tmp", "bk-op")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(sdir)
+	sock := filepath.Join(sdir, "op.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "via-socket "+r.URL.Path)
+	})}
+	go func() { _ = srv.Serve(l) }()
+	defer srv.Close()
+	body := `{"v":1,"pid":` + itoa(os.Getpid()) + `,"ui":{"port":1},"dev":{"port":21551},"operator":{"socket":"` + sock + `"}}`
+	_ = os.WriteFile(filepath.Join(dir, "address.json"), []byte(body), 0o600)
+	if err := resolveDevBaseURL(); err != nil {
+		t.Fatal(err)
+	}
+	if devUnixSocket != sock {
+		t.Fatalf("socket not preferred over the dev port: %q", devUnixSocket)
+	}
+	resp, err := devClient(2 * time.Second).Get(devBaseURL + "/v1/plugins")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	got, _ := io.ReadAll(resp.Body)
+	if string(got) != "via-socket /v1/plugins" {
+		t.Fatalf("got %q", got)
+	}
 }

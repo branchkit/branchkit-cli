@@ -243,7 +243,7 @@ func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
 	if devAccessScope != "" {
 		return restartViaEndpoint(pluginID, token), false
 	}
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := devClient(60 * time.Second)
 	url := fmt.Sprintf("%s/dev/plugins/%s/rebuild", devBaseURL, pluginID)
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
@@ -289,7 +289,7 @@ func reloadViaEndpoint(pluginID, token string) (ok, manifestReloaded bool) {
 // restartViaEndpoint reloads a plugin's binary + manifest without asking the
 // app to build anything — the scoped-token half of the watch loop.
 func restartViaEndpoint(pluginID, token string) bool {
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := devClient(30 * time.Second)
 	url := fmt.Sprintf("%s/dev/plugins/%s/restart", devBaseURL, pluginID)
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {

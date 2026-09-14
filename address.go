@@ -9,13 +9,36 @@ package main
 // in the file — host.token and the Developer Access files carry those.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 )
+
+// Set alongside devBaseURL when the address file lists an operator socket:
+// every request then dials the socket and devBaseURL is a placeholder host.
+var devUnixSocket string
+
+// devClient is the one HTTP client for operator calls: over the operator
+// socket when the app offers one, over loopback TCP otherwise.
+func devClient(timeout time.Duration) *http.Client {
+	c := &http.Client{Timeout: timeout}
+	if sock := devUnixSocket; sock != "" {
+		c.Transport = &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", sock)
+			},
+		}
+	}
+	return c
+}
 
 type appAddress struct {
 	V         int   `json:"v"`
@@ -72,6 +95,12 @@ func resolveDevBaseURL() error {
 	if err != nil {
 		return err
 	}
+	if a.Operator != nil && a.Operator.Socket != "" {
+		devUnixSocket = a.Operator.Socket
+		devBaseURL = "http://branchkit"
+		return nil
+	}
+	devUnixSocket = ""
 	port := a.UI.Port
 	if a.Dev != nil && a.Dev.Port != 0 {
 		port = a.Dev.Port

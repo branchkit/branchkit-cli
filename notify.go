@@ -10,7 +10,7 @@ import (
 // notifyActuator tells a running actuator to reload plugins.
 // Silently succeeds if the actuator is not running.
 func notifyActuator() {
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := devClient(5 * time.Second)
 	// readHostToken resolves the app's address first; without it there is
 	// no URL to build.
 	token := readHostToken()

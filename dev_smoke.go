@@ -54,7 +54,7 @@ func devHTTP(method, path, token string, body any) ([]byte, int, error) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := devClient(10 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, err
