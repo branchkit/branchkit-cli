@@ -226,7 +226,7 @@ func cmdDevSmoke(args []string) {
 	}
 
 	// --- 2. Layer-2 state: matchable inspector ---
-	raw, status, err = devHTTP("GET", "/inspector/matchable", "", nil)
+	raw, status, err = devHTTP("GET", "/inspector/matchable", token, nil)
 	var matchable struct {
 		ActiveTags          []string       `json:"active_tags"`
 		ExclusiveTags       []string       `json:"exclusive_tags"`
@@ -249,7 +249,7 @@ func cmdDevSmoke(args []string) {
 	}
 
 	// --- 3. Layer-1 state: vocabulary lag ---
-	raw, status, err = devHTTP("GET", "/inspector/vocabulary", "", nil)
+	raw, status, err = devHTTP("GET", "/inspector/vocabulary", token, nil)
 	var vocab struct {
 		InSync        bool     `json:"in_sync"`
 		EverCommitted bool     `json:"ever_committed"`
@@ -373,7 +373,7 @@ func cmdDevSmoke(args []string) {
 	// last reconciliation; `orphans` are surfaced-not-deleted; `quarantined`
 	// is the durable collection_logs/orphaned/ scan. See
 	// DESIGN_PLUGIN_DATA_LIFECYCLE.md.
-	raw, status, err = devHTTP("GET", "/inspector/ownership", "", nil)
+	raw, status, err = devHTTP("GET", "/inspector/ownership", token, nil)
 	var ownership struct {
 		RefusedCount       int  `json:"refused_count"`
 		OrphanCount        int  `json:"orphan_count"`
