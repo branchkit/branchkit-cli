@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -172,6 +173,10 @@ func watchedSource(name string) bool {
 }
 
 func readHostToken() string {
+	if err := resolveDevBaseURL(); err != nil {
+		addressWarnOnce.Do(func() { fmt.Fprintf(os.Stderr, "%v\n", err) })
+		return ""
+	}
 	path := filepath.Join(appSupportDir(), "host.token")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -190,6 +195,7 @@ func readHostToken() string {
 // devAccessScope is set alongside readDevAccessToken's result: the plugin
 // id a scoped token answers for. Empty when running on a host token.
 var devAccessScope string
+var addressWarnOnce sync.Once
 
 // readDevAccessToken resolves the first Developer Access discovery file,
 // rewires devBaseURL to the app's real port, and returns the scoped token.
@@ -215,13 +221,13 @@ func readDevAccessToken() string {
 		}
 		var d struct {
 			PluginID string `json:"plugin_id"`
-			Port     int    `json:"port"`
 			Token    string `json:"token"`
 		}
-		if json.Unmarshal(raw, &d) != nil || d.Token == "" || d.Port == 0 {
+		if json.Unmarshal(raw, &d) != nil || d.Token == "" {
 			continue
 		}
-		devBaseURL = fmt.Sprintf("http://127.0.0.1:%d", d.Port)
+		// The port comes from the address file (resolveDevBaseURL); this
+		// file carries the grant only.
 		devAccessScope = d.PluginID
 		fmt.Fprintf(os.Stderr, "(developer access: scoped to plugin '%s' via %s)\n", d.PluginID, n)
 		return d.Token

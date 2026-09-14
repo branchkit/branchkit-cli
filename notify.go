@@ -11,6 +11,13 @@ import (
 // Silently succeeds if the actuator is not running.
 func notifyActuator() {
 	client := &http.Client{Timeout: 5 * time.Second}
+	// readHostToken resolves the app's address first; without it there is
+	// no URL to build.
+	token := readHostToken()
+	if devBaseURL == "" {
+		fmt.Println("Actuator is not running — plugin will load on next start.")
+		return
+	}
 	req, err := http.NewRequest(http.MethodPost, devBaseURL+"/settings/reload-plugins", nil)
 	if err != nil {
 		return
@@ -18,7 +25,7 @@ func notifyActuator() {
 	// The reload endpoint is host-token-gated like every mutating route.
 	// This call shipped tokenless and therefore 401'd on every install —
 	// "plugin will load immediately" had never once been true from the CLI.
-	if token := readHostToken(); token != "" {
+	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := client.Do(req)

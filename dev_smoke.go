@@ -31,8 +31,9 @@ import (
 // Reachable base of the running app's API. Dev builds bind :21551; a
 // production install is reached through a per-plugin Developer Access
 // discovery file, which carries the UI server's random port —
-// readHostToken() rewrites this when it resolves one.
-var devBaseURL = "http://127.0.0.1:21551"
+// Set by readHostToken() from the app's address file
+// (run/address.json); there is no default — a port is never guessed.
+var devBaseURL = ""
 
 func devHTTP(method, path, token string, body any) ([]byte, int, error) {
 	var reader io.Reader
