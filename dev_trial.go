@@ -73,6 +73,7 @@ func cmdDevTrial(args []string) {
 	tmpl := ""
 	keep := false
 	listener := false
+	network := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--template":
@@ -84,6 +85,8 @@ func cmdDevTrial(args []string) {
 			keep = true
 		case "--listener":
 			listener = true
+		case "--network":
+			network = true
 		}
 	}
 	if tmpl != "go" && tmpl != "ts" && tmpl != "py" {
@@ -92,6 +95,10 @@ func cmdDevTrial(args []string) {
 	}
 	if listener && tmpl != "ts" {
 		fmt.Fprintln(os.Stderr, "Error: --listener exercises the TypeScript Node engine; use it with --template ts")
+		os.Exit(1)
+	}
+	if listener && network {
+		fmt.Fprintln(os.Stderr, "Error: --listener and --network each rewrite the manifest's network tier; run them separately")
 		os.Exit(1)
 	}
 
@@ -110,6 +117,9 @@ func cmdDevTrial(args []string) {
 	if listener {
 		id += "listen"
 	}
+	if network {
+		id += "net"
+	}
 	parent, err := os.MkdirTemp("", "branchkit-trial-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -127,7 +137,11 @@ func cmdDevTrial(args []string) {
 	t := &trialRun{}
 	installed := false
 
+	var probe *networkProbe
 	cleanup := func() {
+		if probe != nil {
+			probe.close()
+		}
 		if keep {
 			fmt.Printf("\nKept: %s (installed as %s)\n", dir, link)
 			return
@@ -173,12 +187,34 @@ func cmdDevTrial(args []string) {
 			return
 		}
 	}
+	if network {
+		probe, err = startNetworkProbe()
+		if err == nil {
+			err = declareProbeHosts(dir, probe)
+		}
+		if err == nil {
+			err = writeProbeSource(dir, tmpl, probe)
+		}
+		if !t.record("network probe attached (4 loopback ports, 3 declared)", err, "") {
+			finish()
+			return
+		}
+		out, err = runSelf(self, dir, "dev", "build")
+		if !t.record("rebuild with the probe", errWithTail(err, out), lastLine(out)) {
+			finish()
+			return
+		}
+	}
 
 	// 3. Its own tests: static checks, harness conformance, unit tests.
 	out, err = runSelf(self, dir, "dev", "test", ".")
 	t.record("dev test", errWithTail(err, out), lastLine(out))
 
-	// 4. Install by link and let the app discover it.
+	// 4. Install by link and let the app discover it. Anything the network
+	//    probe counted so far came from the unsandboxed test harness.
+	if probe != nil {
+		probe.reset()
+	}
 	os.Remove(link)
 	err = os.Symlink(dir, link)
 	if !t.record("install (symlink into plugins/)", err, "") {
@@ -230,6 +266,16 @@ func cmdDevTrial(args []string) {
 		return
 	}
 
+	// 6b. The network probe runs at on_ready; judge it by what arrived.
+	if network {
+		var doneErr error
+		if !probe.waitDone(40 * time.Second) {
+			doneErr = fmt.Errorf("the plugin never reported finishing — its last proxied dial did not arrive")
+		}
+		t.record("network: the probe ran to completion", doneErr, "")
+		probe.verdict(t)
+	}
+
 	// 7. Matching, without executing anything.
 	matched, err := resolvePreview(token, []string{word, "branchkit"})
 	if err == nil && !matched {
@@ -251,12 +297,15 @@ func cmdDevTrial(args []string) {
 }
 
 func printDevTrialUsage() {
-	fmt.Println("Usage: branchkit-cli dev trial --template go|ts|py [--listener] [--keep]")
+	fmt.Println("Usage: branchkit-cli dev trial --template go|ts|py [--listener | --network] [--keep]")
 	fmt.Println("  Scaffolds a plugin, runs its tests, installs it in the running dev app,")
 	fmt.Println("  approves it, and checks that it starts, matches and renders — then")
 	fmt.Println("  removes it. Executes no command. Needs a dev build of BranchKit running.")
 	fmt.Println()
 	fmt.Println("  --listener   TypeScript only: declare sockets.listen, so the Node engine is built")
+	fmt.Println("  --network    declare a host allowlist and probe it: a declared host must be")
+	fmt.Println("               reachable through the proxy, an undeclared one refused, and a raw")
+	fmt.Println("               socket refused by the sandbox. Loopback only; needs no internet.")
 	fmt.Println("  --keep       leave the plugin installed and its folder in place")
 }
 
@@ -396,4 +445,19 @@ func waitForStatus(token, id string, timeout time.Duration, want ...string) stri
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+// declareProbeHosts gives the scaffold the probe's allowlist.
+func declareProbeHosts(dir string, p *networkProbe) error {
+	path := filepath.Join(dir, "plugin.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return err
+	}
+	manifest["network"] = map[string]any{"hosts": p.declaredHosts()}
+	return writeJSON(path, manifest)
 }

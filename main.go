@@ -324,7 +324,7 @@ func printDevUsage() {
 	fmt.Println("        Recognition-margin distribution (verdict-split) of a keyed")
 	fmt.Println("        recognition log, read via its compacted projection — for floor siting")
 	fmt.Println("  bisect [--pin ID]... | bisect restore | bisect cancel")
-	fmt.Println("  trial --template go|ts|py [--listener] [--keep]   scaffold a plugin and run it through the real app")
+	fmt.Println("  trial --template go|ts|py [--listener | --network] [--keep]   scaffold a plugin and run it through the real app")
 	fmt.Println("        Find WHICH plugin causes a symptom by disabling dependency-closed")
 	fmt.Println("        halves and asking you after each round — you are the oracle")
 }
