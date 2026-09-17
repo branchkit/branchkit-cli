@@ -269,3 +269,31 @@ func TestKeybindNonObjectParamsFails(t *testing.T) {
 		t.Fatalf("nested binding should not fail: %+v", good)
 	}
 }
+
+// `run` is a command line: an interpreter-run plugin is checked by its script,
+// not by a file literally named "python3 main.py".
+func TestRunTarget(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "run.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	py := []any{"python"}
+	cases := []struct {
+		run         string
+		runtimes    any
+		target, via string
+	}{
+		{"python3 main.py", py, "main.py", "python3"},
+		{"python3 -u ./main.py", py, "main.py", "python3"},
+		{"python3", py, "", "python3"},
+		{"bun run src/index.ts", []any{"bun"}, "src/index.ts", "bun"}, // a subcommand is not the script
+		{"./run.sh", []any{"bun"}, "run.sh", ""},                      // a real file in the plugin is the program
+		{"./hello-plugin --flag", nil, "hello-plugin", ""},
+	}
+	for _, c := range cases {
+		target, via := runTarget(dir, c.run, c.runtimes)
+		if target != c.target || via != c.via {
+			t.Errorf("runTarget(%q) = (%q, %q), want (%q, %q)", c.run, target, via, c.target, c.via)
+		}
+	}
+}

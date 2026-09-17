@@ -32,9 +32,7 @@ func cmdDevMargins(args []string) {
 				collection = args[i]
 			}
 		case "-h", "--help":
-			fmt.Println("Usage: branchkit-cli dev margins [--collection <name>]")
-			fmt.Println("  Reports the recognition-margin distribution (verdict-split) of a")
-			fmt.Println("  keyed recognition log, read via its compacted projection.")
+			printDevMarginsUsage()
 			return
 		}
 	}
@@ -211,4 +209,10 @@ func maxFloat(v []float64) float64 {
 		}
 	}
 	return m
+}
+
+func printDevMarginsUsage() {
+	fmt.Println("Usage: branchkit-cli dev margins [--collection <name>]")
+	fmt.Println("  Reports the recognition-margin distribution (verdict-split) of a")
+	fmt.Println("  keyed recognition log, read via its compacted projection.")
 }

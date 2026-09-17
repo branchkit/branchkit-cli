@@ -861,15 +861,66 @@ func checkRunBinary(dir string, m map[string]any) TestResult {
 		return TestResult{Name: "run_binary", Status: "fail", Detail: "run field is empty"}
 	}
 
-	binary := strings.TrimPrefix(s, "./")
-	binaryPath := filepath.Join(dir, binary)
-	if _, err := os.Stat(binaryPath); err != nil {
+	target, via := runTarget(dir, s, m["runtimes"])
+	if target == "" {
+		return TestResult{Name: "run_binary", Status: "warn",
+			Detail: fmt.Sprintf("run %q names an interpreter but no script", s)}
+	}
+	if _, err := os.Stat(filepath.Join(dir, target)); err != nil {
+		if via != "" {
+			return TestResult{
+				Name: "run_binary", Status: "warn",
+				Detail: fmt.Sprintf("%s not found (run by %s)", target, via),
+			}
+		}
 		return TestResult{
 			Name: "run_binary", Status: "warn",
-			Detail: fmt.Sprintf("%s not found — run \"branchkit dev build\" first", binary),
+			Detail: fmt.Sprintf("%s not found — run \"branchkit dev build\" first", target),
 		}
 	}
-	return TestResult{Name: "run_binary", Status: "pass", Detail: binary}
+	if via != "" {
+		return TestResult{Name: "run_binary", Status: "pass", Detail: fmt.Sprintf("%s (run by %s)", target, via)}
+	}
+	return TestResult{Name: "run_binary", Status: "pass", Detail: target}
+}
+
+// runTarget names the file a `run` command line needs on disk. `run` is a
+// command line, not a path: the first word is the program. When the manifest
+// declares `runtimes` and that word is not a file in the plugin, it is the
+// interpreter the platform supplies (`python3 main.py`), and the file that
+// must exist is the script (see below for how it is found). `via` is
+// the interpreter word in that case, empty otherwise. The test harness applies
+// the same rule (`run_target` in test-harness/src/main.rs).
+func runTarget(dir, run string, runtimes any) (target, via string) {
+	words := strings.Fields(run)
+	if len(words) == 0 {
+		return "", ""
+	}
+	program := strings.TrimPrefix(words[0], "./")
+	declared, _ := runtimes.([]any)
+	if len(declared) == 0 {
+		return program, ""
+	}
+	if _, err := os.Stat(filepath.Join(dir, program)); err == nil {
+		return program, ""
+	}
+	// Same derivation the actuator's file watcher uses (`classify_run_target`):
+	// the script is the first argument that is a real file here, because a
+	// subcommand can sit in between (`bun run src/index.ts`). When nothing
+	// exists yet, name the first argument that LOOKS like a file, so the
+	// warning points at the script and not at the subcommand.
+	for _, w := range words[1:] {
+		w = strings.TrimPrefix(w, "./")
+		if info, err := os.Stat(filepath.Join(dir, w)); err == nil && !info.IsDir() {
+			return w, words[0]
+		}
+	}
+	for _, w := range words[1:] {
+		if !strings.HasPrefix(w, "-") && filepath.Ext(w) != "" {
+			return strings.TrimPrefix(w, "./"), words[0]
+		}
+	}
+	return "", words[0]
 }
 
 func printTestResults(phase TestPhaseResult, jsonOutput bool) int {

@@ -11,6 +11,16 @@ func main() {
 		os.Exit(0)
 	}
 
+	// A help flag ANYWHERE wins, before any command runs. Most subcommands
+	// parse flags with a switch that ignores what it does not know, so
+	// `dev init --help` used to scaffold `my-plugin/` with every default and
+	// build it, and `plugin install --help` went looking for a plugin named
+	// "--help".
+	if usage := usageFor(os.Args[1:]); usage != nil {
+		usage()
+		return
+	}
+
 	switch os.Args[1] {
 	case "plugin":
 		if len(os.Args) < 3 {
@@ -174,6 +184,50 @@ func main() {
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+// specificUsage is the help for a subcommand that has its own; anything not
+// here answers with its group's usage.
+var specificUsage = map[string]func(){
+	"dev events":  printDevEventsUsage,
+	"dev bisect":  printDevBisectUsage,
+	"dev vocab":   printDevVocabUsage,
+	"dev margins": printDevMarginsUsage,
+}
+
+var groupUsage = map[string]func(){
+	"plugin":   printPluginUsage,
+	"model":    printModelUsage,
+	"runtime":  printRuntimeUsage,
+	"dev":      printDevUsage,
+	"docs":     printDocsUsage,
+	"registry": printRegistryUsage,
+}
+
+// usageFor returns the usage printer to run when args (everything after the
+// program name) ask for help, and nil when they do not. Only the exact tokens
+// `--help` and `-h` count, so a quoted phrase handed to `dev say` is safe
+// unless it IS one of those.
+func usageFor(args []string) func() {
+	asked := false
+	for _, a := range args {
+		if a == "--help" || a == "-h" {
+			asked = true
+			break
+		}
+	}
+	if !asked || len(args) == 0 {
+		return nil
+	}
+	if len(args) >= 2 {
+		if u, ok := specificUsage[args[0]+" "+args[1]]; ok {
+			return u
+		}
+	}
+	if u, ok := groupUsage[args[0]]; ok {
+		return u
+	}
+	return printUsage
 }
 
 func printUsage() {

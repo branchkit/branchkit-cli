@@ -481,6 +481,14 @@ func runHarnessConformance(dir string, jsonOutput bool) int {
 
 func findHarnessBinary() string {
 	if env := os.Getenv("BRANCHKIT_TEST_HARNESS"); env != "" {
+		// An explicit path that is not there is a mistake to report, not a
+		// reason to fall through: the caller would run a different harness
+		// than the one they named, or read "1 test(s) failed" off a spawn
+		// error and blame the plugin.
+		if !fileExists(env) {
+			fmt.Fprintf(os.Stderr, "Error: BRANCHKIT_TEST_HARNESS=%s does not exist\n", env)
+			os.Exit(1)
+		}
 		return env
 	}
 
@@ -492,8 +500,14 @@ func findHarnessBinary() string {
 		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 			exe = resolved
 		}
+		exeDir := filepath.Dir(exe)
 		candidates = append(candidates,
-			filepath.Join(filepath.Dir(exe), "branchkit-test-harness"))
+			filepath.Join(exeDir, "branchkit-test-harness"),
+			// A CLI built in the workspace (`branchkit-cli/branchkit-cli`)
+			// testing a plugin that lives OUTSIDE it: the cwd-relative
+			// entries below miss, so look beside the executable's workspace.
+			filepath.Join(exeDir, "../target/release/branchkit-test-harness"),
+			filepath.Join(exeDir, "../target/debug/branchkit-test-harness"))
 	}
 	candidates = append(candidates,
 		"/Applications/BranchKit.app/Contents/Resources/branchkit-test-harness",
