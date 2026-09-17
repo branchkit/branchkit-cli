@@ -54,7 +54,7 @@ func releaseArtifactName(name, goos, goarch string) string {
 // LICENSE, README, etc. — with no per-plugin enumeration.
 var packageDenylistNames = map[string]bool{
 	".git": true, ".github": true, ".gitignore": true, ".gitmodules": true,
-	"src": true, "node_modules": true,
+	"src": true, "node_modules": true, tsBuildDir: true,
 	"go.mod": true, "go.sum": true,
 	"package.json": true, "package-lock.json": true, "bun.lock": true, "bun.lockb": true,
 	"tsconfig.json": true, "Taskfile.yml": true, "Justfile": true,

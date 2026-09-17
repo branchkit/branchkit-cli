@@ -7,7 +7,13 @@
   "description": "{{.Description}}",
   "author": "Your Name",
   "privileges": ["input"],
-  "run": "./run.sh",
+  "dev": {
+    "build": [
+      ["branchkit-cli", "dev", "build"]
+    ],
+    "build_dir": "."
+  },
+  "run": "./{{.PluginID}}-plugin",
   "action_prefix": "{{.ActionPrefix}}",
   "action_types": {
     "greet": {

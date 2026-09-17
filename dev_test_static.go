@@ -861,6 +861,21 @@ func checkRunBinary(dir string, m map[string]any) TestResult {
 		return TestResult{Name: "run_binary", Status: "fail", Detail: "run field is empty"}
 	}
 
+	// A JavaScript runtime as the launch program cannot start under the
+	// plugin sandbox: an interpreted `bun run` dies reading its ancestor
+	// directories and Node needs grants nothing gives it. TypeScript plugins
+	// run as a compiled binary (`branchkit-cli dev build`).
+	if first := strings.Fields(s); len(first) > 0 && (first[0] == "bun" || first[0] == "node") {
+		return TestResult{Name: "run_binary", Status: "fail",
+			Detail: fmt.Sprintf("run %q launches a JavaScript runtime, which cannot start under the plugin sandbox — "+
+				"set \"run\" to \"./<id>-plugin\" and build it with `branchkit-cli dev build`", s)}
+	}
+	if privs, _ := m["privileges"].([]any); strings.HasSuffix(strings.Fields(s)[0], ".sh") && !containsString(privs, "shell") {
+		return TestResult{Name: "run_binary", Status: "fail",
+			Detail: fmt.Sprintf("run %q is a shell script, and executing one needs the \"shell\" privilege — "+
+				"the sandbox refuses it otherwise", s)}
+	}
+
 	target, via := runTarget(dir, s, m["runtimes"])
 	if target == "" {
 		return TestResult{Name: "run_binary", Status: "warn",
@@ -958,4 +973,13 @@ func printTestResults(phase TestPhaseResult, jsonOutput bool) int {
 		}
 	}
 	return failures
+}
+
+func containsString(list []any, want string) bool {
+	for _, v := range list {
+		if s, ok := v.(string); ok && s == want {
+			return true
+		}
+	}
+	return false
 }

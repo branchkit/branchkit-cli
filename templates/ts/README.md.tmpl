@@ -8,6 +8,14 @@
 branchkit-cli dev build
 ```
 
+A TypeScript plugin runs as one compiled binary, `{{.PluginID}}-plugin`, in this
+directory. Rebuild after every change (`branchkit-cli dev watch` does it on
+save). The build uses BranchKit's own pinned Bun, so nothing needs installing
+first, and people who install your plugin need no JavaScript runtime at all.
+
+If `plugin.json` declares `sockets.listen`, the same command builds on Node
+instead. You do not choose, and your code does not change.
+
 ## Test
 
 ```bash
@@ -28,7 +36,7 @@ branchkit-cli plugin install . --build
 | `plugin.json` | Manifest -- declares actions, keybinds, voice commands |
 | `commands.json` | Voice command patterns that trigger actions |
 | `src/index.ts` | Handler logic -- your plugin's behavior |
-| `run.sh` | Wrapper script that starts the plugin via Bun |
+| `{{.PluginID}}-plugin` | The compiled plugin -- build output, not checked in |
 
 ## Platform documentation
 

@@ -2,53 +2,10 @@ package main
 
 import (
 	"archive/zip"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
-
-func TestNeedsBun(t *testing.T) {
-	tests := []struct {
-		run  string
-		want bool
-	}{
-		{"bun run ./index.ts", true},
-		{"bun run .", true},
-		{"./my-plugin", false},
-		{"go run .", false},
-		{"node ./dist/index.js", false},
-		{"", false},
-		{"bunny", false},
-	}
-	for _, tt := range tests {
-		m := PluginManifest{Run: tt.run}
-		if got := needsBun(m); got != tt.want {
-			t.Errorf("needsBun(%q) = %v, want %v", tt.run, got, tt.want)
-		}
-	}
-}
-
-func TestNeedsNode(t *testing.T) {
-	listener := &SocketsCfg{Listen: []json.RawMessage{json.RawMessage(`{"id":"ext"}`)}}
-	tests := []struct {
-		name string
-		m    PluginManifest
-		want bool
-	}{
-		// The one combination that must run under Node: Bun-run TS plugin
-		// declaring loopback listeners (Bun can't serve an inherited fd).
-		{"bun + listener", PluginManifest{Run: "bun run ./index.ts", Sockets: listener}, true},
-		{"bun, no sockets", PluginManifest{Run: "bun run ./index.ts"}, false},
-		{"bun, empty listen", PluginManifest{Run: "bun run ./index.ts", Sockets: &SocketsCfg{}}, false},
-		{"go binary + listener", PluginManifest{Run: "./my-plugin", Sockets: listener}, false},
-	}
-	for _, tt := range tests {
-		if got := needsNode(tt.m); got != tt.want {
-			t.Errorf("%s: needsNode = %v, want %v", tt.name, got, tt.want)
-		}
-	}
-}
 
 func TestManagedBunPaths(t *testing.T) {
 	bunPath := managedBunPath()

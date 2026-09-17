@@ -84,8 +84,20 @@ func cmdRuntimeInstall(name string) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+	case "bun":
+		if err := ensureBunRuntime(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Bun %s at %s\n", bunVersion, managedBunPath())
+	case "node":
+		if err := ensureNodeRuntime(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Node %s at %s\n", nodeVersion, managedNodePath())
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown runtime %q — installable runtimes: python\n", name)
+		fmt.Fprintf(os.Stderr, "Unknown runtime %q — installable runtimes: python, bun, node\n", name)
 		os.Exit(1)
 	}
 }

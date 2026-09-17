@@ -91,7 +91,6 @@ func installFromLocal(source string) error {
 	}
 
 	fmt.Printf("Installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
-	checkRuntime(manifest)
 	notifyActuator()
 	return nil
 }
@@ -243,7 +242,6 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 
 	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
 	printInstallInfo(manifest, parsed, tag)
-	checkRuntime(manifest)
 	notifyActuator()
 	os.RemoveAll(tempDir)
 	return nil
@@ -378,7 +376,6 @@ func installFromSource(source string) error {
 
 	fmt.Printf("Built and installed plugin '%s' v%s by github:%s\n", manifest.Name, manifest.Version, parsed.Owner)
 	printInstallInfo(manifest, parsed, "source-build")
-	checkRuntime(manifest)
 	notifyActuator()
 	os.RemoveAll(tempDir)
 	return nil

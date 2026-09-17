@@ -101,9 +101,6 @@ func cmdDevInit(args []string) {
 			err = scaffoldGoPlugin(name, data)
 		case "ts":
 			err = scaffoldTSPlugin(name, data)
-			if err == nil {
-				err = os.Chmod(filepath.Join(name, "run.sh"), 0o755)
-			}
 		case "py":
 			err = scaffoldPyPlugin(name, data)
 		}
@@ -174,23 +171,17 @@ func cmdDevInit(args []string) {
 			os.Exit(1)
 		}
 
-		if err := os.Chmod(filepath.Join(name, "run.sh"), 0o755); err != nil {
-			os.RemoveAll(name)
-			fmt.Fprintf(os.Stderr, "Error: chmod run.sh: %v\n", err)
-			os.Exit(1)
+		// Build it, the way the Go template does: a TypeScript plugin runs as
+		// a compiled binary, so a scaffold that has not been built cannot
+		// start. It also resolves dependencies, with the managed Bun. (`--bare`
+		// returned above: offline use, and the mirror drift gate.)
+		abs, err := filepath.Abs(name)
+		if err == nil {
+			err = buildTypeScriptPlugin(abs)
 		}
-
-		bunPath := "bun"
-		if managed := managedBunPath(); fileExists(managed) {
-			bunPath = managed
-		}
-		cmd := exec.Command(bunPath, "install")
-		cmd.Dir = name
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		if err != nil {
 			os.RemoveAll(name)
-			fmt.Fprintf(os.Stderr, "Error: bun install failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -320,8 +311,9 @@ func scaffoldTSPlugin(dir string, data templateData) error {
 	}{
 		{"templates/ts/plugin.json.tmpl", "plugin.json"},
 		{"templates/ts/commands.json.tmpl", "commands.json"},
-		{"templates/ts/run.sh.tmpl", "run.sh"},
 		{"templates/ts/package.json.tmpl", "package.json"},
+		// Named without its dot: go:embed skips dotfiles under a `*` pattern.
+		{"templates/ts/gitignore.tmpl", ".gitignore"},
 		{"templates/ts/README.md.tmpl", "README.md"},
 		{"templates/ts/src/index.ts.tmpl", "src/index.ts"},
 		{"templates/ts/src/index.test.ts.tmpl", "src/index.test.ts"},
@@ -589,33 +581,10 @@ func cmdDevBuild(args []string) {
 		fmt.Printf("Built %s\n", binaryName)
 
 	case fileExists(filepath.Join(srcDir, "package.json")) || fileExists(filepath.Join(absDir, "package.json")):
-		pkgDir := srcDir
-		if !fileExists(filepath.Join(srcDir, "package.json")) {
-			pkgDir = absDir
-		}
-
-		bunPath := "bun"
-		if managed := managedBunPath(); fileExists(managed) {
-			bunPath = managed
-		}
-
-		if _, err := exec.LookPath(bunPath); err != nil && bunPath == "bun" {
-			fmt.Fprintf(os.Stderr, "Error: bun not found. Install it: https://bun.sh\n")
+		if err := buildTypeScriptPlugin(absDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Build failed: %v\n", err)
 			os.Exit(1)
 		}
-
-		if !fileExists(filepath.Join(pkgDir, "node_modules")) {
-			fmt.Printf("Installing dependencies for %s...\n", manifest.ID)
-			cmd := exec.Command(bunPath, "install")
-			cmd.Dir = pkgDir
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "bun install failed: %v\n", err)
-				os.Exit(1)
-			}
-		}
-		fmt.Printf("TypeScript plugin %s is ready (no build step needed)\n", manifest.ID)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Error: unknown build system — expected go.mod in src/ or package.json\n")
