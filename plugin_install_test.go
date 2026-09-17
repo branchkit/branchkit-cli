@@ -221,3 +221,21 @@ func TestReadManifestBadJSON(t *testing.T) {
 		t.Fatal("expected error for bad JSON")
 	}
 }
+
+// `.` is what every scaffold's README tells an author to type. It was read as
+// a catalog short name and failed with "plugin '.' not found".
+func TestDotIsALocalPath(t *testing.T) {
+	for _, s := range []string{".", "./", "./plugin", "..", "../plugin", "/abs/plugin", "~", "~/plugin"} {
+		if !isLocalPath(s) {
+			t.Errorf("isLocalPath(%q) = false, want true", s)
+		}
+		if isShortName(s) {
+			t.Errorf("isShortName(%q) = true: a path is a path before it is a catalog name", s)
+		}
+	}
+	for _, s := range []string{"voice", "github:owner/repo", "owner/repo"} {
+		if isLocalPath(s) {
+			t.Errorf("isLocalPath(%q) = true, want false", s)
+		}
+	}
+}

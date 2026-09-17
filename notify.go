@@ -10,10 +10,13 @@ import (
 // notifyActuator tells a running actuator to reload plugins.
 // Silently succeeds if the actuator is not running.
 func notifyActuator() {
-	client := devClient(5 * time.Second)
 	// readHostToken resolves the app's address first; without it there is
-	// no URL to build.
+	// no URL to build — and no operator socket for the client to dial. The
+	// client used to be built BEFORE this line, so it never got the socket
+	// transport, every call failed, and an install into a running app always
+	// reported "Actuator is not running".
 	token := readHostToken()
+	client := devClient(5 * time.Second)
 	if devBaseURL == "" {
 		fmt.Println("Actuator is not running — plugin will load on next start.")
 		return

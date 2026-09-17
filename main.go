@@ -153,6 +153,8 @@ func main() {
 			cmdDevMargins(os.Args[3:])
 		case "bisect":
 			cmdDevBisect(os.Args[3:])
+		case "trial":
+			cmdDevTrial(os.Args[3:])
 		case "help", "--help", "-h":
 			printDevUsage()
 		default:
@@ -193,6 +195,7 @@ var specificUsage = map[string]func(){
 	"dev bisect":  printDevBisectUsage,
 	"dev vocab":   printDevVocabUsage,
 	"dev margins": printDevMarginsUsage,
+	"dev trial":   printDevTrialUsage,
 }
 
 var groupUsage = map[string]func(){
@@ -290,7 +293,7 @@ func printDevUsage() {
 	fmt.Println("Commands:")
 	fmt.Println("  init [--name NAME] [--template go|ts|py] [--description DESC]")
 	fmt.Println("        Scaffold a new plugin from template")
-	fmt.Println("  build [path]")
+	fmt.Println("  build [path] [--os darwin|linux|windows] [--arch amd64|arm64]   cross-builds land in dist/<os>-<arch>/")
 	fmt.Println("        Detect build system and build plugin binary")
 	fmt.Println("  test [path] [--static-only] [--json]")
 	fmt.Println("        Run static analysis on a plugin")
@@ -321,6 +324,7 @@ func printDevUsage() {
 	fmt.Println("        Recognition-margin distribution (verdict-split) of a keyed")
 	fmt.Println("        recognition log, read via its compacted projection — for floor siting")
 	fmt.Println("  bisect [--pin ID]... | bisect restore | bisect cancel")
+	fmt.Println("  trial --template go|ts|py [--listener] [--keep]   scaffold a plugin and run it through the real app")
 	fmt.Println("        Find WHICH plugin causes a symptom by disabling dependency-closed")
 	fmt.Println("        halves and asking you after each round — you are the oracle")
 }

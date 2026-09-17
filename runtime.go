@@ -217,52 +217,82 @@ func extractBunFromZip(zipPath, destDir string) error {
 // binary. It is copied into a plugin as the single-executable host, so npm,
 // npx and the headers have no use here.
 func downloadNode() error {
-	key := runtime.GOOS + "/" + runtime.GOARCH
-	want, ok := nodeChecksums[key]
-	if !ok {
-		return fmt.Errorf("no Node build is pinned for %s", key)
-	}
-	archName := map[string]string{"arm64": "arm64", "amd64": "x64"}[runtime.GOARCH]
-
-	var url string
-	if runtime.GOOS == "windows" {
-		url = fmt.Sprintf("https://nodejs.org/dist/v%s/win-%s/node.exe", nodeVersion, archName)
-	} else {
-		url = fmt.Sprintf("https://nodejs.org/dist/v%s/node-v%s-%s-%s.tar.gz",
-			nodeVersion, nodeVersion, runtime.GOOS, archName)
-	}
-	fmt.Printf("Downloading Node v%s for %s...\n", nodeVersion, key)
-	tmpPath, err := downloadVerified(url, want, 300*time.Second)
-	if err != nil {
+	fmt.Printf("Downloading Node v%s for %s/%s...\n", nodeVersion, runtime.GOOS, runtime.GOARCH)
+	if err := fetchNodeBinary(runtime.GOOS, runtime.GOARCH, managedNodePath()); err != nil {
+		os.RemoveAll(filepath.Join(runtimesDir(), "node"))
 		return err
-	}
-	defer os.Remove(tmpPath)
-
-	nodeRoot := filepath.Join(runtimesDir(), "node")
-	if err := os.MkdirAll(filepath.Dir(managedNodePath()), 0o755); err != nil {
-		return fmt.Errorf("failed to create runtime dir: %w", err)
-	}
-	if runtime.GOOS == "windows" {
-		err = copyFile(tmpPath, managedNodePath(), 0o755)
-	} else {
-		var f *os.File
-		if f, err = os.Open(tmpPath); err == nil {
-			err = extractNodeFromTarGz(f, managedNodePath())
-			f.Close()
-		}
-	}
-	if err != nil {
-		os.RemoveAll(nodeRoot)
-		return fmt.Errorf("failed to unpack Node: %w", err)
-	}
-	if err := os.Chmod(managedNodePath(), 0o755); err != nil {
-		return fmt.Errorf("failed to set executable permission: %w", err)
 	}
 	if err := os.WriteFile(managedNodeVersionPath(), []byte(nodeVersion), 0o644); err != nil {
 		return fmt.Errorf("failed to write version file: %w", err)
 	}
 	fmt.Printf("Node v%s installed to %s\n", nodeVersion, managedNodePath())
 	return nil
+}
+
+// crossNodePath is where the pinned Node binary for ANOTHER platform is
+// cached. It is never executed here — a cross-build copies it and injects the
+// plugin into the copy.
+func crossNodePath(goos, goarch string) string {
+	name := "node"
+	if goos == "windows" {
+		name = "node.exe"
+	}
+	return filepath.Join(runtimesDir(), "node-cross", nodeVersion, goos+"-"+goarch, name)
+}
+
+// ensureCrossNode makes the pinned Node binary for goos/goarch available and
+// returns its path. The version is part of the path, so a pin bump never
+// reuses a stale binary.
+func ensureCrossNode(goos, goarch string) (string, error) {
+	dest := crossNodePath(goos, goarch)
+	if fileExists(dest) {
+		return dest, nil
+	}
+	fmt.Printf("Downloading Node v%s for %s/%s (cross-build host binary)...\n", nodeVersion, goos, goarch)
+	if err := fetchNodeBinary(goos, goarch, dest); err != nil {
+		os.Remove(dest)
+		return "", err
+	}
+	return dest, nil
+}
+
+// fetchNodeBinary downloads the pinned Node release for goos/goarch, verifies
+// it, and writes just the node binary to dest.
+func fetchNodeBinary(goos, goarch, dest string) error {
+	key := goos + "/" + goarch
+	want, ok := nodeChecksums[key]
+	if !ok {
+		return fmt.Errorf("no Node build is pinned for %s", key)
+	}
+	archName := map[string]string{"arm64": "arm64", "amd64": "x64"}[goarch]
+	var url string
+	if goos == "windows" {
+		url = fmt.Sprintf("https://nodejs.org/dist/v%s/win-%s/node.exe", nodeVersion, archName)
+	} else {
+		url = fmt.Sprintf("https://nodejs.org/dist/v%s/node-v%s-%s-%s.tar.gz", nodeVersion, nodeVersion, goos, archName)
+	}
+	tmpPath, err := downloadVerified(url, want, 300*time.Second)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpPath)
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return fmt.Errorf("failed to create runtime dir: %w", err)
+	}
+	if goos == "windows" {
+		err = copyFile(tmpPath, dest, 0o755)
+	} else {
+		var f *os.File
+		if f, err = os.Open(tmpPath); err == nil {
+			err = extractNodeFromTarGz(f, dest)
+			f.Close()
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to unpack Node: %w", err)
+	}
+	return os.Chmod(dest, 0o755)
 }
 
 // extractNodeFromTarGz streams the tarball and writes just the bin/node entry.

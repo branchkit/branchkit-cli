@@ -260,6 +260,7 @@ func scaffoldGoPlugin(dir string, data templateData) error {
 		{"templates/go/src/actions_gen.go.tmpl", "src/actions_gen.go"},
 		{"templates/go/src/main_test.go.tmpl", "src/main_test.go"},
 		{"templates/go/README.md.tmpl", "README.md"},
+		{"templates/go/gitignore.tmpl", ".gitignore"},
 		{"templates/go/.github/workflows/conformance.yml.tmpl", ".github/workflows/conformance.yml"},
 	}
 
@@ -362,6 +363,7 @@ func scaffoldPyPlugin(dir string, data templateData) error {
 		{"templates/py/actions_gen.py.tmpl", "actions_gen.py"},
 		{"templates/py/test_main.py.tmpl", "test_main.py"},
 		{"templates/py/README.md.tmpl", "README.md"},
+		{"templates/py/gitignore.tmpl", ".gitignore"},
 		{"templates/py/.github/workflows/conformance.yml.tmpl", ".github/workflows/conformance.yml"},
 	}
 
@@ -529,66 +531,97 @@ func findHarnessBinary() string {
 
 func cmdDevBuild(args []string) {
 	dir := "."
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		dir = args[0]
+	var goos, goarch string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--os":
+			if i+1 < len(args) {
+				i++
+				goos = args[i]
+			}
+		case "--arch":
+			if i+1 < len(args) {
+				i++
+				goarch = args[i]
+			}
+		default:
+			if !strings.HasPrefix(args[i], "-") {
+				dir = args[i]
+			}
+		}
 	}
-
+	target, err := parseBuildTarget(goos, goarch)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	manifestPath := filepath.Join(absDir, "plugin.json")
-	if _, err := os.Stat(manifestPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: no plugin.json found in %s\n", absDir)
+	if err := buildPluginDir(absDir, target); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
 
+// buildPluginDir builds the plugin in absDir by whatever its layout calls
+// for. Shared by `dev build` and `plugin install <dir> --build`, so the two
+// cannot disagree about how a plugin is built. A Python plugin has no build
+// step and succeeds trivially.
+//
+// A target other than this machine cross-builds into dist/<os>-<arch>/, the
+// path to hand `plugin package --binary` for that platform's release artifact.
+func buildPluginDir(absDir string, target buildTarget) error {
+	target = target.resolved()
+	manifestPath := filepath.Join(absDir, "plugin.json")
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading plugin.json: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("no plugin.json found in %s", absDir)
 	}
 	var manifest struct {
 		ID  string `json:"id"`
 		Run string `json:"run"`
 	}
 	if err := json.Unmarshal(raw, &manifest); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing plugin.json: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("parsing plugin.json: %w", err)
 	}
 
 	srcDir := filepath.Join(absDir, "src")
-
 	switch {
 	case fileExists(filepath.Join(srcDir, "go.mod")):
 		binaryName := manifest.ID + "-plugin"
 		if manifest.Run != "" {
 			binaryName = strings.TrimPrefix(manifest.Run, "./")
 		}
-		outputPath := filepath.Join(absDir, binaryName)
-
-		fmt.Printf("Building Go plugin %s...\n", manifest.ID)
-		cmd := exec.Command("go", "build", "-o", outputPath, ".")
+		out := target.outputPath(absDir, binaryName)
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			return err
+		}
+		fmt.Printf("Building Go plugin %s for %s...\n", manifest.ID, target)
+		cmd := exec.Command("go", "build", "-o", out, ".")
 		cmd.Dir = srcDir
+		cmd.Env = append(os.Environ(), "GOOS="+target.goos, "GOARCH="+target.goarch)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Build failed: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("go build failed: %w", err)
 		}
-		fmt.Printf("Built %s\n", binaryName)
+		if rel, rerr := filepath.Rel(absDir, out); rerr == nil {
+			fmt.Printf("Built %s\n", rel)
+		}
+		return nil
 
 	case fileExists(filepath.Join(srcDir, "package.json")) || fileExists(filepath.Join(absDir, "package.json")):
-		if err := buildTypeScriptPlugin(absDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Build failed: %v\n", err)
-			os.Exit(1)
-		}
+		return buildTypeScriptPluginFor(absDir, target)
+
+	case fileExists(filepath.Join(absDir, "main.py")):
+		fmt.Printf("Python plugin %s has no build step\n", manifest.ID)
+		return nil
 
 	default:
-		fmt.Fprintf(os.Stderr, "Error: unknown build system — expected go.mod in src/ or package.json\n")
-		os.Exit(1)
+		return fmt.Errorf("unknown build system — expected go.mod in src/, package.json, or main.py")
 	}
 }
 

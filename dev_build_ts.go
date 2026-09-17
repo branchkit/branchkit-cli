@@ -65,6 +65,66 @@ type tsManifest struct {
 	} `json:"sockets"`
 }
 
+// buildTarget is the platform a build is FOR. The zero value is this machine.
+// A cross-build writes to dist/<os>-<arch>/ and never touches the host binary
+// the running app may be executing.
+type buildTarget struct {
+	goos, goarch string
+}
+
+func hostTarget() buildTarget { return buildTarget{runtime.GOOS, runtime.GOARCH} }
+
+func (t buildTarget) isHost() bool {
+	return (t.goos == "" && t.goarch == "") || (t.goos == runtime.GOOS && t.goarch == runtime.GOARCH)
+}
+
+func (t buildTarget) resolved() buildTarget {
+	if t.goos == "" {
+		t.goos = runtime.GOOS
+	}
+	if t.goarch == "" {
+		t.goarch = runtime.GOARCH
+	}
+	return t
+}
+
+func (t buildTarget) String() string { return t.goos + "-" + t.goarch }
+
+// parseBuildTarget validates --os/--arch. `x64` is accepted for `amd64`,
+// since that is the label release artifacts and Bun both use.
+func parseBuildTarget(goos, goarch string) (buildTarget, error) {
+	if goarch == "x64" || goarch == "x86_64" {
+		goarch = "amd64"
+	}
+	if goarch == "aarch64" {
+		goarch = "arm64"
+	}
+	t := buildTarget{goos, goarch}.resolved()
+	switch t.goos {
+	case "darwin", "linux", "windows":
+	default:
+		return t, fmt.Errorf("unknown --os %q (darwin, linux, windows)", t.goos)
+	}
+	switch t.goarch {
+	case "amd64", "arm64":
+	default:
+		return t, fmt.Errorf("unknown --arch %q (amd64, arm64)", t.goarch)
+	}
+	return t, nil
+}
+
+// outputPath is where the built program lands for a target.
+func (t buildTarget) outputPath(absDir, base string) string {
+	t = t.resolved()
+	if t.goos == "windows" {
+		base += ".exe"
+	}
+	if t.isHost() {
+		return filepath.Join(absDir, base)
+	}
+	return filepath.Join(absDir, "dist", t.String(), base)
+}
+
 // tsEngine is the whole engine decision.
 func tsEngine(m tsManifest) string {
 	if m.Sockets != nil && len(m.Sockets.Listen) > 0 {
@@ -88,7 +148,7 @@ func tsOutputName(m tsManifest) (string, error) {
 				"  (A shell wrapper or `bun run …` cannot start under the plugin sandbox.)",
 			m.Run, want)
 	}
-	return exeName(strings.TrimPrefix(run, "./")), nil
+	return strings.TrimPrefix(run, "./"), nil
 }
 
 // tsEntry finds the plugin's entry module.
@@ -116,9 +176,16 @@ func runTool(dir string, env []string, program string, args ...string) error {
 	return cmd.Run()
 }
 
-// buildTypeScriptPlugin compiles the plugin in absDir to the binary its
-// manifest names, and reports what it built.
+// buildTypeScriptPlugin compiles the plugin in absDir, for this machine, to
+// the binary its manifest names.
 func buildTypeScriptPlugin(absDir string) error {
+	return buildTypeScriptPluginFor(absDir, hostTarget())
+}
+
+// buildTypeScriptPluginFor compiles the plugin for target and reports what it
+// built.
+func buildTypeScriptPluginFor(absDir string, target buildTarget) error {
+	target = target.resolved()
 	raw, err := os.ReadFile(filepath.Join(absDir, "plugin.json"))
 	if err != nil {
 		return fmt.Errorf("reading plugin.json: %w", err)
@@ -146,26 +213,40 @@ func buildTypeScriptPlugin(absDir string) error {
 	}
 	if !fileExists(filepath.Join(pkgDir, "node_modules")) {
 		fmt.Printf("Installing dependencies for %s...\n", m.ID)
-		if err := runTool(pkgDir, bunEnv(), bun, "install"); err != nil {
+		// A lockfile is the author saying "these versions": install exactly
+		// them, so a build reproduces what was tested. A fresh scaffold has
+		// none yet, and the plain install writes it.
+		install := []string{"install"}
+		if fileExists(filepath.Join(pkgDir, "bun.lock")) || fileExists(filepath.Join(pkgDir, "bun.lockb")) {
+			install = append(install, "--frozen-lockfile")
+		}
+		if err := runTool(pkgDir, bunEnv(), bun, install...); err != nil {
 			return fmt.Errorf("bun install failed: %w", err)
 		}
 	}
 
 	engine := tsEngine(m)
-	out := filepath.Join(absDir, outName)
+	out := target.outputPath(absDir, outName)
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return err
+	}
 	// Build beside the target and rename over it: a running plugin keeps its
 	// old inode, and nothing ever observes a half-written binary.
-	tmp := filepath.Join(absDir, ".building-"+outName)
+	tmp := filepath.Join(filepath.Dir(out), ".building-"+filepath.Base(out))
 	os.Remove(tmp)
 	defer os.Remove(tmp)
 
+	forWhom := ""
+	if !target.isHost() {
+		forWhom = " for " + target.String()
+	}
 	switch engine {
 	case "bun":
-		fmt.Printf("Building TypeScript plugin %s (Bun %s)...\n", m.ID, bunVersion)
-		err = buildWithBun(absDir, bun, entry, tmp)
+		fmt.Printf("Building TypeScript plugin %s%s (Bun %s)...\n", m.ID, forWhom, bunVersion)
+		err = buildWithBun(absDir, bun, entry, tmp, target)
 	case "node":
-		fmt.Printf("Building TypeScript plugin %s (Node %s — it declares sockets.listen, which Bun cannot serve)...\n", m.ID, nodeVersion)
-		err = buildWithNode(absDir, bun, entry, tmp)
+		fmt.Printf("Building TypeScript plugin %s%s (Node %s — it declares sockets.listen, which Bun cannot serve)...\n", m.ID, forWhom, nodeVersion)
+		err = buildWithNode(absDir, bun, entry, tmp, target)
 	}
 	if err != nil {
 		return err
@@ -180,7 +261,11 @@ func buildTypeScriptPlugin(absDir string) error {
 	if info, err := os.Stat(out); err == nil {
 		size = info.Size()
 	}
-	fmt.Printf("Built %s (%s engine, %d MB)\n", outName, engine, size/(1024*1024))
+	rel, rerr := filepath.Rel(absDir, out)
+	if rerr != nil {
+		rel = out
+	}
+	fmt.Printf("Built %s (%s engine, %d MB)\n", rel, engine, size/(1024*1024))
 	return nil
 }
 
@@ -191,12 +276,18 @@ func buildTypeScriptPlugin(absDir string) error {
 // plugin sandbox and takes `process.env` with it, silently: the plugin runs
 // with ZERO environment variables — no plugin id, no BRANCHKIT_PLUGIN_DIR, no
 // LISTEN_FDS — and logs nothing about it.
-func buildWithBun(absDir, bun, entry, out string) error {
-	err := runTool(absDir, bunEnv(), bun, "build", entry,
+func buildWithBun(absDir, bun, entry, out string, target buildTarget) error {
+	args := []string{"build", entry,
 		"--compile",
 		"--no-compile-autoload-dotenv",
 		"--no-compile-autoload-bunfig",
-		"--outfile", out)
+		"--outfile", out}
+	if !target.isHost() {
+		// Bun fetches the target platform's runtime itself and embeds it.
+		arch := map[string]string{"amd64": "x64", "arm64": "arm64"}[target.goarch]
+		args = append(args, "--target=bun-"+target.goos+"-"+arch)
+	}
+	err := runTool(absDir, bunEnv(), bun, args...)
 	if err != nil {
 		return fmt.Errorf("bun build --compile failed: %w", err)
 	}
@@ -206,11 +297,26 @@ func buildWithBun(absDir, bun, entry, out string) error {
 // buildWithNode produces a Node single-executable: bundle as ESM, embed it as
 // an asset behind the CommonJS loader, generate the blob, and inject it into a
 // copy of the managed Node binary.
-func buildWithNode(absDir, bun, entry, out string) error {
+func buildWithNode(absDir, bun, entry, out string, target buildTarget) error {
 	if err := ensureNodeRuntime(); err != nil {
 		return fmt.Errorf("the managed Node toolchain is unavailable: %w", err)
 	}
+	// The blob is always generated by THIS machine's Node. It is portable
+	// across platforms as long as the snapshot and code cache are off (the
+	// defaults used here) and the Node version matches the binary it is
+	// injected into — which it does: both come from the one pin.
 	node := managedNodePath()
+	hostBinary := node
+	if !target.isHost() {
+		if target.goos == "darwin" && runtime.GOOS != "darwin" {
+			return fmt.Errorf("a Node-engine plugin for macOS must be built on macOS: the injected binary has to be re-signed with codesign")
+		}
+		cross, err := ensureCrossNode(target.goos, target.goarch)
+		if err != nil {
+			return fmt.Errorf("the Node binary for %s is unavailable: %w", target, err)
+		}
+		hostBinary = cross
+	}
 
 	work := filepath.Join(absDir, tsBuildDir)
 	if err := os.MkdirAll(work, 0o755); err != nil {
@@ -245,25 +351,25 @@ func buildWithNode(absDir, bun, entry, out string) error {
 		return fmt.Errorf("generating the single-executable blob failed: %w", err)
 	}
 
-	if err := copyFile(node, out, 0o755); err != nil {
+	if err := copyFile(hostBinary, out, 0o755); err != nil {
 		return fmt.Errorf("copying the Node binary: %w", err)
 	}
 	// macOS: the copy carries Node's signature, which the injection
 	// invalidates. Strip it first and ad-hoc sign after, or the kernel kills
 	// the binary at launch.
-	if runtime.GOOS == "darwin" {
+	if target.goos == "darwin" {
 		if err := runTool(absDir, os.Environ(), "codesign", "--remove-signature", out); err != nil {
 			return fmt.Errorf("codesign --remove-signature failed: %w", err)
 		}
 	}
 	inject := []string{"x", "postject@" + postjectVersion, out, "NODE_SEA_BLOB", blob, "--sentinel-fuse", seaFuse}
-	if runtime.GOOS == "darwin" {
+	if target.goos == "darwin" {
 		inject = append(inject, "--macho-segment-name", "NODE_SEA")
 	}
 	if err := runTool(absDir, bunEnv(), bun, inject...); err != nil {
 		return fmt.Errorf("injecting the blob failed: %w", err)
 	}
-	if runtime.GOOS == "darwin" {
+	if target.goos == "darwin" {
 		if err := runTool(absDir, os.Environ(), "codesign", "--sign", "-", out); err != nil {
 			return fmt.Errorf("codesign failed: %w", err)
 		}

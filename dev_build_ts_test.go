@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -35,7 +36,7 @@ func TestTsEngine(t *testing.T) {
 func TestTsOutputName(t *testing.T) {
 	ok := tsManifestFrom(t, `{"id":"greeter","run":"./greeter-plugin"}`)
 	name, err := tsOutputName(ok)
-	if err != nil || name != exeName("greeter-plugin") {
+	if err != nil || name != "greeter-plugin" {
 		t.Fatalf("tsOutputName = (%q, %v)", name, err)
 	}
 
@@ -68,5 +69,34 @@ func TestRunBinaryRefusesUnspawnableLaunchers(t *testing.T) {
 		if got := checkRunBinary(dir, c.manifest); got.Status != c.status {
 			t.Errorf("run %v: status %q, want %q (%s)", c.manifest["run"], got.Status, c.status, got.Detail)
 		}
+	}
+}
+
+// A cross-build lands under dist/<os>-<arch>/ and never where the host binary
+// — possibly the one the running app is executing — lives.
+func TestBuildTargetOutputPath(t *testing.T) {
+	host := hostTarget()
+	if got := host.outputPath("/p", "greeter-plugin"); got != filepath.Join("/p", exeName("greeter-plugin")) {
+		t.Errorf("host output = %q", got)
+	}
+	win, err := parseBuildTarget("windows", "x64")
+	if err != nil || win.goarch != "amd64" {
+		t.Fatalf("parseBuildTarget(windows, x64) = (%v, %v)", win, err)
+	}
+	if !win.isHost() {
+		want := filepath.Join("/p", "dist", "windows-amd64", "greeter-plugin.exe")
+		if got := win.outputPath("/p", "greeter-plugin"); got != want {
+			t.Errorf("windows output = %q, want %q", got, want)
+		}
+	}
+	if _, err := parseBuildTarget("plan9", "amd64"); err == nil {
+		t.Error("an unknown --os was accepted")
+	}
+	if _, err := parseBuildTarget("linux", "mips"); err == nil {
+		t.Error("an unknown --arch was accepted")
+	}
+	zero, err := parseBuildTarget("", "")
+	if err != nil || !zero.isHost() {
+		t.Errorf("no flags must mean this machine: (%v, %v)", zero, err)
 	}
 }

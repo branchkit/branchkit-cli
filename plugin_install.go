@@ -17,7 +17,11 @@ func cmdInstall(source string, build bool, force bool) {
 	// installing by short name, so the install path can confirm the canonical
 	// listing. nil for direct github:owner/repo or local installs.
 	var entry *catalogEntry
-	if isShortName(source) {
+	// A path is a path before it is anything else. `.` — what every
+	// scaffold's README says to type — used to be read as a catalog short
+	// name and fail with "plugin '.' not found".
+	local := isLocalPath(source)
+	if !local && isShortName(source) {
 		e, err := resolveShortNameEntry(source)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -32,10 +36,23 @@ func cmdInstall(source string, build bool, force bool) {
 	}
 
 	var err error
-	if build {
+	if local {
+		// `--build` on a directory means build it HERE, with the same code
+		// `dev build` runs. It used to be handed to the GitHub source
+		// installer, which tried to `git clone` the path.
+		if build {
+			abs, aerr := filepath.Abs(expandHome(source))
+			if aerr == nil {
+				aerr = buildPluginDir(abs, hostTarget())
+			}
+			if aerr != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", aerr)
+				os.Exit(1)
+			}
+		}
+		err = installFromLocal(expandHome(source))
+	} else if build {
 		err = installFromSource(source)
-	} else if isLocalPath(source) {
-		err = installFromLocal(source)
 	} else {
 		err = installFromGitHub(source, entry)
 	}
@@ -46,10 +63,24 @@ func cmdInstall(source string, build bool, force bool) {
 }
 
 func isLocalPath(source string) bool {
-	return strings.HasPrefix(source, "/") ||
+	return source == "." || source == "~" ||
+		strings.HasPrefix(source, "/") ||
 		strings.HasPrefix(source, "./") ||
+		strings.HasPrefix(source, ".\\") ||
 		strings.HasPrefix(source, "~/") ||
-		strings.HasPrefix(source, "..")
+		strings.HasPrefix(source, "..") ||
+		filepath.IsAbs(source)
+}
+
+// expandHome resolves a leading `~`, which the shell leaves alone when the
+// argument is quoted.
+func expandHome(source string) string {
+	if source == "~" || strings.HasPrefix(source, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(source, "~"))
+		}
+	}
+	return source
 }
 
 // --- Local install ---
@@ -600,14 +631,26 @@ func readSourceMeta(pluginDir string) (SourceMeta, bool) {
 	return meta, true
 }
 
+// setExecutable marks the plugin's program executable. `run` is a command
+// line, not a path: when its first word is not a file here but one of its
+// arguments is, the plugin is interpreted (`python3 main.py`) and there is
+// nothing to chmod — and nothing to warn about.
 func setExecutable(dir, runCmd string) {
-	binaryName := strings.TrimPrefix(runCmd, "./")
-	binaryPath := filepath.Join(dir, binaryName)
-	if fileExists(binaryPath) {
-		os.Chmod(binaryPath, 0o755)
-	} else {
-		fmt.Fprintf(os.Stderr, "  WARN: Binary '%s' not found in %s\n", binaryName, dir)
+	words := strings.Fields(runCmd)
+	if len(words) == 0 {
+		return
 	}
+	program := strings.TrimPrefix(words[0], "./")
+	if path := filepath.Join(dir, program); fileExists(path) {
+		os.Chmod(path, 0o755)
+		return
+	}
+	for _, w := range words[1:] {
+		if fileExists(filepath.Join(dir, strings.TrimPrefix(w, "./"))) {
+			return
+		}
+	}
+	fmt.Fprintf(os.Stderr, "  WARN: '%s' not found in %s — has the plugin been built? (`branchkit-cli dev build`)\n", program, dir)
 }
 
 func fileExists(path string) bool {
