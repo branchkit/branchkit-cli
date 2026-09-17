@@ -274,6 +274,7 @@ func cmdDevTrial(args []string) {
 		}
 		t.record("network: the probe ran to completion", doneErr, "")
 		probe.verdict(t)
+		probe.checkRecord(t, token, id)
 	}
 
 	// 7. Matching, without executing anything.

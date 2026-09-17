@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -194,6 +195,7 @@ export function installTrialProbe(plugin: Plugin): void {
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -262,4 +264,49 @@ func (p *networkProbe) verdict(t *trialRun) {
 		err = fmt.Errorf("%d connection(s) arrived from a RAW socket — the plugin reached the network without its proxy, so the sandbox is not confining it", n("direct"))
 	}
 	t.record("network: a direct socket is refused by the sandbox", err, "")
+}
+
+// checkRecord asks the app what it RECORDED and holds that against what
+// arrived on the wire. The network view is only worth reading if it is this
+// accurate: the declared dial listed as allowed, the undeclared one listed as
+// refused, and the direct socket not listed at all — it never reached the
+// proxy, the sandbox stopped it first.
+func (p *networkProbe) checkRecord(t *trialRun, token, id string) {
+	raw, status, err := devHTTP("GET", "/v1/plugins/"+id+"/network", token, nil)
+	if err == nil && status != 200 {
+		err = fmt.Errorf("HTTP %d", status)
+	}
+	var report struct {
+		Tier    string `json:"tier"`
+		Targets []struct {
+			Port    int   `json:"port"`
+			Allowed int64 `json:"allowed"`
+			Denied  int64 `json:"denied"`
+		} `json:"targets"`
+	}
+	if err == nil {
+		err = json.Unmarshal(raw, &report)
+	}
+	if err != nil {
+		t.record("network: the app's record matches the wire", err, "")
+		return
+	}
+	byPort := map[int][2]int64{}
+	for _, tg := range report.Targets {
+		byPort[tg.Port] = [2]int64{tg.Allowed, tg.Denied}
+	}
+	var problems []string
+	if byPort[p.port("declared")][0] == 0 {
+		problems = append(problems, "the declared host is not recorded as allowed")
+	}
+	if u := byPort[p.port("undeclared")]; u[1] == 0 || u[0] > 0 {
+		problems = append(problems, "the undeclared host is not recorded as refused")
+	}
+	if _, listed := byPort[p.port("direct")]; listed {
+		problems = append(problems, "the direct-socket port is in the record, so something dialed it through the proxy")
+	}
+	if len(problems) > 0 {
+		err = fmt.Errorf("%s", strings.Join(problems, "; "))
+	}
+	t.record("network: the app's record matches the wire", err, fmt.Sprintf("tier %s, %d host(s) recorded", report.Tier, len(report.Targets)))
 }
