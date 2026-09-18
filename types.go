@@ -97,6 +97,42 @@ type ModelDeclaration struct {
 	SizeBytes   int64       `json:"size_bytes"`
 	Parts       []ModelPart `json:"parts"`
 	Requires    []string    `json:"requires,omitempty"`
+	// Platform is the OSes this model is for — a single name or a list, the
+	// same shape a stage's `platform` takes. Nil means every platform.
+	Platform *PlatformConstraint `json:"platform,omitempty"`
+}
+
+// PlatformConstraint is a manifest `platform` value: "macos" or ["linux",
+// "windows"]. It unmarshals both spellings.
+type PlatformConstraint []string
+
+func (p *PlatformConstraint) UnmarshalJSON(b []byte) error {
+	var one string
+	if err := json.Unmarshal(b, &one); err == nil {
+		*p = PlatformConstraint{one}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(b, &many); err != nil {
+		return err
+	}
+	*p = PlatformConstraint(many)
+	return nil
+}
+
+// MatchesCurrent reports whether this constraint admits the running OS. A nil
+// receiver (no constraint) admits every OS.
+func (p *PlatformConstraint) MatchesCurrent() bool {
+	if p == nil {
+		return true
+	}
+	current := map[string]string{"darwin": "macos", "linux": "linux", "windows": "windows"}[runtime.GOOS]
+	for _, name := range *p {
+		if name == current {
+			return true
+		}
+	}
+	return false
 }
 
 // ModelPart is one step in assembling a model directory. Kind-tagged, five

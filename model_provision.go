@@ -489,7 +489,14 @@ func printDeclaredModels(w *os.File) {
 	fmt.Fprintln(w, "\nDeclared by installed plugins:")
 	for _, ref := range refs {
 		m := declared[ref]
-		fmt.Fprintf(w, "  %-50s %-8s %s\n", ref, humanBytes(m.Decl.SizeBytes), m.Decl.Description)
+		note := ""
+		if m.Decl.Platform != nil {
+			note = "  [" + strings.Join(*m.Decl.Platform, ", ") + "]"
+			if !m.Decl.Platform.MatchesCurrent() {
+				note += " (not this OS)"
+			}
+		}
+		fmt.Fprintf(w, "  %-50s %-8s %s%s\n", ref, humanBytes(m.Decl.SizeBytes), m.Decl.Description, note)
 	}
 }
 

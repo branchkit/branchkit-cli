@@ -1,6 +1,7 @@
 package main
 
 import (
+	"runtime"
 	"archive/tar"
 	"compress/bzip2"
 	"crypto/sha256"
@@ -38,6 +39,11 @@ func cmdModelDownload(ref string) {
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Unknown model: %s\n", ref)
 		printDeclaredModels(os.Stderr)
+		os.Exit(1)
+	}
+	if !m.Decl.Platform.MatchesCurrent() {
+		fmt.Fprintf(os.Stderr, "%s is declared for %s, not this OS (%s) — its engine does not run here.\n",
+			ref, strings.Join(*m.Decl.Platform, ", "), runtime.GOOS)
 		os.Exit(1)
 	}
 	provisionDeclaredModel(m)
