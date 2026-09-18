@@ -216,7 +216,7 @@ func cmdDevTrial(args []string) {
 		probe.reset()
 	}
 	os.Remove(link)
-	err = os.Symlink(dir, link)
+	err = linkPluginDir(dir, link)
 	if !t.record("install (symlink into plugins/)", err, "") {
 		finish()
 		return
