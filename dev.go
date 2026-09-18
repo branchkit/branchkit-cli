@@ -626,6 +626,15 @@ func buildPluginDir(absDir string, target buildTarget) error {
 }
 
 func promptInput(label, defaultVal string) string {
+	// A prompt is only a prompt when someone can answer it. On a pipe that
+	// never closes — a script's inherited stdin, an ssh session's channel —
+	// Scan() blocked forever: `dev init` from `dev trial`'s own scripts hung
+	// for 13 minutes on macOS and again on Windows (2026-09-18) with no
+	// output but the label. Scripted callers get the default, and see it.
+	if !stdinIsTTY() {
+		fmt.Printf("%s [%s]: %s (stdin is not a terminal; using the default)\n", label, defaultVal, defaultVal)
+		return defaultVal
+	}
 	fmt.Printf("%s [%s]: ", label, defaultVal)
 	scanner := bufio.NewScanner(os.Stdin)
 	if scanner.Scan() {
