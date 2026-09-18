@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,18 +34,56 @@ import (
 // depend on how an SDK speaks HTTP; the plugin uses https, which every SDK
 // tunnels with CONNECT, and the failed handshake against a bare TCP listener
 // is expected.
+// nonLoopbackIPv4 is the address the `direct` listener binds: an address
+// OUTSIDE loopback, so refusing it means the same thing on every OS. On
+// Windows a `hosts`-tier plugin holds the AppContainer loopback exemption,
+// which is all-or-nothing — a loopback `direct` target was reachable there
+// and the check could not tell the sandbox's documented limit from a real
+// leak (2026-09-18). Linux's empty netns and macOS's Seatbelt refuse both;
+// only a non-loopback target lets Windows refuse too (WSAEACCES). Falls back
+// to loopback, and says so, on a machine with no other interface.
+func nonLoopbackIPv4() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "127.0.0.1"
+	}
+	for _, ifc := range ifaces {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok {
+				if v4 := ipn.IP.To4(); v4 != nil && !v4.IsLoopback() && !v4.IsLinkLocalUnicast() {
+					return v4.String()
+				}
+			}
+		}
+	}
+	return "127.0.0.1"
+}
+
 type networkProbe struct {
-	listeners map[string]net.Listener
-	hits      map[string]*atomic.Int64
-	wg        sync.WaitGroup
+	// directHost is where the `direct` listener lives (nonLoopbackIPv4).
+	directHost string
+	listeners  map[string]net.Listener
+	hits       map[string]*atomic.Int64
+	wg         sync.WaitGroup
 }
 
 var probeRoles = []string{"declared", "undeclared", "direct", "done"}
 
 func startNetworkProbe() (*networkProbe, error) {
-	p := &networkProbe{listeners: map[string]net.Listener{}, hits: map[string]*atomic.Int64{}}
+	p := &networkProbe{listeners: map[string]net.Listener{}, hits: map[string]*atomic.Int64{}, directHost: nonLoopbackIPv4()}
 	for _, role := range probeRoles {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
+		host := "127.0.0.1"
+		if role == "direct" {
+			host = p.directHost
+		}
+		l, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
 		if err != nil {
 			p.close()
 			return nil, err
@@ -66,6 +105,14 @@ func startNetworkProbe() (*networkProbe, error) {
 		}()
 	}
 	return p, nil
+}
+
+// host is where a role's listener lives: loopback, except `direct`.
+func (p *networkProbe) host(role string) string {
+	if role == "direct" {
+		return p.directHost
+	}
+	return "127.0.0.1"
 }
 
 func (p *networkProbe) port(role string) int {
@@ -94,7 +141,7 @@ func (p *networkProbe) reset() {
 func (p *networkProbe) declaredHosts() []any {
 	var hosts []any
 	for _, role := range []string{"declared", "direct", "done"} {
-		hosts = append(hosts, fmt.Sprintf("127.0.0.1:%d", p.port(role)))
+		hosts = append(hosts, net.JoinHostPort(p.host(role), strconv.Itoa(p.port(role))))
 	}
 	return hosts
 }
@@ -140,11 +187,11 @@ def install(plugin):
         through_proxy(%d)
         through_proxy(%d)
         try:
-            socket.create_connection(("127.0.0.1", %d), timeout=3).close()
+            socket.create_connection(("%s", %d), timeout=3).close()
         except Exception:
             pass
         through_proxy(%d)
-`, ports["declared"], ports["undeclared"], ports["direct"], ports["done"])
+`, ports["declared"], ports["undeclared"], p.directHost, ports["direct"], ports["done"])
 		if err := os.WriteFile(filepath.Join(dir, "trial_probe.py"), []byte(src), 0o644); err != nil {
 			return err
 		}
@@ -162,9 +209,9 @@ const throughProxy = async (port: number) => {
   } catch {}
 };
 
-const direct = (port: number) =>
+const direct = (host: string, port: number) =>
   new Promise<void>((resolve) => {
-    const s = connect({ host: "127.0.0.1", port });
+    const s = connect({ host, port });
     const end = () => { s.destroy(); resolve(); };
     s.once("connect", end);
     s.once("error", end);
@@ -175,11 +222,11 @@ export function installTrialProbe(plugin: Plugin): void {
   plugin.onReady(async () => {
     await throughProxy(%d);
     await throughProxy(%d);
-    await direct(%d);
+    await direct("%s", %d);
     await throughProxy(%d);
   });
 }
-`, ports["declared"], ports["undeclared"], ports["direct"], ports["done"])
+`, ports["declared"], ports["undeclared"], p.directHost, ports["direct"], ports["done"])
 		if err := os.WriteFile(filepath.Join(dir, "src", "trial_probe.ts"), []byte(src), 0o644); err != nil {
 			return err
 		}
@@ -213,13 +260,13 @@ func installTrialProbe(plugin *branchkit.Plugin) {
 	plugin.OnReady(func() {
 		throughProxy(%d)
 		throughProxy(%d)
-		if c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%%d", %d), 3*time.Second); err == nil {
+		if c, err := net.DialTimeout("tcp", "%s:%d", 3*time.Second); err == nil {
 			c.Close()
 		}
 		throughProxy(%d)
 	})
 }
-`, ports["declared"], ports["undeclared"], ports["direct"], ports["done"])
+`, ports["declared"], ports["undeclared"], p.directHost, ports["direct"], ports["done"])
 		if err := os.WriteFile(filepath.Join(dir, "src", "trial_probe.go"), []byte(src), 0o644); err != nil {
 			return err
 		}

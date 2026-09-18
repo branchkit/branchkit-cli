@@ -199,7 +199,11 @@ func cmdDevTrial(args []string) {
 		if err == nil {
 			err = writeProbeSource(dir, tmpl, probe)
 		}
-		if !t.record("network probe attached (4 loopback ports, 3 declared)", err, "") {
+		directHost := ""
+		if probe != nil {
+			directHost = "direct on " + probe.directHost
+		}
+		if !t.record("network probe attached (3 loopback ports + a direct one off loopback, 3 declared)", err, directHost) {
 			finish()
 			return
 		}
