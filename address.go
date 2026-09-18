@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 )
 
@@ -72,14 +71,11 @@ func readAppAddress() (*appAddress, error) {
 	return &a, nil
 }
 
-func pidAlive(pid int) bool {
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// Signal 0 checks existence without sending anything.
-	return p.Signal(syscall.Signal(0)) == nil
-}
+// pidAlive is per-OS: pid_alive_unix.go / pid_alive_windows.go. On Windows
+// os.Process.Signal supports only Kill and Interrupt, so the Unix "signal 0"
+// probe returned an error for EVERY pid and the CLI read every address file
+// as a crash leftover — no Windows session could ever reach the app
+// (found 2026-09-18, the first `dev smoke` on the Win11 VM).
 
 // resolveDevBaseURL sets devBaseURL from the address file: the operator
 // socket when the app offers one, else the UI port. A development build
