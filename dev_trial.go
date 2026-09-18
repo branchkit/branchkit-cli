@@ -181,6 +181,10 @@ func cmdDevTrial(args []string) {
 		return
 	}
 	if listener {
+		if err := writeListenerProbe(dir); !t.record("listener probe attached (/ping on the granted listener)", err, "") {
+			finish()
+			return
+		}
 		out, err = runSelf(self, dir, "dev", "build")
 		if !t.record("rebuild with sockets.listen (Node engine)", errWithTail(err, out), lastLine(out)) {
 			finish()
@@ -264,6 +268,11 @@ func cmdDevTrial(args []string) {
 	if !t.record("running under the sandbox", runErr, "") {
 		finish()
 		return
+	}
+
+	// 6a. A declared listener has to be reachable from OUTSIDE the sandbox.
+	if listener {
+		checkListener(t, dir)
 	}
 
 	// 6b. The network probe runs at on_ready; judge it by what arrived.
