@@ -147,11 +147,26 @@ func cmdDevTrial(args []string) {
 			return
 		}
 		if installed {
-			os.Remove(link)
-			devHTTP("POST", "/settings/reload-plugins", token, nil)
+			// Uninstall through the platform, not by unlinking: that path
+			// stops the process, revokes the approval, reclaims the records
+			// the scaffold seeded (its keybind), and reloads. Unlinking alone
+			// left a `keybinds` record owned by a vanished plugin behind on
+			// every run, which smoke's ownership check then flagged.
+			if _, status, err := devHTTP("POST", "/settings/plugins/uninstall", token,
+				map[string]any{"plugin_id": id}); err != nil || status >= 300 {
+				os.Remove(link)
+				devHTTP("POST", "/settings/reload-plugins", token, nil)
+			}
+			os.Remove(link) // a no-op after a clean uninstall; the fallback otherwise
+			// The scaffold seeds one keybind into the keyboard plugin's
+			// collection. After the uninstall that record is a departed
+			// writer's group, retained for the grace window; reclaim it now
+			// so a trial leaves nothing for smoke's ownership check to flag.
+			devHTTP("POST", "/inspector/ownership/reclaim", token,
+				map[string]any{"collection": "keybinds", "writer": id})
 		}
 		os.RemoveAll(parent)
-		fmt.Printf("\nRemoved the trial plugin. Its privilege approval stays on file until revoked in Settings → Plugins.\n")
+		fmt.Printf("\nRemoved the trial plugin through the platform's uninstall (approval revoked, seeded records reclaimed).\n")
 	}
 
 	finish := func() {
