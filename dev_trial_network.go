@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -309,7 +310,20 @@ func (p *networkProbe) verdict(t *trialRun) {
 	if n("direct") > 0 {
 		err = fmt.Errorf("%d connection(s) arrived from a RAW socket — the plugin reached the network without its proxy, so the sandbox is not confining it", n("direct"))
 	}
-	t.record("network: a direct socket is refused by the sandbox", err, "")
+	if runtime.GOOS == "windows" && n("direct") > 0 {
+		// Windows routes a connection to ANY of this machine's own addresses
+		// through loopback, and a hosts-tier plugin holds the AppContainer
+		// loopback exemption, so a `direct` listener on this machine is
+		// reachable there however it is addressed (measured 2026-09-18: own
+		// address reached; 1.1.1.1 and the VM gateway refused, WSAEACCES).
+		// A same-machine trial cannot judge this on Windows; the enforcement
+		// suite asserts the remote refusal in CI. Say so rather than fail —
+		// or pass — a check that was not performed.
+		t.record("network: a direct socket is refused by the sandbox — NOT JUDGED on Windows", nil,
+			"own-host addresses are loopback to the AppContainer exemption; remote refusal (WSAEACCES) is asserted by the enforcement suite")
+	} else {
+		t.record("network: a direct socket is refused by the sandbox", err, "")
+	}
 }
 
 // checkRecord asks the app what it RECORDED and holds that against what
