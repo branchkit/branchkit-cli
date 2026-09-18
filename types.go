@@ -81,21 +81,21 @@ func (e *EffectDeclaration) AssertNames() []string {
 // the model declarations this CLI provisions. Everything else under `provides`
 // is the actuator's business.
 type ProvidesCfg struct {
-	Models map[string]ModelDeclaration `json:"models,omitempty"`
+	Artifacts map[string]ArtifactDeclaration `json:"artifacts,omitempty"`
 	// Collections this plugin introduces, by name. Only the NAMES are read
 	// here — for the shared-name check against the catalog
 	// (namespace_check.go); shapes are the actuator's business.
 	Collections map[string]any `json:"collections,omitempty"`
 }
 
-// ModelDeclaration is one model a plugin's stages can load — the recipe this
+// ArtifactDeclaration is one model a plugin's stages can load — the recipe this
 // CLI executes. The actuator validates the shape at manifest load
 // (`plugins/validate/manifest.rs`); the checks here are the ones that matter
 // at fetch time, and they are enforced regardless of what validation ran.
-type ModelDeclaration struct {
+type ArtifactDeclaration struct {
 	Description string      `json:"description,omitempty"`
 	SizeBytes   int64       `json:"size_bytes"`
-	Parts       []ModelPart `json:"parts"`
+	Parts       []ArtifactPart `json:"parts"`
 	Requires    []string    `json:"requires,omitempty"`
 	// Platform is the OSes this model is for — a single name or a list, the
 	// same shape a stage's `platform` takes. Nil means every platform.
@@ -135,9 +135,9 @@ func (p *PlatformConstraint) MatchesCurrent() bool {
 	return false
 }
 
-// ModelPart is one step in assembling a model directory. Kind-tagged, five
+// ArtifactPart is one step in assembling a model directory. Kind-tagged, five
 // kinds; see docs/design/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
-type ModelPart struct {
+type ArtifactPart struct {
 	Kind string `json:"kind"`
 	// hf_folder / hf_files
 	Repo     string   `json:"repo,omitempty"`

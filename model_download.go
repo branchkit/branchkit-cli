@@ -31,7 +31,7 @@ func emitProgress(p downloadProgress) {
 }
 
 func modelsDir() string {
-	return filepath.Join(appSupportDir(), "models")
+	return filepath.Join(appSupportDir(), "artifacts")
 }
 
 func cmdModelDownload(ref string) {

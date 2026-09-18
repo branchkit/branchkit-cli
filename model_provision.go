@@ -55,7 +55,7 @@ type declaredModel struct {
 	Plugin    string
 	PluginDir string
 	Name      string
-	Decl      ModelDeclaration
+	Decl      ArtifactDeclaration
 }
 
 // declaredModels walks every discovered plugin's manifest. This IS the catalog
@@ -67,7 +67,7 @@ func declaredModels() map[string]declaredModel {
 		if dp.Manifest.Provides == nil {
 			continue
 		}
-		for name, decl := range dp.Manifest.Provides.Models {
+		for name, decl := range dp.Manifest.Provides.Artifacts {
 			ref := dp.Manifest.ID + "/" + name
 			if _, dup := out[ref]; dup {
 				continue // first discovery path wins, same as plugin resolution
@@ -87,7 +87,7 @@ func declaredModels() map[string]declaredModel {
 // partsDigest fingerprints the recipe. A changed pin, url, or member list means
 // a different model, so the receipt carrying a stale digest is what triggers
 // re-provisioning instead of silently keeping old bytes.
-func partsDigest(parts []ModelPart) string {
+func partsDigest(parts []ArtifactPart) string {
 	data, err := json.Marshal(parts)
 	if err != nil {
 		return ""
@@ -168,7 +168,7 @@ func assembleModel(m declaredModel, pluginRoot, destDir, digest string) error {
 	}
 
 	for i, part := range m.Decl.Parts {
-		if err := applyModelPart(m, part, staging); err != nil {
+		if err := applyArtifactPart(m, part, staging); err != nil {
 			return fmt.Errorf("part %d (%s): %w", i, part.Kind, err)
 		}
 	}
@@ -285,7 +285,7 @@ func confinedJoin(root, rel string) (string, error) {
 	return joined, nil
 }
 
-func applyModelPart(m declaredModel, part ModelPart, staging string) error {
+func applyArtifactPart(m declaredModel, part ArtifactPart, staging string) error {
 	destRoot := staging
 	if part.Dest != "" && (part.Kind == "hf_folder" || part.Kind == "hf_files" || part.Kind == "http_archive") {
 		var err error

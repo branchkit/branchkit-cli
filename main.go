@@ -83,15 +83,15 @@ func main() {
 			printPluginUsage()
 			os.Exit(1)
 		}
-	case "model":
+	case "artifact", "model": // "model" is a deprecated alias (DESIGN_ARTIFACTS_RENAME.md)
 		if len(os.Args) < 3 {
-			printModelUsage()
+			printArtifactUsage()
 			os.Exit(1)
 		}
 		switch os.Args[2] {
 		case "download":
 			if len(os.Args) < 4 {
-				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli model download <engine/model-name>")
+				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli artifact download <plugin/artifact-name>")
 				os.Exit(1)
 			}
 			cmdModelDownload(os.Args[3])
@@ -99,7 +99,7 @@ func main() {
 			cmdModelList()
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown model command: %s\n", os.Args[2])
-			printModelUsage()
+			printArtifactUsage()
 			os.Exit(1)
 		}
 	case "runtime":
@@ -200,7 +200,8 @@ var specificUsage = map[string]func(){
 
 var groupUsage = map[string]func(){
 	"plugin":   printPluginUsage,
-	"model":    printModelUsage,
+	"artifact": printArtifactUsage,
+	"model":    printArtifactUsage, // deprecated alias
 	"runtime":  printRuntimeUsage,
 	"dev":      printDevUsage,
 	"docs":     printDocsUsage,
@@ -278,7 +279,7 @@ func printRuntimeUsage() {
 	fmt.Println("  list            List installed managed runtimes")
 }
 
-func printModelUsage() {
+func printArtifactUsage() {
 	fmt.Println("Usage: branchkit-cli model <command>")
 	fmt.Println()
 	fmt.Println("Commands:")

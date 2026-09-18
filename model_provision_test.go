@@ -64,8 +64,8 @@ func TestCheckRequiresCatchesAMissingFile(t *testing.T) {
 // changed recipe. Both halves matter: same parts must compare equal, and any
 // change to a pin must not.
 func TestPartsDigestTracksThePins(t *testing.T) {
-	a := []ModelPart{{Kind: "http_file", URL: "https://x/y", SHA256: strings.Repeat("a", 64), Dest: "y"}}
-	b := []ModelPart{{Kind: "http_file", URL: "https://x/y", SHA256: strings.Repeat("b", 64), Dest: "y"}}
+	a := []ArtifactPart{{Kind: "http_file", URL: "https://x/y", SHA256: strings.Repeat("a", 64), Dest: "y"}}
+	b := []ArtifactPart{{Kind: "http_file", URL: "https://x/y", SHA256: strings.Repeat("b", 64), Dest: "y"}}
 	if partsDigest(a) != partsDigest(a) {
 		t.Fatal("digest is not stable for identical parts")
 	}
@@ -94,9 +94,9 @@ func TestProvisionPluginFileModelLandsUnderThePluginNamespace(t *testing.T) {
 		Plugin:    "voice",
 		PluginDir: pluginDir,
 		Name:      "test-model",
-		Decl: ModelDeclaration{
+		Decl: ArtifactDeclaration{
 			SizeBytes: 3,
-			Parts: []ModelPart{
+			Parts: []ArtifactPart{
 				{Kind: "plugin_file", Path: "assets/bpe.model", Dest: "bpe.model"},
 			},
 			Requires: []string{"bpe.model"},
@@ -153,12 +153,12 @@ func TestLegacyFlatModelIsAdoptedOnlyWhenComplete(t *testing.T) {
 		Plugin:    "voice",
 		PluginDir: pluginDir,
 		Name:      "legacy-model",
-		Decl: ModelDeclaration{
+		Decl: ArtifactDeclaration{
 			SizeBytes: 7,
 			// Declares a file the legacy dir does NOT have, so adoption must
 			// be refused. No parts can satisfy it either — but provisioning
 			// stops at the incomplete-legacy check before touching the network.
-			Parts:    []ModelPart{{Kind: "plugin_file", Path: "missing", Dest: "tokens.txt"}},
+			Parts:    []ArtifactPart{{Kind: "plugin_file", Path: "missing", Dest: "tokens.txt"}},
 			Requires: []string{"model.onnx", "tokens.txt"},
 		},
 	}
@@ -199,11 +199,11 @@ func TestFailedAssemblyLeavesNoStagingBehind(t *testing.T) {
 		Plugin:    "voice",
 		PluginDir: pluginDir,
 		Name:      "broken",
-		Decl: ModelDeclaration{
+		Decl: ArtifactDeclaration{
 			SizeBytes: 1,
 			// A plugin_file the plugin does not ship: fails without touching
 			// the network, on the same path a bad checksum takes.
-			Parts:    []ModelPart{{Kind: "plugin_file", Path: "missing.bin", Dest: "missing.bin"}},
+			Parts:    []ArtifactPart{{Kind: "plugin_file", Path: "missing.bin", Dest: "missing.bin"}},
 			Requires: []string{"missing.bin"},
 		},
 	}
