@@ -20,8 +20,8 @@ type previewResult struct {
 	OptionalPrivileges []string `json:"optional_privileges"`
 	// Sandbox scope, display-ready. Sockets and runtimes are enforced from
 	// the manifest with no later grant moment, so the panel is the only
-	// place a user sees them; network hosts become on-by-default grants
-	// with a switch on the plugin's card (2026-09-18).
+	// place a user sees them; network hosts become grants with a switch on
+	// the plugin's card, allowed there after install (2026-09-18).
 	Network     []string        `json:"network"`
 	Sockets     int             `json:"sockets"`
 	Runtimes    []string        `json:"runtimes"`

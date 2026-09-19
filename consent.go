@@ -191,9 +191,9 @@ var consentAxes = []consentAxis{
 		delFmt: "  - %s (optional)\n",
 	},
 	// The sandbox axes. Network HOSTS are grant records since 2026-09-18:
-	// on by default (this disclosure plus the install "yes" is the consent),
-	// each switchable off later on the plugin's page, read live by the
-	// plugin's proxy (DESIGN_PLUGIN_NETWORK_TRANSPORTS.md, "Decided").
+	// like every other grant a non-bundled plugin asks for, each is allowed
+	// on the plugin's page after install and read live by the plugin's
+	// proxy (DESIGN_PLUGIN_NETWORK_TRANSPORTS.md, "Decided").
 	// Listen sockets and runtimes stay disclosure-only: spawn-time,
 	// all-or-nothing, no later grant moment
 	// (DESIGN_SANDBOX_CONSENT_SURFACE.md). Nothing printed means the
@@ -203,9 +203,9 @@ var consentAxes = []consentAxis{
 		extract: networkSet,
 		display: networkDisplay,
 		summary: func(v []string) string {
-			return fmt.Sprintf("  Network: %s (each host can be switched off later on the plugin's page)\n", strings.Join(v, ", "))
+			return fmt.Sprintf("  Network: %s (allow each host on the plugin's page after install)\n", strings.Join(v, ", "))
 		},
-		addFmt: "  + network: %s (on by default; switch it off on the plugin's page)\n",
+		addFmt: "  + network: %s (allow it on the plugin's page)\n",
 		delFmt: "  - network: %s\n",
 	},
 	{
