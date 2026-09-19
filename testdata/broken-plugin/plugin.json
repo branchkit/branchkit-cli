@@ -1,0 +1,11 @@
+{
+  "id": "Broken Fixture!",
+  "name": "Broken Fixture",
+  "min_api_version": "9.0.0",
+  "privileges": ["clipbord"],
+  "optional_privileges": ["audiox"],
+  "implements": {
+    "on_actoin": true,
+    "parse_key_event": true
+  }
+}

@@ -54,6 +54,13 @@ func runStaticAnalysis(dir string) TestPhaseResult {
 	phase.Tests = append(phase.Tests, checkProvidedCollections(manifest)...)
 	phase.Tests = append(phase.Tests, checkConsumedCollections(manifest)...)
 	phase.Tests = append(phase.Tests, checkCaptureReferences(dir, manifest)...)
+	// Three checks against the embedded platform vocabulary
+	// (manifest_vocabulary.go). Each catches a SILENT failure: an inert
+	// `implements` key nothing ever calls, a privilege that grants nothing,
+	// a min_api_version the platform will refuse at load.
+	phase.Tests = append(phase.Tests, checkImplementsMethods(manifest)...)
+	phase.Tests = append(phase.Tests, checkPrivilegeNames(manifest)...)
+	phase.Tests = append(phase.Tests, checkMinAPIVersion(manifest)...)
 	phase.Tests = append(phase.Tests, checkRunBinary(dir, manifest))
 
 	return phase
