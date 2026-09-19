@@ -1,7 +1,6 @@
 package main
 
 import (
-	"runtime"
 	"archive/tar"
 	"compress/bzip2"
 	"crypto/sha256"
@@ -12,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )

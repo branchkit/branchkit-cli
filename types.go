@@ -93,10 +93,10 @@ type ProvidesCfg struct {
 // (`plugins/validate/manifest.rs`); the checks here are the ones that matter
 // at fetch time, and they are enforced regardless of what validation ran.
 type ArtifactDeclaration struct {
-	Description string      `json:"description,omitempty"`
-	SizeBytes   int64       `json:"size_bytes"`
+	Description string         `json:"description,omitempty"`
+	SizeBytes   int64          `json:"size_bytes"`
 	Parts       []ArtifactPart `json:"parts"`
-	Requires    []string    `json:"requires,omitempty"`
+	Requires    []string       `json:"requires,omitempty"`
 	// Platform is the OSes this model is for — a single name or a list, the
 	// same shape a stage's `platform` takes. Nil means every platform.
 	Platform *PlatformConstraint `json:"platform,omitempty"`
