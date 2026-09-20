@@ -7,6 +7,13 @@
   "description": "{{.Description}}",
   "author": "Your Name",
   "privileges": ["input"],
+{{- if .Listener}}
+  "network": "localhost",
+  "sockets": { "listen": [{ "id": "trial", "port": 0 }] },
+{{- end}}
+{{- if .NetworkHosts}}
+  "network": { "hosts": [{{range $i, $h := .NetworkHosts}}{{if $i}}, {{end}}"{{$h}}"{{end}}] },
+{{- end}}
   "run": "python3 main.py",
   "runtimes": ["python"],
   "action_prefix": "{{.ActionPrefix}}",
@@ -28,7 +35,7 @@
   "collection_data": {
     "voice_commands": "commands.json",
     "keybinds": {
-      "alt+shift+h": { "action": "{{.ActionPrefix}}.greet", "params": { "name": "BranchKit" } }
+      "{{.Keybind}}": { "action": "{{.ActionPrefix}}.greet", "params": { "name": "BranchKit" } }
     }
   },
   "implements": {

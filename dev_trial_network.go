@@ -139,8 +139,8 @@ func (p *networkProbe) reset() {
 
 // declaredHosts is the manifest's allowlist: everything except `undeclared`.
 // Loopback is granted per port, which is what makes four ports four policies.
-func (p *networkProbe) declaredHosts() []any {
-	var hosts []any
+func (p *networkProbe) declaredHosts() []string {
+	var hosts []string
 	for _, role := range []string{"declared", "direct", "done"} {
 		hosts = append(hosts, net.JoinHostPort(p.host(role), strconv.Itoa(p.port(role))))
 	}

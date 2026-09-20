@@ -31,13 +31,70 @@ type templateData struct {
 	PluginName   string
 	Description  string
 	ActionPrefix string
+
+	// Render-time parameters. A manifest is RENDERED, never round-tripped:
+	// nothing in this tool may read a plugin.json back, edit it and write it
+	// out again. Round-tripping loses information the file carries — key
+	// order first, and anything the signing chain hashes after that — and
+	// the two fields below are exactly the bounded-core security surface
+	// that has to read identically to the author, the reviewer and the
+	// signer. `dev trial` needs a unique phrase, a free keybind, and
+	// sometimes a declared network surface; it asks for them HERE, at
+	// render time, instead of editing the scaffold afterwards.
+	//
+	// Every default reproduces the scaffold byte for byte — the
+	// scaffold-mirror gate (`just check-scaffold-mirrors`) enforces it.
+	Phrase       string
+	Keybind      string
+	Listener     bool
+	NetworkHosts []string
 }
+
+// What the scaffold ships with: the example command's first word and the
+// example binding. These are CONTENT — the "one voice command, one keybind,
+// one test" of DESIGN_FIRST_RUN_EXPERIENCE.md — not tuning knobs. They are
+// rendered into plugins/helloworld*, quoted in the published getting-started
+// guide, and diffed by `just check-scaffold-mirrors`, so changing either is a
+// docs-and-mirrors change, not a one-liner.
+const (
+	scaffoldPhrase  = "hello"
+	scaffoldKeybind = "alt+shift+h"
+)
 
 func cmdDevInit(args []string) {
 	var name, tmpl, desc string
 	var bare bool
+	phrase, keybind := scaffoldPhrase, scaffoldKeybind
+	var listener bool
+	var networkHosts []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--phrase":
+			// First word of the scaffold's example command. `dev trial`
+			// passes the plugin id so two concurrent trials don't tie in
+			// voice's disambiguation.
+			if i+1 < len(args) {
+				i++
+				phrase = args[i]
+			}
+		case "--keybind":
+			// The scaffold's example binding. Trials pass one nothing else
+			// claims, so two scaffolds don't bind the same key twice.
+			if i+1 < len(args) {
+				i++
+				keybind = args[i]
+			}
+		case "--listener":
+			listener = true
+		case "--network-hosts":
+			if i+1 < len(args) {
+				i++
+				for _, h := range strings.Split(args[i], ",") {
+					if h = strings.TrimSpace(h); h != "" {
+						networkHosts = append(networkHosts, h)
+					}
+				}
+			}
 		case "--name":
 			if i+1 < len(args) {
 				i++
@@ -87,11 +144,21 @@ func cmdDevInit(args []string) {
 		os.Exit(1)
 	}
 
+	// Both would render a second "network" key into the same object.
+	if listener && len(networkHosts) > 0 {
+		fmt.Fprintln(os.Stderr, "Error: --listener and --network-hosts both declare `network`; pass one")
+		os.Exit(1)
+	}
+
 	data := templateData{
 		PluginID:     name,
 		PluginName:   toTitleCase(name),
 		Description:  desc,
 		ActionPrefix: strings.ReplaceAll(name, "-", ""),
+		Phrase:       phrase,
+		Keybind:      keybind,
+		Listener:     listener,
+		NetworkHosts: networkHosts,
 	}
 
 	if bare {

@@ -98,7 +98,7 @@ func cmdDevTrial(args []string) {
 		os.Exit(1)
 	}
 	if listener && network {
-		fmt.Fprintln(os.Stderr, "Error: --listener and --network each rewrite the manifest's network tier; run them separately")
+		fmt.Fprintln(os.Stderr, "Error: --listener and --network each declare the manifest's network tier; run them separately")
 		os.Exit(1)
 	}
 
@@ -178,23 +178,40 @@ func cmdDevTrial(args []string) {
 		fmt.Println("Trial passed")
 	}
 
-	// 1. Scaffold, the way a new author does.
-	out, err := runSelf(self, parent, "dev", "init", "--name", id, "--template", tmpl,
-		"--description", "Scaffold trial (safe to delete)")
-	if !t.record("scaffold (dev init)", errWithTail(err, out), "") {
+	// 1. Scaffold, the way a new author does — with what the trial needs
+	//    rendered in, not edited in afterwards.
+	//
+	//    Every scaffold would otherwise claim "hello branchkit" and
+	//    alt+shift+h; two of them tie in voice's disambiguation and bind the
+	//    same key twice. This used to be fixed by reading plugin.json back,
+	//    editing a map and writing it out. Nothing does that any more: a
+	//    round-trip through a Go map alphabetizes every key, and the fields
+	//    at stake — `network`, `sockets` — are bounded-core security
+	//    declarations that the signing chain hashes. A trial that mutates
+	//    the manifest is validating bytes the author never shipped, which
+	//    is the one thing this command exists not to do.
+	initArgs := []string{"dev", "init", "--name", id, "--template", tmpl,
+		"--description", "Scaffold trial (safe to delete)",
+		"--phrase", id, "--keybind", trialKeybind}
+	if listener {
+		initArgs = append(initArgs, "--listener")
+	}
+	if network {
+		// Before the scaffold, not after: the probe's ports are what the
+		// manifest has to declare, so they must exist at render time.
+		probe, err = startNetworkProbe()
+		if !t.record("network probe listeners", err, "") {
+			finish()
+			return
+		}
+		initArgs = append(initArgs, "--network-hosts", strings.Join(probe.declaredHosts(), ","))
+	}
+	out, err := runSelf(self, parent, initArgs...)
+	if !t.record("scaffold (dev init)", errWithTail(err, out), fmt.Sprintf("%q", id+" branchkit")) {
 		finish()
 		return
 	}
 
-	// 2. Make it unique. Every scaffold claims "hello branchkit" and
-	//    alt+shift+h; two of them tie in voice's disambiguation and bind the
-	//    same key twice.
-	word := id
-	err = uniquifyScaffold(dir, word, listener)
-	if !t.record("unique phrase and keybind", err, fmt.Sprintf("%q", word+" branchkit")) {
-		finish()
-		return
-	}
 	if listener {
 		if err := writeListenerProbe(dir); !t.record("listener probe attached (/ping on the granted listener)", err, "") {
 			finish()
@@ -207,13 +224,7 @@ func cmdDevTrial(args []string) {
 		}
 	}
 	if network {
-		probe, err = startNetworkProbe()
-		if err == nil {
-			err = declareProbeHosts(dir, probe)
-		}
-		if err == nil {
-			err = writeProbeSource(dir, tmpl, probe)
-		}
+		err = writeProbeSource(dir, tmpl, probe)
 		directHost := ""
 		if probe != nil {
 			directHost = "direct on " + probe.directHost
@@ -306,9 +317,10 @@ func cmdDevTrial(args []string) {
 	}
 
 	// 7. Matching, without executing anything.
-	matched, err := resolvePreview(token, []string{word, "branchkit"})
+	// The phrase `dev init` rendered in: --phrase is the plugin id.
+	matched, err := resolvePreview(token, []string{id, "branchkit"})
 	if err == nil && !matched {
-		err = fmt.Errorf("%q did not resolve", word+" branchkit")
+		err = fmt.Errorf("%q did not resolve", id+" branchkit")
 	}
 	t.record("voice command resolves (preview)", err, "")
 
@@ -338,6 +350,10 @@ func printDevTrialUsage() {
 	fmt.Println("  --keep       leave the plugin installed and its folder in place")
 }
 
+// trialKeybind is a combination no scaffold, first-party plugin or OS
+// shortcut claims — two trials must not bind the same key.
+const trialKeybind = "ctrl+alt+shift+f11"
+
 func runSelf(self, dir string, args ...string) (string, error) {
 	cmd := exec.Command(self, args...)
 	cmd.Dir = dir
@@ -360,76 +376,6 @@ func errWithTail(err error, out string) error {
 func lastLine(out string) string {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	return strings.TrimSpace(lines[len(lines)-1])
-}
-
-// uniquifyScaffold gives the scaffold a phrase and a key combination nothing
-// else uses, fixes its unit test to match, and optionally declares a listener.
-func uniquifyScaffold(dir, word string, listener bool) error {
-	cmdPath := filepath.Join(dir, "commands.json")
-	raw, err := os.ReadFile(cmdPath)
-	if err != nil {
-		return err
-	}
-	var commands []map[string]any
-	if err := json.Unmarshal(raw, &commands); err != nil {
-		return err
-	}
-	for _, c := range commands {
-		if pattern, ok := c["pattern"].([]any); ok && len(pattern) > 0 {
-			pattern[0] = word
-		}
-	}
-	if err := writeJSON(cmdPath, commands); err != nil {
-		return err
-	}
-
-	manifestPath := filepath.Join(dir, "plugin.json")
-	raw, err = os.ReadFile(manifestPath)
-	if err != nil {
-		return err
-	}
-	var manifest map[string]any
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return err
-	}
-	if data, ok := manifest["collection_data"].(map[string]any); ok {
-		if binds, ok := data["keybinds"].(map[string]any); ok {
-			renamed := map[string]any{}
-			for _, binding := range binds {
-				renamed["ctrl+alt+shift+f11"] = binding
-			}
-			data["keybinds"] = renamed
-		}
-	}
-	if listener {
-		manifest["network"] = "localhost"
-		manifest["sockets"] = map[string]any{"listen": []any{map[string]any{"id": "trial", "port": 0}}}
-	}
-	if err := writeJSON(manifestPath, manifest); err != nil {
-		return err
-	}
-
-	// The scaffold's own unit test asserts the phrase it shipped with.
-	for _, rel := range []string{"src/main_test.go", "src/index.test.ts", "test_main.py"} {
-		path := filepath.Join(dir, rel)
-		body, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		updated := strings.ReplaceAll(string(body), "hello branchkit", word+" branchkit")
-		if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func writeJSON(path string, v any) error {
-	out, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(out, '\n'), 0o644)
 }
 
 func manifestPrivileges(dir string) []string {
@@ -474,19 +420,4 @@ func waitForStatus(token, id string, timeout time.Duration, want ...string) stri
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-}
-
-// declareProbeHosts gives the scaffold the probe's allowlist.
-func declareProbeHosts(dir string, p *networkProbe) error {
-	path := filepath.Join(dir, "plugin.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	var manifest map[string]any
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return err
-	}
-	manifest["network"] = map[string]any{"hosts": p.declaredHosts()}
-	return writeJSON(path, manifest)
 }

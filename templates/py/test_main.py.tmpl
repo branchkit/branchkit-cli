@@ -12,7 +12,7 @@ from branchkit.harness import Harness
 class GreetTests(unittest.TestCase):
     def test_greet_matches(self):
         with Harness.start(".") as h:
-            result = h.must_simulate_command("hello branchkit")
+            result = h.must_simulate_command("{{.Phrase}} branchkit")
             self.assertEqual(result.action_type(), "{{.ActionPrefix}}.greet")
             self.assertEqual(result.action_params().get("name"), "BranchKit")
 
