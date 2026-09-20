@@ -62,6 +62,45 @@ func pluginNameFromRepo(repo string) string {
 	return repo
 }
 
+// releaseMiss explains a 404 from the releases endpoint.
+//
+// GitHub answers 404 for two different problems: the repository has no
+// releases, or the repository is not visible to you at all (wrong name,
+// private, never created). They need opposite fixes — one is solved by
+// `--build`, the other by fixing the name or getting access — and the old
+// message asserted the first, then suggested a recovery that cannot work
+// when it is really the second.
+//
+// So on the failure path only, ask which one it is. An extra request costs
+// nothing in the happy case, and the catalog can name a repo that does not
+// exist yet: nothing verifies its sources resolve.
+func releaseMiss(source ResolvedSource, suffix string) error {
+	client := &http.Client{Timeout: 15 * time.Second}
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", source.Owner, source.Repo)
+	req, err := http.NewRequest("GET", url, nil)
+	if err == nil {
+		req.Header.Set("User-Agent", "branchkit-cli")
+		if resp, err := client.Do(req); err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == 404 {
+				return fmt.Errorf(
+					"no repository %s/%s that this machine can see\n\n"+
+						"Check the name, or — if it is private — that your git\n"+
+						"credentials reach it. A registry listing can name a\n"+
+						"repository that has not been published yet.",
+					source.Owner, source.Repo,
+				)
+			}
+		}
+	}
+	return fmt.Errorf(
+		"%s/%s has no release%s\n\n"+
+			"To install from source instead:\n"+
+			"  branchkit-cli plugin install %s/%s --build",
+		source.Owner, source.Repo, suffix, source.Owner, source.Repo,
+	)
+}
+
 // fetchLatestTag fetches only the latest release tag from GitHub (no download).
 func fetchLatestTag(source ResolvedSource) (string, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -80,7 +119,7 @@ func fetchLatestTag(source ResolvedSource) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 404 {
-		return "", fmt.Errorf("no releases found for %s/%s", source.Owner, source.Repo)
+		return "", releaseMiss(source, "")
 	}
 	if resp.StatusCode >= 300 {
 		return "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
@@ -123,14 +162,9 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, *Au
 	if resp.StatusCode == 404 {
 		suffix := ""
 		if source.Version != "" {
-			suffix = "@" + source.Version
+			suffix = " " + source.Version
 		}
-		return "", "", nil, fmt.Errorf(
-			"no release found for %s/%s%s\n\n"+
-				"To install from source instead:\n"+
-				"  branchkit-cli plugin install %s/%s --build",
-			source.Owner, source.Repo, suffix, source.Owner, source.Repo,
-		)
+		return "", "", nil, releaseMiss(source, suffix)
 	}
 	if resp.StatusCode >= 300 {
 		return "", "", nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
