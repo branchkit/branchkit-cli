@@ -297,3 +297,104 @@ func TestRunTarget(t *testing.T) {
 		}
 	}
 }
+
+// A `provides.collections` entry may be written inline or as the path of a
+// JSON file holding the same object. Both spellings must get the SAME
+// checks: the file form went four+ weeks reported as
+// "collection schema must be an object" — six failures against a manifest
+// that was correct, on a feature the platform had shipped, which is the
+// whole cost of a checker that knows one of two legal forms.
+func TestProvidedCollectionFileReferenceIsValidatedLikeInline(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "collections"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A referenced file carrying an unknown preset must fail for the
+	// PRESET, not for its spelling — proof the contents are really checked
+	// rather than the reference merely being tolerated.
+	if err := os.WriteFile(
+		filepath.Join(dir, "collections", "bad_preset.json"),
+		[]byte(`{"preset":"not_a_preset"}`), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dir, "collections", "good.json"),
+		[]byte(`{"preset":"log"}`), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	m := manifestFromJSON(t, `{"provides":{"collections":{
+		"inline":  {"preset":"log"},
+		"from_file": "collections/good.json",
+		"bad_preset": "collections/bad_preset.json"
+	}}}`)
+
+	results := checkProvidedCollections(dir, m)
+
+	if r := findResult(results, "collection_from_file"); r != nil {
+		t.Fatalf("a valid file-referenced collection should raise nothing, got %q: %s", r.Status, r.Detail)
+	}
+	r := findResult(results, "collection_bad_preset")
+	if r == nil || r.Status != "fail" {
+		t.Fatalf("an unknown preset inside a referenced file must fail, got %+v", r)
+	}
+	if !strings.Contains(r.Detail, "not_a_preset") {
+		t.Fatalf("the failure must name the preset, not the spelling: %s", r.Detail)
+	}
+}
+
+// A referenced file that is missing or malformed FAILS and names the file.
+// The platform stops the plugin on exactly this, so the check agrees with
+// the runtime about what is fatal rather than passing something that will
+// not load.
+func TestProvidedCollectionMissingOrMalformedFileFails(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "collections"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dir, "collections", "truncated.json"),
+		[]byte(`{"preset":`), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	m := manifestFromJSON(t, `{"provides":{"collections":{
+		"gone":      "collections/nope.json",
+		"truncated": "collections/truncated.json",
+		"escaping":  "../outside.json",
+		"absolute":  "/etc/passwd"
+	}}}`)
+
+	results := checkProvidedCollections(dir, m)
+
+	for name, want := range map[string]string{
+		"collection_gone":      "unreadable",
+		"collection_truncated": "not valid JSON",
+		"collection_escaping":  "escapes the plugin directory",
+		"collection_absolute":  "must be a relative path",
+	} {
+		r := findResult(results, name)
+		if r == nil || r.Status != "fail" {
+			t.Fatalf("%s: expected a failure, got %+v", name, r)
+		}
+		if !strings.Contains(r.Detail, want) {
+			t.Fatalf("%s: detail %q should mention %q", name, r.Detail, want)
+		}
+	}
+}
+
+// The original defect's shape, kept as a regression: a value that is
+// neither an object nor a string is still wrong, and the message now names
+// both legal forms so the reader knows what to write.
+func TestProvidedCollectionNonObjectNonStringStillFails(t *testing.T) {
+	m := manifestFromJSON(t, `{"provides":{"collections":{"bogus": 42}}}`)
+	results := checkProvidedCollections(t.TempDir(), m)
+	r := findResult(results, "collection_bogus")
+	if r == nil || r.Status != "fail" {
+		t.Fatalf("a numeric collection entry must fail, got %+v", r)
+	}
+	if !strings.Contains(r.Detail, "path of a JSON file") {
+		t.Fatalf("the message should name both legal forms: %s", r.Detail)
+	}
+}

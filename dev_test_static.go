@@ -51,7 +51,7 @@ func runStaticAnalysis(dir string) TestPhaseResult {
 	phase.Tests = append(phase.Tests, checkCollectionDataFiles(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkCommandGrammar(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkKeybindBindings(manifest)...)
-	phase.Tests = append(phase.Tests, checkProvidedCollections(manifest)...)
+	phase.Tests = append(phase.Tests, checkProvidedCollections(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkConsumedCollections(manifest)...)
 	phase.Tests = append(phase.Tests, checkCaptureReferences(dir, manifest)...)
 	// Three checks against the embedded platform vocabulary
@@ -72,7 +72,20 @@ func runStaticAnalysis(dir string) TestPhaseResult {
 // that silently never feeds the matcher. Field-reference problems are
 // warns, not failures: the platform accepts the manifest and the record
 // shape can be looser than `fields` at runtime.
-func checkProvidedCollections(m map[string]any) []TestResult {
+//
+// An entry is written INLINE or as the PATH of a JSON file holding the same
+// object (`CollectionSchemaSource` in the manifest schema). This used to
+// understand only the inline form and reported the other one as
+// "collection schema must be an object" — six true statements about a
+// manifest that was correct, on a feature the platform had shipped. Hence
+// `dir`: a path entry is resolved and validated as if it had been written
+// inline, so both spellings get the same checks rather than one of them
+// getting an error.
+//
+// A missing or malformed file FAILS, and names the file. That mirrors what
+// the platform does with it — a referenced file that will not load stops
+// the plugin — so the check and the runtime agree about what is fatal.
+func checkProvidedCollections(dir string, m map[string]any) []TestResult {
 	provides, _ := m["provides"].(map[string]any)
 	colls, _ := provides["collections"].(map[string]any)
 	if len(colls) == 0 {
@@ -92,11 +105,25 @@ func checkProvidedCollections(m map[string]any) []TestResult {
 	for name, v := range colls {
 		schema, ok := v.(map[string]any)
 		if !ok {
-			results = append(results, TestResult{
-				Name: "collection_" + name, Status: "fail",
-				Detail: "collection schema must be an object",
-			})
-			continue
+			// The other legal spelling: a path, relative to the plugin
+			// directory, of a JSON file holding the same object.
+			ref, isPath := v.(string)
+			if !isPath {
+				results = append(results, TestResult{
+					Name: "collection_" + name, Status: "fail",
+					Detail: "collection schema must be an object, or the path of a JSON file holding one",
+				})
+				continue
+			}
+			loaded, err := loadCollectionFile(dir, ref)
+			if err != nil {
+				results = append(results, TestResult{
+					Name: "collection_" + name, Status: "fail",
+					Detail: err.Error(),
+				})
+				continue
+			}
+			schema = loaded
 		}
 		if preset, ok := schema["preset"].(string); ok && !knownPresets[preset] {
 			results = append(results, TestResult{
@@ -163,6 +190,32 @@ func checkProvidedCollections(m map[string]any) []TestResult {
 		})
 	}
 	return results
+}
+
+// loadCollectionFile resolves a `provides.collections` path entry against the
+// plugin directory and returns the object it holds.
+//
+// The path is joined to the plugin dir and required to stay inside it: a
+// manifest is not a licence to read arbitrary files, and a `../` entry is a
+// mistake worth naming rather than following.
+func loadCollectionFile(dir, ref string) (map[string]any, error) {
+	if filepath.IsAbs(ref) {
+		return nil, fmt.Errorf("collection file %q must be a relative path", ref)
+	}
+	full := filepath.Join(dir, ref)
+	rel, err := filepath.Rel(dir, full)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("collection file %q escapes the plugin directory", ref)
+	}
+	raw, err := os.ReadFile(full)
+	if err != nil {
+		return nil, fmt.Errorf("collection file %q is unreadable: %v", ref, err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("collection file %q is not valid JSON: %v", ref, err)
+	}
+	return out, nil
 }
 
 // consumedCollection is one `consumes.collections` entry in either of its
