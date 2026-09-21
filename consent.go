@@ -218,6 +218,26 @@ var consentAxes = []consentAxis{
 		addFmt: "  + listen socket: %s\n",
 		delFmt: "  - listen socket: %s\n",
 	},
+	// Not part of the request block: a blob read is a consent axis that
+	// lives in `consumes`, because what is being asked for is another
+	// plugin's data rather than a platform capability. It is here rather
+	// than handled separately (as effects are) because it is a plain list
+	// of names, which is exactly what an axis carries.
+	{
+		name: "blobs",
+		extract: func(m PluginManifest) []string {
+			if m.Consumes == nil {
+				return nil
+			}
+			return m.Consumes.Blobs
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Shared data: reads %s (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + reads shared data: %s (allow it on the plugin's page)\n",
+		delFmt: "  - reads shared data: %s\n",
+	},
 	{
 		name:    "runtimes",
 		extract: func(m PluginManifest) []string { return m.Requires.Runtimes },

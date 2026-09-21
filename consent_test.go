@@ -216,31 +216,44 @@ func TestConfirmUpdate(t *testing.T) {
 // is the point: add a field to the block and this fails until the axis
 // exists, which is the opposite of the silence it replaces.
 func TestConsentAxesCoverEveryRequiresField(t *testing.T) {
-	declared := map[string]bool{}
-	rt := reflect.TypeOf(RequiresCfg{})
-	for i := range rt.NumField() {
-		tag := rt.Field(i).Tag.Get("json")
-		if name, _, _ := strings.Cut(tag, ","); name != "" && name != "-" {
-			declared[name] = true
+	tags := func(v any) map[string]bool {
+		out := map[string]bool{}
+		rt := reflect.TypeOf(v)
+		for i := range rt.NumField() {
+			tag := rt.Field(i).Tag.Get("json")
+			if name, _, _ := strings.Cut(tag, ","); name != "" && name != "-" {
+				out[name] = true
+			}
 		}
+		return out
 	}
+
+	// Every field of the request block must have an axis. This is the
+	// direction that prevents the security failure: a capability the
+	// platform enforces but never shows at install.
+	declared := tags(RequiresCfg{})
 	if len(declared) == 0 {
 		t.Fatal("reflection found no json-tagged fields — the test is not testing anything")
 	}
-
 	covered := map[string]bool{}
 	for _, ax := range consentAxes {
 		covered[ax.name] = true
 	}
-
 	for field := range declared {
 		if !covered[field] {
 			t.Errorf("requires.%s has no consent axis — it would be enforced but never shown at install", field)
 		}
 	}
+
+	// And no axis may be stale. An axis need not come from the request
+	// block — `blobs` asks for another plugin's data rather than a platform
+	// capability, and lives in `consumes` — but it must name a real
+	// manifest field somewhere, derived from the types rather than from a
+	// list someone remembers to update.
+	elsewhere := tags(ConsumesCfg{})
 	for axis := range covered {
-		if !declared[axis] {
-			t.Errorf("consent axis %q is not a field of RequiresCfg — stale, or it belongs elsewhere", axis)
+		if !declared[axis] && !elsewhere[axis] {
+			t.Errorf("consent axis %q is a field of neither RequiresCfg nor ConsumesCfg — stale", axis)
 		}
 	}
 }

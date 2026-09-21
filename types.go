@@ -55,6 +55,10 @@ type RequiresCfg struct {
 // `consumes` is the actuator's business.
 type ConsumesCfg struct {
 	Effects []EffectDeclaration `json:"effects,omitempty"`
+	// Byte channels this plugin asked to read, each `<provider>/<name>`.
+	// A consent axis: the platform never reads the bytes, but it decides
+	// who may (DESIGN_BLOB_CHANNEL.md).
+	Blobs []string `json:"blobs,omitempty"`
 }
 
 // EffectDeclaration is one consent unit of effects the plugin will assert:
