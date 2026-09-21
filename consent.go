@@ -85,24 +85,24 @@ func confirmInstall(manifest PluginManifest, in io.Reader, interactive bool) err
 // sandbox); a string preset → one "preset:" member; the host-scoped form →
 // one member per host. Set-shaped so the update diff is order-insensitive.
 func networkSet(m PluginManifest) []string {
-	if len(m.Network) == 0 || string(m.Network) == "null" {
+	if len(m.Requires.Network) == 0 || string(m.Requires.Network) == "null" {
 		return nil
 	}
 	var preset string
-	if json.Unmarshal(m.Network, &preset) == nil {
+	if json.Unmarshal(m.Requires.Network, &preset) == nil {
 		return []string{"preset:" + preset}
 	}
 	var obj struct {
 		Hosts []string `json:"hosts"`
 	}
-	if json.Unmarshal(m.Network, &obj) == nil {
+	if json.Unmarshal(m.Requires.Network, &obj) == nil {
 		hosts := append([]string(nil), obj.Hosts...)
 		sort.Strings(hosts)
 		return hosts
 	}
 	// Unparseable network declarations are refused at load by the
 	// actuator; showing the raw bytes keeps the diff honest until then.
-	return []string{string(m.Network)}
+	return []string{string(m.Requires.Network)}
 }
 
 // displayNetworkList maps a networkSet slice through networkDisplay,
@@ -130,11 +130,11 @@ func networkDisplay(member string) string {
 // socketsSet canonicalizes `sockets.listen` entries (whitespace-compacted
 // raw JSON) so the diff compares declarations, not formatting.
 func socketsSet(m PluginManifest) []string {
-	if m.Sockets == nil {
+	if m.Requires.Sockets == nil {
 		return nil
 	}
-	out := make([]string, 0, len(m.Sockets.Listen))
-	for _, l := range m.Sockets.Listen {
+	out := make([]string, 0, len(m.Requires.Sockets.Listen))
+	for _, l := range m.Requires.Sockets.Listen {
 		var buf bytes.Buffer
 		if err := json.Compact(&buf, l); err == nil {
 			out = append(out, buf.String())
@@ -172,7 +172,7 @@ func plainDisplay(s string) string { return s }
 var consentAxes = []consentAxis{
 	{
 		name:    "privileges",
-		extract: func(m PluginManifest) []string { return m.Privileges },
+		extract: func(m PluginManifest) []string { return m.Requires.Privileges },
 		display: plainDisplay,
 		summary: func(v []string) string {
 			return fmt.Sprintf("  Privileges: %s\n", strings.Join(v, ", "))
@@ -182,7 +182,7 @@ var consentAxes = []consentAxis{
 	},
 	{
 		name:    "optional_privileges",
-		extract: func(m PluginManifest) []string { return m.OptionalPrivileges },
+		extract: func(m PluginManifest) []string { return m.Requires.OptionalPrivileges },
 		display: plainDisplay,
 		summary: func(v []string) string {
 			return fmt.Sprintf("  Optional privileges: %s\n", strings.Join(v, ", "))
@@ -220,7 +220,7 @@ var consentAxes = []consentAxis{
 	},
 	{
 		name:    "runtimes",
-		extract: func(m PluginManifest) []string { return m.Runtimes },
+		extract: func(m PluginManifest) []string { return m.Requires.Runtimes },
 		display: plainDisplay,
 		summary: func(v []string) string {
 			return fmt.Sprintf("  Managed runtimes: %s\n", strings.Join(v, ", "))

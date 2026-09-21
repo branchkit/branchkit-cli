@@ -6,16 +6,18 @@
   "min_api_version": "0.1.0",
   "description": "{{.Description}}",
   "author": "Your Name",
-  "privileges": ["input"],
+  "requires": {
+    "privileges": ["input"],
 {{- if .Listener}}
-  "network": "localhost",
-  "sockets": { "listen": [{ "id": "trial", "port": 0 }] },
+    "network": "localhost",
+    "sockets": { "listen": [{ "id": "trial", "port": 0 }] },
 {{- end}}
 {{- if .NetworkHosts}}
-  "network": { "hosts": [{{range $i, $h := .NetworkHosts}}{{if $i}}, {{end}}"{{$h}}"{{end}}] },
+    "network": { "hosts": [{{range $i, $h := .NetworkHosts}}{{if $i}}, {{end}}"{{$h}}"{{end}}] },
 {{- end}}
+    "runtimes": ["python"]
+  },
   "run": "python3 main.py",
-  "runtimes": ["python"],
   "action_prefix": "{{.ActionPrefix}}",
   "action_types": {
     "greet": {

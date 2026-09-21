@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -11,9 +12,9 @@ import (
 func TestDiffConsentSandboxAxis(t *testing.T) {
 	old := PluginManifest{ID: "p", Run: "./p"}
 	newM := PluginManifest{
-		ID:      "p",
-		Run:     "./p",
-		Network: []byte(`{"hosts":["collect.example","api.example"]}`),
+		ID:       "p",
+		Run:      "./p",
+		Requires: RequiresCfg{Network: []byte(`{"hosts":["collect.example","api.example"]}`)},
 	}
 	d := diffConsent(old, newM)
 	if !d.expands() {
@@ -25,9 +26,9 @@ func TestDiffConsentSandboxAxis(t *testing.T) {
 
 	// Same set, reordered: not a change.
 	reordered := PluginManifest{
-		ID:      "p",
-		Run:     "./p",
-		Network: []byte(`{"hosts":["api.example","collect.example"]}`),
+		ID:       "p",
+		Run:      "./p",
+		Requires: RequiresCfg{Network: []byte(`{"hosts":["api.example","collect.example"]}`)},
 	}
 	d = diffConsent(newM, reordered)
 	if d.expands() || d.contracts() {
@@ -37,8 +38,8 @@ func TestDiffConsentSandboxAxis(t *testing.T) {
 	// Preset widening localhost → outbound is an expansion (and a
 	// contraction of the old member — both print).
 	d = diffConsent(
-		PluginManifest{ID: "p", Network: []byte(`"localhost"`)},
-		PluginManifest{ID: "p", Network: []byte(`"outbound"`)},
+		PluginManifest{ID: "p", Requires: RequiresCfg{Network: []byte(`"localhost"`)}},
+		PluginManifest{ID: "p", Requires: RequiresCfg{Network: []byte(`"outbound"`)}},
 	)
 	if !d.expands() {
 		t.Fatal("localhost → outbound must expand")
@@ -87,7 +88,7 @@ func TestConfirmAttestationDowngrade(t *testing.T) {
 func TestConfirmInstall(t *testing.T) {
 	m := PluginManifest{
 		ID: "example", Name: "Example", Version: "1.0.0",
-		Privileges: []string{"dispatch"},
+		Requires: RequiresCfg{Privileges: []string{"dispatch"}},
 	}
 
 	if err := confirmInstall(m, strings.NewReader(""), false); err != nil {
@@ -117,16 +118,20 @@ func effectDecl(name, desc string, asserts ...string) EffectDeclaration {
 // its asserted names — copy edits are not a consent change.
 func TestDiffConsent(t *testing.T) {
 	oldM := PluginManifest{
-		Privileges:         []string{"windows", "shell"},
-		OptionalPrivileges: []string{"power"},
+		Requires: RequiresCfg{
+			Privileges:         []string{"windows", "shell"},
+			OptionalPrivileges: []string{"power"},
+		},
 		Consumes: &ConsumesCfg{Effects: []EffectDeclaration{
 			effectDecl("Focus", "old copy", "suppress_notifications"),
 			effectDecl("Capture", "", "suppress_keybinds"),
 		}},
 	}
 	newM := PluginManifest{
-		Privileges:         []string{"windows", "screenshot"},
-		OptionalPrivileges: []string{"power", "clipboard"},
+		Requires: RequiresCfg{
+			Privileges:         []string{"windows", "screenshot"},
+			OptionalPrivileges: []string{"power", "clipboard"},
+		},
 		Consumes: &ConsumesCfg{Effects: []EffectDeclaration{
 			effectDecl("Focus Mode", "new copy", "suppress_notifications"),
 		}},
@@ -162,9 +167,9 @@ func TestDiffConsent(t *testing.T) {
 // expansion asks on a TTY, is skipped by --yes, and BLOCKS a scripted
 // update — nobody was there to say no.
 func TestConfirmUpdate(t *testing.T) {
-	oldM := PluginManifest{ID: "x", Name: "X", Version: "1", Privileges: []string{"windows"}}
-	sameM := PluginManifest{ID: "x", Name: "X", Version: "2", Privileges: []string{"windows"}}
-	moreM := PluginManifest{ID: "x", Name: "X", Version: "2", Privileges: []string{"windows", "shell"}}
+	oldM := PluginManifest{ID: "x", Name: "X", Version: "1", Requires: RequiresCfg{Privileges: []string{"windows"}}}
+	sameM := PluginManifest{ID: "x", Name: "X", Version: "2", Requires: RequiresCfg{Privileges: []string{"windows"}}}
+	moreM := PluginManifest{ID: "x", Name: "X", Version: "2", Requires: RequiresCfg{Privileges: []string{"windows", "shell"}}}
 	lessM := PluginManifest{ID: "x", Name: "X", Version: "2"}
 
 	// No expansion: proceeds without reading stdin, TTY or not.
@@ -194,6 +199,48 @@ func TestConfirmUpdate(t *testing.T) {
 	for _, tty := range []bool{true, false} {
 		if err := confirmUpdate(moreM, oldM, strings.NewReader(""), true, tty); err != nil {
 			t.Fatalf("--yes must proceed (tty=%v): %v", tty, err)
+		}
+	}
+}
+
+// The request block and the consent-axis registry must stay the same set.
+//
+// This is the ratchet the block exists for. Before it, the fields a user is
+// shown at install were a hand-written list in three places — here, the
+// actuator's InstallPreviewTemplate, and the sandbox compiler — and a new
+// capability field could join the manifest, be honoured by the loader and
+// enforced by the sandbox while the install prompt said nothing. The user
+// would approve something never shown to them.
+//
+// Reflecting over RequiresCfg's JSON tags rather than restating the names
+// is the point: add a field to the block and this fails until the axis
+// exists, which is the opposite of the silence it replaces.
+func TestConsentAxesCoverEveryRequiresField(t *testing.T) {
+	declared := map[string]bool{}
+	rt := reflect.TypeOf(RequiresCfg{})
+	for i := range rt.NumField() {
+		tag := rt.Field(i).Tag.Get("json")
+		if name, _, _ := strings.Cut(tag, ","); name != "" && name != "-" {
+			declared[name] = true
+		}
+	}
+	if len(declared) == 0 {
+		t.Fatal("reflection found no json-tagged fields — the test is not testing anything")
+	}
+
+	covered := map[string]bool{}
+	for _, ax := range consentAxes {
+		covered[ax.name] = true
+	}
+
+	for field := range declared {
+		if !covered[field] {
+			t.Errorf("requires.%s has no consent axis — it would be enforced but never shown at install", field)
+		}
+	}
+	for axis := range covered {
+		if !declared[axis] {
+			t.Errorf("consent axis %q is not a field of RequiresCfg — stale, or it belongs elsewhere", axis)
 		}
 	}
 }

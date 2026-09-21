@@ -19,18 +19,27 @@ type PluginManifest struct {
 	// distinct from Author (free text). The install path cross-checks it
 	// against the Sigstore attestation's repo owner — see
 	// checkPublisherClaim in attestation.go.
-	Publisher string `json:"publisher,omitempty"`
-	Run       string `json:"run,omitempty"`
+	Publisher    string       `json:"publisher,omitempty"`
+	Run          string       `json:"run,omitempty"`
+	Consumes     *ConsumesCfg `json:"consumes,omitempty"`
+	ActionPrefix string       `json:"action_prefix,omitempty"`
+	HudTargets   []string     `json:"hud_targets,omitempty"`
+	Provides     *ProvidesCfg `json:"provides,omitempty"`
+	// Requires is everything the user is shown and accepts at install.
+	// One block rather than five loose fields so this tool, the actuator's
+	// install panel and the signing chain read the same subtree instead of
+	// each rebuilding the list (DESIGN_MANIFEST_REQUEST_BLOCK.md).
+	Requires RequiresCfg `json:"requires,omitempty"`
+}
+
+// RequiresCfg mirrors the actuator's `requires` block.
+type RequiresCfg struct {
 	// The manifest key was renamed capabilities → privileges platform-wide;
 	// this struct kept the old tag long enough that every "Privileges:" line
 	// the CLI printed was empty. The field name follows the wire.
-	Privileges         []string     `json:"privileges,omitempty"`
-	OptionalPrivileges []string     `json:"optional_privileges,omitempty"`
-	Consumes           *ConsumesCfg `json:"consumes,omitempty"`
-	ActionPrefix       string       `json:"action_prefix,omitempty"`
-	HudTargets         []string     `json:"hud_targets,omitempty"`
-	Sockets            *SocketsCfg  `json:"sockets,omitempty"`
-	Provides           *ProvidesCfg `json:"provides,omitempty"`
+	Privileges         []string    `json:"privileges,omitempty"`
+	OptionalPrivileges []string    `json:"optional_privileges,omitempty"`
+	Sockets            *SocketsCfg `json:"sockets,omitempty"`
 	// Network mirrors the actuator's `network` field — the string presets
 	// ("localhost", "outbound") or the host-scoped `{ "hosts": [...] }`
 	// form. Raw because both shapes are legal; `networkSet` canonicalizes.

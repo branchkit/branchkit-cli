@@ -15,8 +15,10 @@ func TestManifestParsesConsentFields(t *testing.T) {
 		"id": "example",
 		"name": "Example",
 		"version": "1.0.0",
-		"privileges": ["dispatch", "filesystem"],
-		"optional_privileges": ["display", "power"],
+		"requires": {
+			"privileges": ["dispatch", "filesystem"],
+			"optional_privileges": ["display", "power"]
+		},
 		"consumes": {
 			"effects": [{
 				"asserts": ["suppress_notifications", {"name": "disable_screen_dim"}],
@@ -29,11 +31,11 @@ func TestManifestParsesConsentFields(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &m); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(m.Privileges) != 2 || m.Privileges[0] != "dispatch" {
-		t.Fatalf("privileges not parsed: %v", m.Privileges)
+	if len(m.Requires.Privileges) != 2 || m.Requires.Privileges[0] != "dispatch" {
+		t.Fatalf("privileges not parsed: %v", m.Requires.Privileges)
 	}
-	if len(m.OptionalPrivileges) != 2 {
-		t.Fatalf("optional_privileges not parsed: %v", m.OptionalPrivileges)
+	if len(m.Requires.OptionalPrivileges) != 2 {
+		t.Fatalf("optional_privileges not parsed: %v", m.Requires.OptionalPrivileges)
 	}
 	if m.Consumes == nil || len(m.Consumes.Effects) != 1 {
 		t.Fatalf("consumes.effects not parsed: %+v", m.Consumes)

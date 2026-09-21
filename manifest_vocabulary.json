@@ -1,6 +1,6 @@
 {
   "_generated": "Derived from contracts/symbols.json by scripts/derive-cli-vocabulary.py \u2014 do not edit. Regenerate: just contracts",
-  "api_version": "0.1.0",
+  "api_version": "0.2.0",
   "privileges": [
     "accessibility",
     "appearance",

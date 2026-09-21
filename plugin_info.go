@@ -36,11 +36,11 @@ func cmdInfo(pluginID string) {
 	if m.ActionPrefix != "" {
 		fmt.Printf("Action prefix: %s\n", m.ActionPrefix)
 	}
-	if len(m.Privileges) > 0 {
-		fmt.Printf("Privileges:  %s\n", strings.Join(m.Privileges, ", "))
+	if len(m.Requires.Privileges) > 0 {
+		fmt.Printf("Privileges:  %s\n", strings.Join(m.Requires.Privileges, ", "))
 	}
-	if len(m.OptionalPrivileges) > 0 {
-		fmt.Printf("Optional:    %s\n", strings.Join(m.OptionalPrivileges, ", "))
+	if len(m.Requires.OptionalPrivileges) > 0 {
+		fmt.Printf("Optional:    %s\n", strings.Join(m.Requires.OptionalPrivileges, ", "))
 	}
 	if len(m.HudTargets) > 0 {
 		fmt.Printf("HUD targets: %s\n", strings.Join(m.HudTargets, ", "))

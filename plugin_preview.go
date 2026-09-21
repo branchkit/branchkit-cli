@@ -135,8 +135,8 @@ func cmdPreview(source string) {
 		Version:            manifest.Version,
 		Description:        manifest.Description,
 		Author:             manifest.Author,
-		Privileges:         manifest.Privileges,
-		OptionalPrivileges: manifest.OptionalPrivileges,
+		Privileges:         manifest.Requires.Privileges,
+		OptionalPrivileges: manifest.Requires.OptionalPrivileges,
 		Effects:            effects,
 		Conformance:        cs.Status,
 		Tier:               tier,
@@ -157,7 +157,7 @@ func cmdPreview(source string) {
 	}
 	result.Network = netDisplay
 	result.Sockets = len(socketsSet(manifest))
-	result.Runtimes = emptyNotNil(manifest.Runtimes)
+	result.Runtimes = emptyNotNil(manifest.Requires.Runtimes)
 
 	// Already installed → attach the consent diff, same basis as the
 	// install path's confirmUpdate: the manifest at the swap target.
