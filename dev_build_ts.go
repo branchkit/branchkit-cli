@@ -58,11 +58,13 @@ import("data:text/javascript;base64," + Buffer.from(source).toString("base64")).
 `
 
 type tsManifest struct {
-	ID      string `json:"id"`
-	Run     string `json:"run"`
-	Sockets *struct {
-		Listen []json.RawMessage `json:"listen"`
-	} `json:"sockets"`
+	ID       string `json:"id"`
+	Run      string `json:"run"`
+	Requires struct {
+		Sockets *struct {
+			Listen []json.RawMessage `json:"listen"`
+		} `json:"sockets"`
+	} `json:"requires"`
 }
 
 // buildTarget is the platform a build is FOR. The zero value is this machine.
@@ -127,7 +129,7 @@ func (t buildTarget) outputPath(absDir, base string) string {
 
 // tsEngine is the whole engine decision.
 func tsEngine(m tsManifest) string {
-	if m.Sockets != nil && len(m.Sockets.Listen) > 0 {
+	if m.Requires.Sockets != nil && len(m.Requires.Sockets.Listen) > 0 {
 		return "node"
 	}
 	return "bun"

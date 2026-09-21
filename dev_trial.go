@@ -384,10 +384,17 @@ func manifestPrivileges(dir string) []string {
 		return nil
 	}
 	var m struct {
-		Privileges []string `json:"privileges"`
+		// The request block. Reading `privileges` from the top level
+		// silently returned nil after the move, and the approval call then
+		// asked for nothing — HTTP 422, caught by `dev trial` rather than
+		// by any compiler, because a local anonymous struct is neither a
+		// typed access nor a string literal.
+		Requires struct {
+			Privileges []string `json:"privileges"`
+		} `json:"requires"`
 	}
 	json.Unmarshal(raw, &m)
-	return m.Privileges
+	return m.Requires.Privileges
 }
 
 // waitForStatus polls the plugin list until the plugin reports one of want,

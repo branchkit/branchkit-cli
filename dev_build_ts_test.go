@@ -21,8 +21,12 @@ func tsManifestFrom(t *testing.T, raw string) tsManifest {
 func TestTsEngine(t *testing.T) {
 	cases := []struct{ name, manifest, want string }{
 		{"no sockets", `{"id":"p","run":"./p-plugin"}`, "bun"},
-		{"empty listen", `{"id":"p","run":"./p-plugin","sockets":{"listen":[]}}`, "bun"},
-		{"a listener", `{"id":"p","run":"./p-plugin","sockets":{"listen":[{"id":"ext","port":0}]}}`, "node"},
+		{"empty listen", `{"id":"p","run":"./p-plugin","requires":{"sockets":{"listen":[]}}}`, "bun"},
+		{"a listener", `{"id":"p","run":"./p-plugin","requires":{"sockets":{"listen":[{"id":"ext","port":0}]}}}`, "node"},
+		// The pre-`requires` shape must NOT be read as a listener: it is not
+		// one, and silently choosing bun for a plugin that needs node is the
+		// failure this whole move exists to prevent.
+		{"flat sockets is not a listener", `{"id":"p","run":"./p-plugin","sockets":{"listen":[{"id":"ext","port":0}]}}`, "bun"},
 	}
 	for _, c := range cases {
 		if got := tsEngine(tsManifestFrom(t, c.manifest)); got != c.want {
