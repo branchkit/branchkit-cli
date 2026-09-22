@@ -1,7 +1,11 @@
 package main
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -102,5 +106,94 @@ func TestBuildTargetOutputPath(t *testing.T) {
 	zero, err := parseBuildTarget("", "")
 	if err != nil || !zero.isHost() {
 		t.Errorf("no flags must mean this machine: (%v, %v)", zero, err)
+	}
+}
+
+// The injector that writes our shipped executable is pinned by DIGEST, not
+// just by version. A version alone is the registry's word for it, and the
+// registry is the party a supply-chain attack compromises.
+func TestPostjectIsPinnedByDigestNotJustVersion(t *testing.T) {
+	if len(postjectSHA256) != 64 {
+		t.Fatalf("postjectSHA256 must be a full sha256 hex digest, got %q", postjectSHA256)
+	}
+	for _, c := range postjectSHA256 {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			t.Fatalf("postjectSHA256 has a non-hex character %q", c)
+		}
+	}
+	if !strings.Contains(postjectTarballURL(), postjectVersion) {
+		t.Fatalf("the URL must carry the pinned version, got %s", postjectTarballURL())
+	}
+}
+
+// A tar entry that climbs out of the destination lands INSIDE it instead.
+//
+// Asserting the real mechanism, not the one the code reads like. The first
+// version of this test was called ...RefusesPathTraversal and checked for an
+// error; it passed while the escape guard never fired, because
+// `filepath.Clean("/" + name)` had already rewritten `../escaped.txt` to
+// `/escaped.txt`. Same safe outcome, different cause — and a test that
+// credits the wrong cause stops protecting the right one the moment someone
+// simplifies it away.
+func TestExtractTarGzTreeNeutralisesPathTraversal(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	body := []byte("owned")
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "../escaped.txt", Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tw.Write(body)
+	tw.Close()
+	gz.Close()
+
+	root := t.TempDir()
+	inner := filepath.Join(root, "inner")
+	if err := extractTarGzTree(&buf, inner); err != nil {
+		// A refusal is also acceptable — it is the second lock doing the job.
+		if !strings.Contains(err.Error(), "escapes") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return
+	}
+	// The load-bearing assertion: nothing above the destination.
+	if _, err := os.Stat(filepath.Join(root, "escaped.txt")); err == nil {
+		t.Fatal("a ../ entry was written OUTSIDE the destination")
+	}
+	// And the entry was confined rather than silently dropped, so the
+	// mechanism is neutralisation and this test would notice if it changed.
+	if _, err := os.Stat(filepath.Join(inner, "escaped.txt")); err != nil {
+		t.Fatalf("expected the entry confined to the destination: %v", err)
+	}
+}
+
+// The ordinary case still works, so the traversal guard has not been made so
+// strict that a normal package fails to unpack.
+func TestExtractTarGzTreeUnpacksANormalTree(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	body := []byte("console.log('hi')")
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "package/dist/cli.js", Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tw.Write(body)
+	tw.Close()
+	gz.Close()
+
+	dest := t.TempDir()
+	if err := extractTarGzTree(&buf, dest); err != nil {
+		t.Fatalf("a normal package must unpack: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "package", "dist", "cli.js"))
+	if err != nil {
+		t.Fatalf("expected the CLI at the path verifiedPostject looks for: %v", err)
+	}
+	if string(got) != string(body) {
+		t.Fatalf("contents differ: %q", got)
 	}
 }

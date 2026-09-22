@@ -1,13 +1,17 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // Building a TypeScript plugin.
@@ -34,6 +38,76 @@ import (
 
 // postjectVersion pins the injector that writes the blob into the Node binary.
 const postjectVersion = "1.0.0-alpha.6"
+
+// postjectSHA256 is OUR record of what that version's npm tarball hashes to,
+// checked before the tool is allowed to touch a binary we ship.
+//
+// This used to be `bun x postject@<version>` and nothing else. Node, Bun and
+// CPython are all downloaded through `downloadVerified` against a sha256 we
+// recorded ourselves, and refuse to install on a mismatch — postject was the
+// one link in the chain without that, and it is the link that WRITES THE
+// EXECUTABLE. A compromised injector can put anything into the binary a user
+// runs, which makes it a better target than the runtimes it is injecting into.
+//
+// A version alone is not integrity. npm treats published versions as
+// immutable and `bun x` verifies against the registry's own metadata, so this
+// is not unverified so much as verified BY THE REGISTRY — which is the party
+// a supply-chain attack compromises. Recording the digest here means the
+// build trusts a number in this repository instead.
+//
+// Recorded 2026-09-21 by downloading the tarball and hashing it; the same
+// bytes also match npm's published sha512, so the pin is of an artifact that
+// was authentic at the time it was pinned.
+//
+// To move the pin: change both constants together, and get the new digest
+// with
+//
+//	curl -sL https://registry.npmjs.org/postject/-/postject-<ver>.tgz | shasum -a 256
+const postjectSHA256 = "d1447b53e87d49ddaf7fb3350c870afafa72760eca47f6d5cce4cefd537e7d92"
+
+// postjectTarballURL is the registry path for the pinned version.
+func postjectTarballURL() string {
+	return "https://registry.npmjs.org/postject/-/postject-" + postjectVersion + ".tgz"
+}
+
+// verifiedPostject downloads the pinned tarball, refuses it unless the digest
+// matches, unpacks it, and returns the path to its CLI entrypoint.
+//
+// Cached under the same directory the other verified runtimes use, so a
+// rebuild does not re-download; the cache is keyed by version AND digest, so
+// changing either fetches afresh rather than reusing something that was
+// verified against a different pin.
+func verifiedPostject() (string, error) {
+	dest := filepath.Join(runtimesDir(), "postject-"+postjectVersion+"-"+postjectSHA256[:12])
+	cli := filepath.Join(dest, "package", "dist", "cli.js")
+	if _, err := os.Stat(cli); err == nil {
+		return cli, nil
+	}
+
+	tgz, err := downloadVerified(postjectTarballURL(), postjectSHA256, 5*time.Minute)
+	if err != nil {
+		return "", fmt.Errorf("postject: %w", err)
+	}
+	defer os.Remove(tgz)
+
+	// Unpack only after the digest matched: nothing untrusted reaches the
+	// filesystem under runtimes/, the same order downloadVerified's own
+	// comment describes for Node and Bun.
+	f, err := os.Open(tgz)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	if err := extractTarGzTree(f, dest); err != nil {
+		os.RemoveAll(dest)
+		return "", fmt.Errorf("postject: unpacking failed: %w", err)
+	}
+	if _, err := os.Stat(cli); err != nil {
+		os.RemoveAll(dest)
+		return "", fmt.Errorf("postject: %s missing after unpack — the package layout changed", cli)
+	}
+	return cli, nil
+}
 
 // seaFuse is the sentinel Node looks for to know a blob was injected. It is a
 // constant of Node's single-executable feature, not a secret.
@@ -364,7 +438,14 @@ func buildWithNode(absDir, bun, entry, out string, target buildTarget) error {
 			return fmt.Errorf("codesign --remove-signature failed: %w", err)
 		}
 	}
-	inject := []string{"x", "postject@" + postjectVersion, out, "NODE_SEA_BLOB", blob, "--sentinel-fuse", seaFuse}
+	// The digest-verified local copy, not `bun x postject@<ver>`: the tool
+	// that writes our shipped executable is held to the same standard as the
+	// runtimes it injects into.
+	postjectCLI, err := verifiedPostject()
+	if err != nil {
+		return err
+	}
+	inject := []string{postjectCLI, out, "NODE_SEA_BLOB", blob, "--sentinel-fuse", seaFuse}
 	if target.goos == "darwin" {
 		inject = append(inject, "--macho-segment-name", "NODE_SEA")
 	}
@@ -377,4 +458,70 @@ func buildWithNode(absDir, bun, entry, out string, target buildTarget) error {
 		}
 	}
 	return nil
+}
+
+// extractTarGzTree unpacks a gzipped tar into dest, confining every entry to
+// it.
+//
+// Traversal is handled by NEUTRALISING the name, not by detecting it:
+// `filepath.Clean("/" + name)` resolves `..` against a virtual root, so
+// `../../etc/passwd` becomes `/etc/passwd` and joins to `dest/etc/passwd`.
+// Measured 2026-09-21 — an entry named `../escaped.txt` lands at
+// `dest/escaped.txt` and the guard below does not fire, which is the correct
+// outcome by a different mechanism than the one it looks like.
+//
+// The explicit check is kept as a second lock rather than removed, because
+// the neutralisation above is a property of `filepath` and Windows path
+// semantics are not the same as Unix ones (drive-relative names, `\`
+// separators). It is expected to be unreachable on Unix; a test asserts the
+// neutralisation, which is the behaviour that actually protects the tree.
+//
+// The digest is checked BEFORE this is called, so the two together mean the
+// bytes are the ones we pinned and they land only where we intended.
+//
+// Only regular files and directories are extracted. A symlink inside the
+// archive is skipped rather than followed: postject needs none, and a link
+// is the other way an archive reaches outside itself.
+func extractTarGzTree(r io.Reader, dest string) error {
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+	clean := filepath.Clean(dest) + string(os.PathSeparator)
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dest, filepath.Clean("/"+hdr.Name))
+		if !strings.HasPrefix(filepath.Clean(target)+string(os.PathSeparator), clean) {
+			return fmt.Errorf("archive entry %q escapes the destination", hdr.Name)
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+			if err != nil {
+				return err
+			}
+			// Bounded so a crafted archive cannot fill the disk; postject is
+			// ~1.4 MB and no single file in it is near this.
+			if _, err := io.Copy(f, io.LimitReader(tr, 64<<20)); err != nil {
+				f.Close()
+				return err
+			}
+			f.Close()
+		}
+	}
 }
