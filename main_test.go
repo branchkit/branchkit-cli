@@ -24,6 +24,7 @@ func TestUsageFor(t *testing.T) {
 		{"flag after other flags", []string{"dev", "init", "--name", "x", "--help"}, printDevUsage},
 		{"specific usage wins over the group", []string{"dev", "events", "--help"}, printDevEventsUsage},
 		{"margins keeps its own help", []string{"dev", "margins", "-h"}, printDevMarginsUsage},
+		{"platforms keeps its own help", []string{"dev", "platforms", "--help"}, printDevPlatformsUsage},
 		{"unknown group falls back to top level", []string{"nonsense", "--help"}, printUsage},
 		{"bare help flag", []string{"--help"}, printUsage},
 	}

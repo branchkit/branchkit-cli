@@ -155,6 +155,8 @@ func main() {
 			cmdDevBisect(os.Args[3:])
 		case "trial":
 			cmdDevTrial(os.Args[3:])
+		case "platforms":
+			cmdDevPlatforms(os.Args[3:])
 		case "help", "--help", "-h":
 			printDevUsage()
 		default:
@@ -191,11 +193,12 @@ func main() {
 // specificUsage is the help for a subcommand that has its own; anything not
 // here answers with its group's usage.
 var specificUsage = map[string]func(){
-	"dev events":  printDevEventsUsage,
-	"dev bisect":  printDevBisectUsage,
-	"dev vocab":   printDevVocabUsage,
-	"dev margins": printDevMarginsUsage,
-	"dev trial":   printDevTrialUsage,
+	"dev events":    printDevEventsUsage,
+	"dev bisect":    printDevBisectUsage,
+	"dev vocab":     printDevVocabUsage,
+	"dev margins":   printDevMarginsUsage,
+	"dev trial":     printDevTrialUsage,
+	"dev platforms": printDevPlatformsUsage,
 }
 
 var groupUsage = map[string]func(){
@@ -298,6 +301,10 @@ func printDevUsage() {
 	fmt.Println("        Detect build system and build plugin binary")
 	fmt.Println("  test [path] [--static-only] [--json]")
 	fmt.Println("        Run static analysis on a plugin")
+	fmt.Println("  platforms [path...] [--json]")
+	fmt.Println("        Which platforms will this plugin work on? Derives the operations")
+	fmt.Println("        your code actually calls and says where each one answers —")
+	fmt.Println("        at build time, while you are here to act on it")
 	fmt.Println("  watch [path]")
 	fmt.Println("        Watch for changes, rebuild, and reload via actuator")
 	fmt.Println("  logs [plugin-id] [--source TAG] [--json]")
