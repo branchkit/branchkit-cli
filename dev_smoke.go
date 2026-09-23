@@ -497,7 +497,91 @@ func cmdDevSmoke(args []string) {
 		}
 	}
 
+	// --- Capture liveness ---
+	//
+	// The check that was missing on 2026-09-23, when `native.screenshot`
+	// with no arguments and `native.capture_window` had BOTH been returning
+	// nothing on macOS 15.5 for an unknown length of time. Apple obsoleted
+	// the CoreGraphics call behind them, and obsolescence arrived not as a
+	// link error but as a function that still returns — NULL. Nothing
+	// noticed, because nothing asked.
+	//
+	// The native-coverage census cannot see this: it proves an
+	// implementation EXISTS, not that the OS still answers it. So ask.
+	// Side-effect-free — a capture reads the screen and changes nothing.
+	//
+	// The signal is the SPLIT. All shapes failing is almost always a missing
+	// Screen Recording grant, which is the machine's state and not a
+	// regression, so it warns. Some working and some not is the shape an
+	// obsoleted API makes, and it fails.
+	{
+		shapes := []struct {
+			name string
+			body map[string]any
+		}{
+			{"whole screen", map[string]any{}},
+			{"display", map[string]any{"display_id": 1}},
+			{"region", map[string]any{"region": map[string]any{"x": 0, "y": 0, "w": 8, "h": 8}}},
+		}
+		if wid := firstCapturableWindowID(token); wid != "" {
+			shapes = append(shapes, struct {
+				name string
+				body map[string]any
+			}{"window", map[string]any{"window_id": wid}})
+		}
+
+		var dead []string
+		live := 0
+		for _, sh := range shapes {
+			body, status, err := devHTTP("POST", "/v1/native/screenshot", token, sh.body)
+			if err != nil || status != 200 || len(body) == 0 {
+				dead = append(dead, sh.name)
+				continue
+			}
+			live++
+		}
+
+		switch {
+		case live == 0:
+			add("capture", "warn", fmt.Sprintf(
+				"no capture shape returned an image (%s) — most likely Screen Recording is not granted",
+				strings.Join(dead, ", ")))
+		case len(dead) > 0:
+			add("capture", "fail", fmt.Sprintf(
+				"%d of %d capture shapes returned nothing (%s) while others worked — an OS capture path has stopped answering",
+				len(dead), len(shapes), strings.Join(dead, ", ")))
+		default:
+			add("capture", "pass", fmt.Sprintf("all %d capture shapes returned an image", len(shapes)))
+		}
+	}
+
 	finish()
+}
+
+// firstCapturableWindowID picks any reasonably sized window to prove the
+// single-window capture path still answers. Empty when the world model has
+// none, in which case that shape is simply not asserted.
+func firstCapturableWindowID(token string) string {
+	raw, status, err := devHTTP("GET", "/v1/windows", token, nil)
+	if err != nil || status != 200 {
+		return ""
+	}
+	var wm struct {
+		Windows []struct {
+			ID string `json:"id"`
+			W  int    `json:"w"`
+			H  int    `json:"h"`
+		} `json:"windows"`
+	}
+	if json.Unmarshal(raw, &wm) != nil {
+		return ""
+	}
+	for _, w := range wm.Windows {
+		if w.W >= 64 && w.H >= 64 {
+			return w.ID
+		}
+	}
+	return ""
 }
 
 // matchableCmd is the per-command shape of /inspector/matchable entries the
