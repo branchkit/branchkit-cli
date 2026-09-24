@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -286,5 +287,22 @@ func TestProvidedBlobsAreDisclosedAndACeilingRaiseExpands(t *testing.T) {
 	d := diffConsent(mk(64<<20, ""), mk(1<<30, ""))
 	if !d.expands() {
 		t.Fatalf("raising max_bytes must require fresh consent: %+v", d)
+	}
+}
+
+// A plugin that may request hosts at runtime says so at install, and
+// gaining that ability in an update needs fresh consent.
+func TestRequestableHostsAreDisclosedAndGainingThemExpands(t *testing.T) {
+	mk := func(net string) PluginManifest {
+		var m PluginManifest
+		m.Requires.Network = json.RawMessage(net)
+		return m
+	}
+	set := networkSet(mk(`{"hosts":[],"requestable":true}`))
+	if len(set) != 1 || networkDisplay(set[0]) == set[0] {
+		t.Fatalf("requestable not disclosed: %v", set)
+	}
+	if !diffConsent(mk(`{"hosts":["a.test"]}`), mk(`{"hosts":["a.test"],"requestable":true}`)).expands() {
+		t.Fatal("becoming requestable must require fresh consent")
 	}
 }

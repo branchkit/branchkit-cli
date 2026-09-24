@@ -93,11 +93,17 @@ func networkSet(m PluginManifest) []string {
 		return []string{"preset:" + preset}
 	}
 	var obj struct {
-		Hosts []string `json:"hosts"`
+		Hosts       []string `json:"hosts"`
+		Requestable bool     `json:"requestable"`
 	}
 	if json.Unmarshal(m.Requires.Network, &obj) == nil {
 		hosts := append([]string(nil), obj.Hosts...)
 		sort.Strings(hosts)
+		// A member of its own, so turning it on in an update is an
+		// expansion (fresh consent), not a silent change to the same axis.
+		if obj.Requestable {
+			hosts = append(hosts, networkRequestable)
+		}
 		return hosts
 	}
 	// Unparseable network declarations are refused at load by the
@@ -116,8 +122,14 @@ func displayNetworkList(members []string) []string {
 }
 
 // networkDisplay renders one networkSet member for a human.
+// networkRequestable marks a plugin that may ask for more hosts while it runs
+// (`network.request_host`). Each such host arrives OFF on the plugin's page.
+const networkRequestable = "requestable"
+
 func networkDisplay(member string) string {
 	switch member {
+	case networkRequestable:
+		return "more hosts it asks for while running (each off until you allow it)"
 	case "preset:localhost":
 		return "localhost only"
 	case "preset:outbound":
