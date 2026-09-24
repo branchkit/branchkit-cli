@@ -83,7 +83,7 @@ func main() {
 			printPluginUsage()
 			os.Exit(1)
 		}
-	case "artifact", "model": // "model" is a deprecated alias (DESIGN_ARTIFACTS_RENAME.md)
+	case "artifact", "model": // "model" is a deprecated alias, removed one release after the models->artifacts rename
 		if len(os.Args) < 3 {
 			printArtifactUsage()
 			os.Exit(1)

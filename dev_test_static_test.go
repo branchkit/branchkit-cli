@@ -37,7 +37,7 @@ func statusesFor(results []TestResult, name string) []string {
 }
 
 // Both wire forms of a consumes.collections entry parse, and the object
-// form carries its fields (docs/design/DESIGN_SHAPED_CONSUMPTION.md).
+// form carries its fields.
 func TestParseConsumedCollectionsAcceptsBothForms(t *testing.T) {
 	m := manifestFromJSON(t, `{"consumes":{"collections":[
 		"keycodes",
@@ -209,8 +209,7 @@ func TestConsumedCollectionsMalformedEntryFails(t *testing.T) {
 }
 
 // The one-params dialect envelope check mirrors the platform's
-// parse_action_or_template, sequences included, recursing into steps
-// (DESIGN_ONE_PARAMS_DIALECT.md).
+// parse_action_or_template, sequences included, recursing into steps.
 func TestActionEnvelopeErrors(t *testing.T) {
 	obj := func(s string) map[string]any {
 		var m map[string]any

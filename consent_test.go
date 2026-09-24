@@ -9,7 +9,7 @@ import (
 
 // Sandbox scope is the fourth diff axis — the one with no later consent
 // moment anywhere, so a widening must count as an expansion and a scripted
-// update must block on it (DESIGN_SANDBOX_CONSENT_SURFACE.md).
+// update must block on it: there is no later moment to consent.
 func TestDiffConsentSandboxAxis(t *testing.T) {
 	old := PluginManifest{ID: "p", Run: "./p"}
 	newM := PluginManifest{

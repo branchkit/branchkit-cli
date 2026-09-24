@@ -103,8 +103,8 @@ func didYouMean(list []string, s string) string {
 
 // checkImplementsMethods validates the method names in `implements`.
 //
-// This is the check §4.1 of DESIGN_PLUGIN_TEST_HARNESS.md asks for
-// ("declared hooks match methods the actuator knows how to call"), and it
+// This is the static check that declared hooks match methods the actuator
+// knows how to call, and it
 // earns its place because the failure is SILENT. `PluginImplements` in the
 // actuator says it plainly: "Only methods the actuator KNOWS are
 // dispatched. An unrecognized name is inert ... declaring one buys nothing

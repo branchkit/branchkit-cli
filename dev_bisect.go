@@ -1,7 +1,7 @@
 package main
 
 // dev bisect — the interactive driver for the actuator's plugin bisect
-// (app docs/design/DESIGN_PLUGIN_BISECT.md). The actuator owns the search:
+// The actuator owns the search:
 // this loop only shows what each round disabled, asks the one question, and
 // posts the answer. The human is the oracle; this file is just the table
 // they sit at.

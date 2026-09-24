@@ -1,8 +1,8 @@
 package main
 
 // Sigstore bundle verification — the author-signature half of the plugin
-// signing chain (docs/design/DESIGN_PLUGIN_SIGNING_CHAIN.md, step 0 of
-// docs/design/PLAN_SIGNING_CHAIN_IMPL.md).
+// signing chain. Keyless: the author holds no key; identity is the provider
+// OIDC claim in the Fulcio cert.
 //
 // verifyBundle answers: "was this exact artifact signed by an
 // OIDC-identified author, with the signature recorded in a transparency
@@ -93,7 +93,7 @@ func verifyBundle(bundleJSON []byte, digestHex string, trustedRootJSONs [][]byte
 		// attestation (they have zero tlog entries). Public-log discoverability
 		// is a stronger property worth revisiting as an author-tooling policy
 		// (have the signing snippet also upload to Rekor), tracked in
-		// PLAN_SIGNING_CHAIN_IMPL; for v1, observer-timestamp anchoring is the
+		// the plugin signing work; for v1, observer-timestamp anchoring is the
 		// bar, and the identity + digest binding are the load-bearing checks.
 		verifier, err := verify.NewVerifier(trustedRoot,
 			verify.WithObserverTimestamps(1),

@@ -52,7 +52,8 @@ type templateData struct {
 
 // What the scaffold ships with: the example command's first word and the
 // example binding. These are CONTENT — the "one voice command, one keybind,
-// one test" of DESIGN_FIRST_RUN_EXPERIENCE.md — not tuning knobs. They are
+// one test" the scaffold is meant to ship (a skeleton you delete, so it stays
+// boring on purpose) — not tuning knobs. They are
 // rendered into plugins/helloworld*, quoted in the published getting-started
 // guide, and diffed by `just check-scaffold-mirrors`, so changing either is a
 // docs-and-mirrors change, not a one-liner.

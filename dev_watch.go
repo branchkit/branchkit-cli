@@ -182,7 +182,8 @@ func readHostToken() string {
 	if err != nil {
 		// No host token — not a dev build. A production install reaches
 		// the app through a per-plugin Developer Access grant instead
-		// (DESIGN_SCOPED_DEV_SURFACE.md): the app writes
+		// (a scoped, revocable per-plugin grant the user flips on the
+		// plugin's Settings card): the app writes
 		// dev-access/<plugin-id>.json with {plugin_id, port, token} when
 		// the user flips the toggle. Scoped: the server answers only for
 		// that plugin, so which file we pick matters only when several

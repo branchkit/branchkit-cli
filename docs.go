@@ -3,7 +3,7 @@ package main
 // branchkit-cli docs — resolve the platform documentation that ships with the
 // installed app.
 //
-// Why local rather than the website (docs/design/DESIGN_AGENT_AUTHORING_SURFACE.md):
+// Why local rather than the website:
 // an agent authoring a plugin can grep a directory. Grep is exact, costs
 // nothing, and supports refinement; fetching a site costs a request per page
 // and requires already knowing which page you want, which is precisely what

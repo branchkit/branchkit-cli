@@ -23,7 +23,7 @@ import (
 // end user installing one needs neither. They are pinned, checksum-verified,
 // and installed under the managed runtimes directory; an author's own Bun or
 // Node is never consulted, so a build does not depend on what happens to be
-// on someone's PATH (decided 2026-09-17, docs/design/PLAN_SCAFFOLD_TRIALS.md).
+// on someone's PATH (decided 2026-09-17, after the scaffold trials).
 //
 // Bun is the bundler and the default engine. Node is fetched only when a
 // plugin declaring `sockets.listen` is first built: Bun cannot serve an

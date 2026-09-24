@@ -2,8 +2,9 @@ package main
 
 // dev platforms — where will this plugin actually work?
 //
-// Step 0 of DESIGN_PLUGIN_CAPABILITY_DECLARATION.md, finally in a tool the
-// audience has. The derivation already existed as `just plugin-platforms`,
+// Derives, from a plugin's own source, which operations it calls and where
+// each answers — told to the author at build time rather than learned from a
+// user's bug report — finally in a tool the audience has. The derivation already existed as `just plugin-platforms`,
 // which lives in the closed app repo: it served us and not the plugin authors
 // whose day it is meant to change, which is the wrong way round for a thing
 // whose entire purpose is telling an author what they can call. This is the

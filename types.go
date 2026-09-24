@@ -28,7 +28,7 @@ type PluginManifest struct {
 	// Requires is everything the user is shown and accepts at install.
 	// One block rather than five loose fields so this tool, the actuator's
 	// install panel and the signing chain read the same subtree instead of
-	// each rebuilding the list (DESIGN_MANIFEST_REQUEST_BLOCK.md).
+	// each rebuilding the list.
 	Requires RequiresCfg `json:"requires,omitempty"`
 }
 
@@ -44,7 +44,8 @@ type RequiresCfg struct {
 	// ("localhost", "outbound") or the host-scoped `{ "hosts": [...] }`
 	// form. Raw because both shapes are legal; `networkSet` canonicalizes.
 	// Sandbox scope is consent surface: disclosed at install, diffed at
-	// update (DESIGN_SANDBOX_CONSENT_SURFACE.md).
+	// update (sockets and runtimes have no later grant moment; hosts become
+	// grants on the plugin's page).
 	Network json.RawMessage `json:"network,omitempty"`
 	// Managed runtimes the sandbox grants read+exec on.
 	Runtimes []string `json:"runtimes,omitempty"`
@@ -57,7 +58,7 @@ type ConsumesCfg struct {
 	Effects []EffectDeclaration `json:"effects,omitempty"`
 	// Byte channels this plugin asked to read, each `<provider>/<name>`.
 	// A consent axis: the platform never reads the bytes, but it decides
-	// who may (DESIGN_BLOB_CHANNEL.md).
+	// who may (one grant per <provider>/<name>).
 	Blobs []string `json:"blobs,omitempty"`
 }
 
@@ -163,8 +164,9 @@ func (p *PlatformConstraint) MatchesCurrent() bool {
 	return false
 }
 
-// ArtifactPart is one step in assembling a model directory. Kind-tagged, five
-// kinds; see docs/design/DESIGN_PLUGIN_MODEL_DECLARATION.md in branchkit/app.
+// ArtifactPart is one step in assembling a model directory. Kind-tagged; the
+// kinds share this one struct and each reads only the fields grouped under
+// its name below.
 type ArtifactPart struct {
 	Kind string `json:"kind"`
 	// hf_folder / hf_files

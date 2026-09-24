@@ -30,8 +30,7 @@ func bareCollections(m *PluginManifest) []string {
 // arbitrated by each user's ownership ledger once both are installed — so
 // this is a warning, never a refusal: the author may mean the commons. The
 // failure it exists for is ignorance, not intent: inventing a rival
-// vocabulary having never seen the existing one
-// (app DESIGN_COLLECTION_GOVERNANCE.md, item 7).
+// vocabulary having never seen the existing one.
 func namespaceWarnings(m *PluginManifest, cat *catalog) []string {
 	mine := bareCollections(m)
 	if len(mine) == 0 || cat == nil {

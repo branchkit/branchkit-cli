@@ -20,6 +20,14 @@ type TestPhaseResult struct {
 	Tests []TestResult `json:"tests"`
 }
 
+// Ownership split with the Rust harness (decided 2026-05-15): this file owns
+// checks that need only the plugin directory (valid JSON, required fields,
+// referenced files, known field_type values, and author-time mirrors of
+// load-time refusals like the params envelope), so `dev test --static-only`
+// works without the Rust binary. Semantic checks (compatibility, cross-field,
+// security) are authoritative in the actuator's validate_manifest and are
+// deliberately NOT reimplemented here. Severities must match the actuator's:
+// they drive CI exit codes.
 func runStaticAnalysis(dir string) TestPhaseResult {
 	phase := TestPhaseResult{Phase: "static_analysis"}
 
@@ -220,7 +228,8 @@ func loadCollectionFile(dir, ref string) (map[string]any, error) {
 
 // consumedCollection is one `consumes.collections` entry in either of its
 // two wire forms: a bare name, or a name plus the fields the plugin reads
-// (docs/design/DESIGN_SHAPED_CONSUMPTION.md).
+// (declaring fields buys a load-time check against the provider's declared
+// schema).
 type consumedCollection struct {
 	Name   string
 	Fields []string
@@ -751,8 +760,8 @@ func checkCommandGrammar(dir string, m map[string]any) []TestResult {
 			continue
 		}
 
-		// One params dialect (DESIGN_ONE_PARAMS_DIALECT.md): the action
-		// envelope is closed, sequences included, and the check recurses
+		// One params dialect: the action envelope is closed (a typo'd key
+		// would otherwise silently become a param), sequences included, and the check recurses
 		// into sequence steps — a stray key is refused by the platform at
 		// load, so refuse it here first, at author time.
 		if errs := actionEnvelopeErrors(action); len(errs) > 0 {
@@ -783,7 +792,7 @@ func checkCommandGrammar(dir string, m map[string]any) []TestResult {
 }
 
 // actionEnvelopeErrors validates one action object against the one-params
-// dialect (DESIGN_ONE_PARAMS_DIALECT.md), mirroring the platform's
+// dialect (closed envelope, payload only under params), mirroring the platform's
 // parse_action_or_template: the envelope is type/params/phase; a sequence
 // is exactly {"type": "sequence", "actions": […]} and the check recurses
 // into each step; "params", when present, must be an object. Empty means

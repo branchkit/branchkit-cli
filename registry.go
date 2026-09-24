@@ -32,7 +32,7 @@ type catalogEntry struct {
 	// names cannot collide and are not listed.
 	Collections []string `yaml:"collections,omitempty"`
 	// Registry counter-signature, written by `registry sign` when a plugin is
-	// admitted (DESIGN_PLUGIN_SIGNING_CHAIN step 5). It signs the manifest hash
+	// admitted to the canonical registry. It signs the manifest hash
 	// (platform- and version-independent). Absent until counter-signed; the
 	// install path treats absence as "not registry-signed", a present-but-
 	// invalid signature as a hard fail.

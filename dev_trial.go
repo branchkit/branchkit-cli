@@ -19,8 +19,7 @@ import (
 // Python and TypeScript scaffolds (2026-09-17) it found that every scaffold
 // failed its own `dev test`, that the TypeScript scaffold could not start at
 // all, and that the macOS `hosts` network tier had never loaded. None of it
-// was visible to any gate. This is that walk, as one command
-// (docs/design/PLAN_SCAFFOLD_TRIALS.md).
+// was visible to any gate. This is that walk, as one command.
 //
 // It is written to run unchanged on macOS, Linux and Windows: it reaches the
 // app through the same client every other `dev` command uses (operator

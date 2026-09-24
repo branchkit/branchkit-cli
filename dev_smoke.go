@@ -347,9 +347,8 @@ func cmdDevSmoke(args []string) {
 	//     does not ("scroll down" resolves under "scroll down <number>");
 	//   - an exclusive mode suppresses everything outside it, so
 	//     commands are co-reachable only with EQUAL exclusive-gate sets.
-	// See branchkit-extension docs/design/PLAN_RELIABILITY_CONSOLIDATION.md
-	// (prefix-free vocabulary arc). Warn-level while the first-party
-	// vocabulary pass is open.
+	// The goal is a prefix-free first-party vocabulary. Warn-level while the
+	// first-party vocabulary pass is open.
 	collisions := prefixCollisions(append(matchable.Eligible, matchable.Gated...), matchable.ExclusiveNamespaces)
 	if len(collisions) == 0 {
 		add("prefix-lint", "pass", fmt.Sprintf("no prefix collisions among co-reachable commands (%d commands checked)",
@@ -370,8 +369,9 @@ func cmdDevSmoke(args []string) {
 	// reconciliation pass in build_collections refuses the mismatch and
 	// classifies orphans against uninstall markers + grace. `refused` is the
 	// last reconciliation; `orphans` are surfaced-not-deleted; `quarantined`
-	// is the durable collection_logs/orphaned/ scan. See
-	// DESIGN_PLUGIN_DATA_LIFECYCLE.md.
+	// is the durable collection_logs/orphaned/ scan. Unmarked orphans are
+	// never auto-deleted: a missing uninstall marker can mean a crash, and a
+	// crash must never delete data.
 	raw, status, err = devHTTP("GET", "/inspector/ownership", token, nil)
 	var ownership struct {
 		RefusedCount       int  `json:"refused_count"`

@@ -16,7 +16,8 @@ import (
 // SERVED on that listener, so the trial proved that the plugin bound and
 // nothing more. That is exactly the hole the Windows S5 verification had:
 // the plugin self-bound inside its AppContainer, and no one connected from
-// outside — where the connection times out (DESIGN_WINDOWS_LISTENER_RELAY.md).
+// outside — where the connection times out (the AppContainer loopback
+// exemption is outbound-only; measured 2026-09-18).
 // So the trial injects a /ping route on the listener and, once the plugin is
 // Running under the sandbox, connects to it from THIS process: 200 with the
 // pairing token from connect.json, 401 without. On every OS.

@@ -1,7 +1,8 @@
 package main
 
 // `branchkit-cli plugin package` — Layer 1 of the release pipeline
-// (docs/design/PLAN_SIGNING_CHAIN_IMPL / the polyglot release design): turn a
+// (the language- and CI-agnostic first layer of the plugin release
+// pipeline): turn a
 // built plugin into the correctly-named, reproducible release tarball plus
 // its SHA-256, ready to sign and upload.
 //

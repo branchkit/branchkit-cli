@@ -1,6 +1,7 @@
 package main
 
-// The one local address (app docs/design/DESIGN_ONE_LOCAL_ADDRESS.md).
+// The one local address: every consumer resolves run/address.json (there is
+// no default port) rather than assuming one.
 //
 // A running app writes <app support>/run/address.json with its UI port, the
 // operator socket path once it exists, the dev listener's port under a dev

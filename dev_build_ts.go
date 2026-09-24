@@ -19,7 +19,7 @@ import (
 // A TypeScript plugin ships as ONE compiled binary in its own directory and
 // its manifest says `run: "./<id>-plugin"` — the shape a Go plugin has. That
 // is not a style choice. Measured 2026-09-17 against the app's sandbox
-// (docs/design/PLAN_SCAFFOLD_TRIALS.md): a shell wrapper cannot be exec'd, an
+// (the scaffold trials): a shell wrapper cannot be exec'd, an
 // interpreted `bun run` dies reading its ancestor directories, and Node on a
 // loose bundle needs an lstat grant on them. A program in the plugin's own
 // directory is what the exec rule already allows, and it resolves nothing at

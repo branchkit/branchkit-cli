@@ -588,7 +588,8 @@ func findManifest(dir string) (string, error) {
 
 // SourceMeta records where a plugin was installed from (for update checking)
 // and the signing outcome at install time (for the actuator's trust-tier
-// resolution — DESIGN_PLUGIN_SIGNING_CHAIN).
+// resolution: the actuator never sees artifact bytes, so the CLI records the
+// outcome here).
 type SourceMeta struct {
 	Source       string `json:"source"`        // "owner/repo"
 	InstalledTag string `json:"installed_tag"` // e.g. "v3.0.0" or "source-build"

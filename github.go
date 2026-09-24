@@ -232,8 +232,8 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, *Au
 	// Verify checksum if the release publishes one. The checksum file is
 	// same-origin with the artifact, so this proves integrity (no
 	// corruption in transit), not authenticity — a compromised release
-	// can republish both. Authenticity is the publisher-verification
-	// track (DESIGN_PLUGIN_PUBLISHER_VERIFICATION).
+	// can republish both. Authenticity comes from publisher verification
+	// (provider-anchored identity plus signing), not from this checksum.
 	checksumVerified := false
 	checksumName := asset.Name + ".sha256"
 	for _, a := range release.Assets {

@@ -161,7 +161,8 @@ func socketsSet(m PluginManifest) []string {
 // consentAxis is one set-shaped consent axis: a canonical extractor and
 // the copy each surface uses. The diff, the install summary, the update
 // prompt, and the preview all iterate `consentAxes`
-// (DESIGN_PERMISSIONS_ARCHITECTURE.md step 3), so a new axis registers
+// (the one consent-axis registry: every surface iterates it rather than
+// hand-enumerating axes), so a new axis registers
 // here once and every surface carries it — the sandbox axes were invisible
 // everywhere precisely because each surface enumerated by hand.
 //
@@ -212,10 +213,10 @@ var consentAxes = []consentAxis{
 	// The sandbox axes. Network HOSTS are grant records since 2026-09-18:
 	// like every other grant a non-bundled plugin asks for, each is allowed
 	// on the plugin's page after install and read live by the plugin's
-	// proxy (DESIGN_PLUGIN_NETWORK_TRANSPORTS.md, "Decided").
-	// Listen sockets and runtimes stay disclosure-only: spawn-time,
-	// all-or-nothing, no later grant moment
-	// (DESIGN_SANDBOX_CONSENT_SURFACE.md). Nothing printed means the
+	// proxy, so switching one off takes effect on the next connection
+	// without a restart. Listen sockets and runtimes stay disclosure-only:
+	// spawn-time, all-or-nothing, no later grant moment, so install is the
+	// only place a user sees them. Nothing printed means the
 	// tightest sandbox.
 	{
 		name:    "network",
