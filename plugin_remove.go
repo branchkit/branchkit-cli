@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 func cmdRemove(pluginID string) {
@@ -33,6 +34,24 @@ func cmdRemove(pluginID string) {
 		fmt.Fprintf(os.Stderr, "Failed to remove plugin: %v\n", err)
 		os.Exit(1)
 	}
+	removeBlobs(pluginID)
 	fmt.Printf("Removed plugin '%s'.\n", pluginID)
 	notifyActuator()
+}
+
+// removeBlobs clears the blobs a removed plugin provided and the platform's
+// record of them. `lifetime: persistent` promises the bytes last until
+// uninstall, and nothing did the uninstall half: they outlived the plugin.
+// os.RemoveAll removes a symlink rather than following it, so a link the
+// provider planted in its own blob directory cannot redirect this.
+func removeBlobs(pluginID string) {
+	root := appSupportDir()
+	for _, p := range []string{
+		filepath.Join(root, "blobs", pluginID),
+		filepath.Join(root, "blob-state", pluginID+".json"),
+	} {
+		if err := os.RemoveAll(p); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not remove %s: %v\n", p, err)
+		}
+	}
 }
