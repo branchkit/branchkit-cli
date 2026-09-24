@@ -158,7 +158,14 @@ func socketsSet(m PluginManifest) []string {
 // the sorted-assert-set identity) and the run command (a scalar whose
 // change is always expansion-class — there is no "narrower" program).
 type consentAxis struct {
-	name    string
+	name string
+	// block/field name the manifest field this axis reads, for the
+	// stale-axis check; "" means `name` is a field of `requires` or
+	// `consumes`. Needed where one field name appears in two blocks:
+	// `consumes.blobs` (reads) and `provides.blobs` (offers) are both
+	// "blobs".
+	block   string
+	field   string
 	extract func(PluginManifest) []string
 	display func(string) string
 	// Full summary line for the install disclosure; "" suppresses.
@@ -237,6 +244,24 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + reads shared data: %s (allow it on the plugin's page)\n",
 		delFmt: "  - reads shared data: %s\n",
+	},
+	// The PROVIDER's side of a blob, which the design says is disclosed at
+	// install "like every other declaration" and which nothing showed
+	// (2026-09-23 review). One member per blob carrying every consented
+	// property, so an update that raises max_bytes or switches to
+	// `hash: provider` reads as a changed member — expansion — rather than
+	// slipping through as the same name.
+	{
+		name:    "provided_blobs",
+		block:   "provides",
+		field:   "blobs",
+		extract: providedBlobsSet,
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Offers shared data: %s\n", strings.Join(v, "; "))
+		},
+		addFmt: "  + offers shared data: %s\n",
+		delFmt: "  - offers shared data: %s\n",
 	},
 	{
 		name:    "runtimes",
@@ -437,4 +462,30 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty bool)
 	default:
 		return fmt.Errorf("update declined")
 	}
+}
+
+// providedBlobsSet renders each provided blob as one consentable line.
+func providedBlobsSet(m PluginManifest) []string {
+	if m.Provides == nil {
+		return nil
+	}
+	var out []string
+	for name, b := range m.Provides.Blobs {
+		onFull := "refuses new data when full"
+		if b.OnFull == "evict_oldest" {
+			onFull = "drops the oldest data when full"
+		}
+		life := "cleared when the plugin stops"
+		if b.Lifetime == "persistent" {
+			life = "kept until uninstall"
+		}
+		hash := "checked by BranchKit"
+		if b.Hash == "provider" {
+			hash = "integrity is the plugin's claim, not checked"
+		}
+		out = append(out, fmt.Sprintf("%s (up to %s on disk, %s, %s, %s)",
+			name, humanBytes(b.MaxBytes), onFull, life, hash))
+	}
+	sort.Strings(out)
+	return out
 }

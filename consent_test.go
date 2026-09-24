@@ -237,7 +237,9 @@ func TestConsentAxesCoverEveryRequiresField(t *testing.T) {
 	}
 	covered := map[string]bool{}
 	for _, ax := range consentAxes {
-		covered[ax.name] = true
+		if ax.block == "" {
+			covered[ax.name] = true
+		}
 	}
 	for field := range declared {
 		if !covered[field] {
@@ -255,5 +257,34 @@ func TestConsentAxesCoverEveryRequiresField(t *testing.T) {
 		if !declared[axis] && !elsewhere[axis] {
 			t.Errorf("consent axis %q is a field of neither RequiresCfg nor ConsumesCfg — stale", axis)
 		}
+	}
+	// Axes that name their block explicitly are checked against it.
+	blocks := map[string]map[string]bool{"provides": tags(ProvidesCfg{})}
+	for _, ax := range consentAxes {
+		if ax.block == "" {
+			continue
+		}
+		fields, ok := blocks[ax.block]
+		if !ok || !fields[ax.field] {
+			t.Errorf("consent axis %q names %s.%s, which is not a manifest field — stale", ax.name, ax.block, ax.field)
+		}
+	}
+}
+
+// The provider's side of a blob is disclosed, and raising its ceiling is a
+// consent change rather than the same name slipping through.
+func TestProvidedBlobsAreDisclosedAndACeilingRaiseExpands(t *testing.T) {
+	mk := func(max int64, hash string) PluginManifest {
+		return PluginManifest{Provides: &ProvidesCfg{Blobs: map[string]BlobDecl{
+			"frames": {MaxBytes: max, OnFull: "evict_oldest", Hash: hash},
+		}}}
+	}
+	got := providedBlobsSet(mk(64<<20, "provider"))
+	if len(got) != 1 || !strings.Contains(got[0], "64 MB") || !strings.Contains(got[0], "not checked") {
+		t.Fatalf("disclosure: %v", got)
+	}
+	d := diffConsent(mk(64<<20, ""), mk(1<<30, ""))
+	if !d.expands() {
+		t.Fatalf("raising max_bytes must require fresh consent: %+v", d)
 	}
 }

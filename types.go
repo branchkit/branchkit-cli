@@ -99,6 +99,21 @@ type ProvidesCfg struct {
 	// here — for the shared-name check against the catalog
 	// (namespace_check.go); shapes are the actuator's business.
 	Collections map[string]any `json:"collections,omitempty"`
+	// Blobs this plugin PROVIDES — a byte channel granted plugins read
+	// straight off disk. Read here only to disclose the provider's side at
+	// install (the disk ceiling, what sheds when full, how long the bytes
+	// live, and whether the platform or the provider vouches for them).
+	Blobs map[string]BlobDecl `json:"blobs,omitempty"`
+}
+
+// BlobDecl is the part of a `provides.blobs` entry a person consents to.
+// Defaults mirror the actuator's (`plugins/manifest.rs` BlobDeclaration).
+type BlobDecl struct {
+	ContentType string `json:"content_type,omitempty"`
+	MaxBytes    int64  `json:"max_bytes"`
+	OnFull      string `json:"on_full,omitempty"`  // refuse (default) | evict_oldest
+	Lifetime    string `json:"lifetime,omitempty"` // session (default) | persistent
+	Hash        string `json:"hash,omitempty"`     // platform (default) | provider
 }
 
 // ArtifactDeclaration is one model a plugin's stages can load — the recipe this
