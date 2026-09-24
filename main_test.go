@@ -1,7 +1,9 @@
 package main
 
 import (
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -44,5 +46,44 @@ func TestUsageFor(t *testing.T) {
 		if usageFor(args) != nil {
 			t.Errorf("usageFor(%v) asked for help; nothing in it does", args)
 		}
+	}
+}
+
+// The folder the app passes always wins; by hand the CLI targets the release
+// install, and --dev / BRANCHKIT_DEV pick the development build's folder.
+func TestAppSupportDirPrecedence(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("APPDATA", "")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
+	t.Setenv("BRANCHKIT_DEV", "")
+	defer func() { devFolder = false }()
+
+	release := appSupportDir()
+	devFolder = true
+	dev := appSupportDir()
+	devFolder = false
+	if release == dev || filepath.Dir(release) != filepath.Dir(dev) {
+		t.Fatalf("release %q and dev %q must be separate siblings", release, dev)
+	}
+	t.Setenv("BRANCHKIT_DEV", "1")
+	if got := appSupportDir(); got != dev {
+		t.Fatalf("BRANCHKIT_DEV: got %q, want %q", got, dev)
+	}
+	passed := filepath.Join(home, "told")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", passed)
+	devFolder = true
+	if got := appSupportDir(); got != passed {
+		t.Fatalf("BRANCHKIT_APP_SUPPORT must win: got %q, want %q", got, passed)
+	}
+}
+
+func TestStripGlobalFlags(t *testing.T) {
+	defer func() { devFolder = false }()
+	got := stripGlobalFlags([]string{"cli", "--dev", "dev", "say", "hi", "--", "--dev"})
+	want := []string{"cli", "dev", "say", "hi", "--", "--dev"}
+	if strings.Join(got, " ") != strings.Join(want, " ") || !devFolder {
+		t.Fatalf("got %v devFolder=%v, want %v devFolder=true", got, devFolder, want)
 	}
 }

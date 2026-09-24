@@ -206,16 +206,32 @@ type DiscoveredPlugin struct {
 	Source      PluginSource
 }
 
-// appSupportDir returns the BranchKit app support directory, matching the
-// actuator's app_support_dir() resolution on each OS: Application Support
-// on macOS, %APPDATA% on Windows, XDG data home elsewhere.
+// devFolder is set by the global --dev flag (see stripGlobalFlags).
+var devFolder bool
+
+// appSupportDir returns the BranchKit app support directory.
+//
+// The app decides this path, not the CLI: when the app runs the CLI it passes
+// the folder it resolved in BRANCHKIT_APP_SUPPORT, and that always wins, so an
+// install lands exactly where the running app looks. Run by hand, the CLI
+// targets the release install; --dev (or BRANCHKIT_DEV in the environment)
+// selects a development build's folder instead. Choosing a folder only picks
+// which install to talk to — it grants nothing. The OS locations mirror the
+// app's: Application Support on macOS, %APPDATA% on Windows, XDG data home
+// elsewhere.
+//
+// The only function in the CLI that spells the folder names.
 func appSupportDir() string {
+	if dir := os.Getenv("BRANCHKIT_APP_SUPPORT"); dir != "" {
+		os.MkdirAll(dir, 0o755)
+		return dir
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "/tmp/branchkit-fallback"
 	}
 	name := "BranchKit"
-	if os.Getenv("BRANCHKIT_DEV") != "" {
+	if devFolder || os.Getenv("BRANCHKIT_DEV") != "" {
 		name = "BranchKitDev"
 	}
 	var dir string

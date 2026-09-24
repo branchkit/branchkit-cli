@@ -80,6 +80,7 @@ func TestProvisionPluginFileModelLandsUnderThePluginNamespace(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("BRANCHKIT_DEV", "1")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 
 	pluginDir := filepath.Join(home, "plugin")
 	if err := os.MkdirAll(filepath.Join(pluginDir, "assets"), 0o755); err != nil {
@@ -135,6 +136,7 @@ func TestLegacyFlatModelIsAdoptedOnlyWhenComplete(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("BRANCHKIT_DEV", "1")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 
 	pluginDir := filepath.Join(home, "plugin")
 	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
@@ -189,6 +191,7 @@ func TestFailedAssemblyLeavesNoStagingBehind(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("BRANCHKIT_DEV", "1")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 
 	pluginDir := filepath.Join(home, "plugin")
 	if err := os.MkdirAll(pluginDir, 0o755); err != nil {

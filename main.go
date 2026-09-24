@@ -6,6 +6,7 @@ import (
 )
 
 func main() {
+	os.Args = stripGlobalFlags(os.Args)
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(0)
@@ -215,6 +216,27 @@ var groupUsage = map[string]func(){
 // program name) ask for help, and nil when they do not. Only the exact tokens
 // `--help` and `-h` count, so a quoted phrase handed to `dev say` is safe
 // unless it IS one of those.
+// stripGlobalFlags removes flags that apply to every command, wherever they
+// appear before a `--` separator (everything after `--` passes through
+// untouched), and records them. Today that is only --dev, which points the
+// CLI at a development build's app-support folder (see appSupportDir).
+func stripGlobalFlags(args []string) []string {
+	out := make([]string, 0, len(args))
+	passthrough := false
+	for i, a := range args {
+		if i > 0 && !passthrough {
+			if a == "--" {
+				passthrough = true
+			} else if a == "--dev" {
+				devFolder = true
+				continue
+			}
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 func usageFor(args []string) func() {
 	asked := false
 	for _, a := range args {
@@ -240,7 +262,12 @@ func usageFor(args []string) func() {
 func printUsage() {
 	fmt.Println("branchkit-cli — BranchKit plugin manager")
 	fmt.Println()
-	fmt.Println("Usage: branchkit-cli <command>")
+	fmt.Println("Usage: branchkit-cli [--dev] <command>")
+	fmt.Println()
+	fmt.Println("Global flags:")
+	fmt.Println("  --dev                              Target a development build's data folder instead of the")
+	fmt.Println("                                     installed app's (also: BRANCHKIT_DEV=1). Ignored when the")
+	fmt.Println("                                     app runs the CLI: it passes its folder in BRANCHKIT_APP_SUPPORT.")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  plugin install <source> [--build] [--force]  Install a plugin")

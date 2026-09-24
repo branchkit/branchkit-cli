@@ -94,7 +94,7 @@ func cmdDevWatch(args []string) {
 			fmt.Printf("\nChange detected — rebuilding %s...\n", manifest.ID)
 			token := readHostToken()
 			if token == "" {
-				fmt.Println("No host token — is the app running with BRANCHKIT_DEV=1?")
+				fmt.Println("No credentials — is the app running? Turn on Developer Access on the plugin's card, or pass --dev to target a development build.")
 				since = time.Now()
 				continue
 			}

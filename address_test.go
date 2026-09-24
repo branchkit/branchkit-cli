@@ -14,6 +14,7 @@ func TestAddressFileResolvesTheUIPort(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("BRANCHKIT_DEV", "")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 	dir := filepath.Join(appSupportDir(), "run")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -34,6 +35,7 @@ func TestAddressFileFromADeadPidIsStale(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("BRANCHKIT_DEV", "")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 	dir := filepath.Join(appSupportDir(), "run")
 	_ = os.MkdirAll(dir, 0o700)
 	// pid 2^22-1 is above macOS's and Linux's default pid ceilings.
@@ -46,6 +48,7 @@ func TestAddressFileFromADeadPidIsStale(t *testing.T) {
 func TestNoAddressFileIsAClearError(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("BRANCHKIT_DEV", "")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 	if err := resolveDevBaseURL(); err != errNoAddress {
 		t.Fatalf("got %v", err)
 	}
@@ -67,6 +70,7 @@ func TestOperatorSocketIsPreferredAndDialed(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("BRANCHKIT_DEV", "")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 	dir := filepath.Join(appSupportDir(), "run")
 	_ = os.MkdirAll(dir, 0o700)
 	// t.TempDir() nests deep under /var/folders on macOS and can exceed the
