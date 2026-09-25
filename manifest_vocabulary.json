@@ -68,6 +68,7 @@
     "_platform.frozen_writers",
     "_platform.input",
     "_platform.key_names",
+    "_platform.log_recording",
     "_platform.log_retention",
     "_platform.model_download",
     "_platform.never_standalone_penalty",
