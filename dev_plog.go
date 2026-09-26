@@ -86,9 +86,10 @@ func cmdDevPlog(args []string) {
 		return
 	}
 	var resp struct {
-		Lines   []string `json:"lines"`
-		Matched int      `json:"matched"`
-		Scanned int      `json:"scanned"`
+		Lines     []string `json:"lines"`
+		Matched   int      `json:"matched"`
+		Scanned   int      `json:"scanned"`
+		Truncated bool     `json:"truncated"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: unparseable response: %v\n", err)
@@ -101,4 +102,9 @@ func cmdDevPlog(args []string) {
 		fmt.Fprintln(os.Stderr, "("+strconv.Itoa(resp.Matched-len(resp.Lines))+" older matching lines truncated — raise --limit)")
 	}
 	fmt.Fprintf(os.Stderr, "(%d matched / %d scanned)\n", resp.Matched, resp.Scanned)
+	// The window reached back past what the server read (an older rotated
+	// backup, or its scan cap), so the count above is a lower bound.
+	if resp.Truncated {
+		fmt.Fprintln(os.Stderr, "(partial: the window reaches past what was read — older lines may match too)")
+	}
 }
