@@ -333,6 +333,48 @@ func cmdDevSmoke(args []string) {
 			len(failedPatterns), literals, strings.Join(sample, ", ")))
 	}
 
+	// --- 5b. Matcher↔grammar agreement: every sampled command phrase the
+	// matcher runs must be one the engine's compiled grammar can produce, in
+	// free context and in every exclusive mode. The app computes it in-process
+	// against the live commands and lists; the actuator test suite runs the
+	// same check over the checkout's plugins. A disagreement is a command the
+	// matcher would run that recognition can never produce.
+	if raw, status, err := devHTTP("GET", "/dev/grammar/agreement", token, nil); err != nil || status != 200 {
+		add("grammar-agreement", "warn", fmt.Sprintf("GET /dev/grammar/agreement: status=%d err=%v (app built before the endpoint?)", status, err))
+	} else {
+		var rep struct {
+			Contexts        int `json:"contexts"`
+			CommandsChecked int `json:"commands_checked"`
+			PhrasesChecked  int `json:"phrases_checked"`
+			Disagreements   []struct {
+				Context string `json:"context"`
+				Owner   string `json:"owner"`
+				Command string `json:"command"`
+				Phrase  string `json:"phrase"`
+				Problem string `json:"problem"`
+			} `json:"disagreements"`
+			UnhearableTailWords [][2]string `json:"unhearable_tail_words"`
+		}
+		if err := json.Unmarshal(raw, &rep); err != nil {
+			add("grammar-agreement", "fail", fmt.Sprintf("unreadable report: %v", err))
+		} else if len(rep.Disagreements) == 0 && len(rep.UnhearableTailWords) == 0 {
+			add("grammar-agreement", "pass", fmt.Sprintf("%d phrases from %d commands decodable across %d contexts",
+				rep.PhrasesChecked, rep.CommandsChecked, rep.Contexts))
+		} else {
+			var lines []string
+			for _, d := range rep.Disagreements {
+				lines = append(lines, fmt.Sprintf("[%s] %q from %s (%s): %s", d.Context, d.Phrase, d.Command, d.Owner, d.Problem))
+			}
+			for _, w := range rep.UnhearableTailWords {
+				lines = append(lines, fmt.Sprintf("[%s] tail word %q unhearable", w[0], w[1]))
+			}
+			if len(lines) > 5 {
+				lines = append(lines[:5], fmt.Sprintf("… %d more", len(lines)-5))
+			}
+			add("grammar-agreement", "fail", strings.Join(lines, "; "))
+		}
+	}
+
 	// --- 6. Prefix-collision lint: an UNGATED literal command that is a
 	// word-prefix of a GATED command reachable in the same context can
 	// never execute there — the matcher's gated-Partial-suppresses-
