@@ -8,7 +8,7 @@ const plugin = new Plugin();
 
 plugin.handleAction<GreetParams>("{{.ActionPrefix}}.greet", async (req) => {
   const name = req.params.name ?? "BranchKit";
-  await plugin.call("input.type_text", { text: `Hello, ${name}!` });
+  await plugin.inputTypeText({ text: `Hello, ${name}!` });
 });
 
 // One renderer per tab declared in plugin.json. The SDK owns the

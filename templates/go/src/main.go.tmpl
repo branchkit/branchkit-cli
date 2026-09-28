@@ -17,7 +17,7 @@ func main() {
 
 		// Generated wrapper — the method name and argument shape are
 		// checked at compile time, unlike a raw plugin.Call.
-		return nil, plugin.InputTypeText("Hello, " + name + "!")
+		return nil, plugin.InputTypeText(branchkit.InputTypeTextRequest{Text: "Hello, " + name + "!"})
 	})
 
 	// One renderer per tab declared in plugin.json. The SDK owns the

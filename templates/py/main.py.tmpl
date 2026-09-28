@@ -10,7 +10,7 @@ plugin = branchkit.Plugin()
 async def greet(req):
     p: GreetParams = req["params"] or {}
     name = p.get("name") or "BranchKit"
-    await plugin.input_type_text(f"Hello, {name}!")
+    await plugin.input_type_text(text=f"Hello, {name}!")
     return {"status": "ok"}
 
 
