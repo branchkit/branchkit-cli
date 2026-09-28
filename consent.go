@@ -238,6 +238,24 @@ var consentAxes = []consentAxis{
 		addFmt: "  + listen socket: %s\n",
 		delFmt: "  - listen socket: %s\n",
 	},
+	// D-Bus methods (Linux): like network hosts, each is a grant with a
+	// switch on the plugin's page, off until allowed there for a plugin
+	// that is not bundled, and read on every call.
+	{
+		name: "dbus",
+		extract: func(m PluginManifest) []string {
+			if m.Requires.Dbus == nil {
+				return nil
+			}
+			return m.Requires.Dbus.Methods
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  D-Bus: calls %s (allow each method on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + D-Bus: %s (allow it on the plugin's page)\n",
+		delFmt: "  - D-Bus: %s\n",
+	},
 	// Not part of the request block: a blob read is a consent axis that
 	// lives in `consumes`, because what is being asked for is another
 	// plugin's data rather than a platform capability. It is here rather

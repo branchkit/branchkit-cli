@@ -49,6 +49,14 @@ type RequiresCfg struct {
 	Network json.RawMessage `json:"network,omitempty"`
 	// Managed runtimes the sandbox grants read+exec on.
 	Runtimes []string `json:"runtimes,omitempty"`
+	// D-Bus methods the plugin calls (Linux), one grant each on the
+	// plugin's page.
+	Dbus *DbusCfg `json:"dbus,omitempty"`
+}
+
+// DbusCfg mirrors the actuator's `requires.dbus`.
+type DbusCfg struct {
+	Methods []string `json:"methods,omitempty"`
 }
 
 // ConsumesCfg mirrors the actuator's `consumes` field, deeply enough to show

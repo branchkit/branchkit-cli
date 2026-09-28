@@ -23,6 +23,7 @@ type previewResult struct {
 	// place a user sees them; network hosts become grants with a switch on
 	// the plugin's card, allowed there after install (2026-09-18).
 	Network     []string        `json:"network"`
+	Dbus        []string        `json:"dbus"`
 	Sockets     int             `json:"sockets"`
 	Runtimes    []string        `json:"runtimes"`
 	Effects     []previewEffect `json:"effects"`
@@ -51,6 +52,8 @@ type previewUpdate struct {
 	RemovedEffects    []string        `json:"removed_effects"`
 	AddedNetwork      []string        `json:"added_network"`
 	RemovedNetwork    []string        `json:"removed_network"`
+	AddedDbus         []string        `json:"added_dbus"`
+	RemovedDbus       []string        `json:"removed_dbus"`
 	AddedSockets      []string        `json:"added_sockets"`
 	RemovedSockets    []string        `json:"removed_sockets"`
 	AddedRuntimes     []string        `json:"added_runtimes"`
@@ -156,6 +159,10 @@ func cmdPreview(source string) {
 		netDisplay = append(netDisplay, networkDisplay(n))
 	}
 	result.Network = netDisplay
+	result.Dbus = []string{}
+	if manifest.Requires.Dbus != nil {
+		result.Dbus = emptyNotNil(manifest.Requires.Dbus.Methods)
+	}
 	result.Sockets = len(socketsSet(manifest))
 	result.Runtimes = emptyNotNil(manifest.Requires.Runtimes)
 
@@ -175,6 +182,8 @@ func cmdPreview(source string) {
 			RemovedEffects:    emptyNotNil(d.RemovedEffects),
 			AddedNetwork:      displayNetworkList(d.axis("network").Added),
 			RemovedNetwork:    displayNetworkList(d.axis("network").Removed),
+			AddedDbus:         emptyNotNil(d.axis("dbus").Added),
+			RemovedDbus:       emptyNotNil(d.axis("dbus").Removed),
 			AddedSockets:      emptyNotNil(d.axis("sockets").Added),
 			RemovedSockets:    emptyNotNil(d.axis("sockets").Removed),
 			AddedRuntimes:     emptyNotNil(d.axis("runtimes").Added),
