@@ -24,6 +24,7 @@ type previewResult struct {
 	// the plugin's card, allowed there after install (2026-09-18).
 	Network     []string        `json:"network"`
 	Dbus        []string        `json:"dbus"`
+	Wmi         []string        `json:"wmi"`
 	Sockets     int             `json:"sockets"`
 	Runtimes    []string        `json:"runtimes"`
 	Effects     []previewEffect `json:"effects"`
@@ -54,6 +55,8 @@ type previewUpdate struct {
 	RemovedNetwork    []string        `json:"removed_network"`
 	AddedDbus         []string        `json:"added_dbus"`
 	RemovedDbus       []string        `json:"removed_dbus"`
+	AddedWmi          []string        `json:"added_wmi"`
+	RemovedWmi        []string        `json:"removed_wmi"`
 	AddedSockets      []string        `json:"added_sockets"`
 	RemovedSockets    []string        `json:"removed_sockets"`
 	AddedRuntimes     []string        `json:"added_runtimes"`
@@ -163,6 +166,10 @@ func cmdPreview(source string) {
 	if manifest.Requires.Dbus != nil {
 		result.Dbus = emptyNotNil(manifest.Requires.Dbus.Methods)
 	}
+	result.Wmi = []string{}
+	if manifest.Requires.Wmi != nil {
+		result.Wmi = emptyNotNil(manifest.Requires.Wmi.Classes)
+	}
 	result.Sockets = len(socketsSet(manifest))
 	result.Runtimes = emptyNotNil(manifest.Requires.Runtimes)
 
@@ -184,6 +191,8 @@ func cmdPreview(source string) {
 			RemovedNetwork:    displayNetworkList(d.axis("network").Removed),
 			AddedDbus:         emptyNotNil(d.axis("dbus").Added),
 			RemovedDbus:       emptyNotNil(d.axis("dbus").Removed),
+			AddedWmi:          emptyNotNil(d.axis("wmi").Added),
+			RemovedWmi:        emptyNotNil(d.axis("wmi").Removed),
 			AddedSockets:      emptyNotNil(d.axis("sockets").Added),
 			RemovedSockets:    emptyNotNil(d.axis("sockets").Removed),
 			AddedRuntimes:     emptyNotNil(d.axis("runtimes").Added),

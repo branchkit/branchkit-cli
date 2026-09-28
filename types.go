@@ -52,6 +52,14 @@ type RequiresCfg struct {
 	// D-Bus methods the plugin calls (Linux), one grant each on the
 	// plugin's page.
 	Dbus *DbusCfg `json:"dbus,omitempty"`
+	// WMI classes the plugin reads (Windows), one grant each on the
+	// plugin's page.
+	Wmi *WmiCfg `json:"wmi,omitempty"`
+}
+
+// WmiCfg mirrors the actuator's `requires.wmi`.
+type WmiCfg struct {
+	Classes []string `json:"classes,omitempty"`
 }
 
 // DbusCfg mirrors the actuator's `requires.dbus`.

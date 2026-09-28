@@ -256,6 +256,22 @@ var consentAxes = []consentAxis{
 		addFmt: "  + D-Bus: %s (allow it on the plugin's page)\n",
 		delFmt: "  - D-Bus: %s\n",
 	},
+	// WMI classes (Windows): the same, one grant per class read.
+	{
+		name: "wmi",
+		extract: func(m PluginManifest) []string {
+			if m.Requires.Wmi == nil {
+				return nil
+			}
+			return m.Requires.Wmi.Classes
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  WMI: reads %s (allow each class on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + WMI: %s (allow it on the plugin's page)\n",
+		delFmt: "  - WMI: %s\n",
+	},
 	// Not part of the request block: a blob read is a consent axis that
 	// lives in `consumes`, because what is being asked for is another
 	// plugin's data rather than a platform capability. It is here rather
