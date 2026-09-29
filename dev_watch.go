@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sort"
@@ -58,17 +57,31 @@ func cmdDevWatch(args []string) {
 		os.Exit(1)
 	}
 
-	// An interpreted plugin has nothing to build, and the running app's file
-	// watcher already restarts it on save. Watching here would just be a
-	// slower second copy of that, so say so and stop.
-	if manifest.Run != "" && !isCompiledRun(absDir, manifest.Run) {
+	// Where the running app loads this plugin from. `plugin install .`
+	// COPIES the directory into the plugins folder, so a build here is
+	// invisible to the app until it is copied across; a symlinked install
+	// (a development checkout) is this directory itself.
+	installed := installedCopy(manifest.ID, absDir)
+
+	// An interpreted plugin has nothing to build, and for a linked install
+	// the running app's file watcher already restarts it on save. Watching
+	// here would just be a slower second copy of that, so say so and stop.
+	// An installed COPY is not watched by the app, so the loop below copies
+	// and restarts it.
+	if installed == "" && manifest.Run != "" && !isCompiledRun(absDir, manifest.Run) {
 		fmt.Printf("%s runs under an interpreter (`%s`), so there is nothing to build.\n",
 			manifest.ID, manifest.Run)
 		fmt.Println("Just save your file — the running app watches this plugin's source and restarts it.")
 		return
 	}
 
+	// A Developer Access grant is per plugin: use this plugin's.
+	devAccessPrefer = manifest.ID
+
 	fmt.Printf("Watching %s for changes (Ctrl+C to stop)...\n", manifest.ID)
+	if installed != "" {
+		fmt.Printf("Installed copy: %s — each change is built here, copied there, and the plugin restarted.\n", installed)
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt)
@@ -99,21 +112,29 @@ func cmdDevWatch(args []string) {
 				continue
 			}
 
-			// Scoped token: the app won't build for us — run the local
-			// build first (same as `dev build`), then the reload below
-			// becomes a restart of what we just wrote to disk.
-			if devAccessScope != "" {
-				build := exec.Command("go", "build", "-o",
-					filepath.Join(absDir, strings.TrimPrefix(manifest.Run, "./")), ".")
-				build.Dir = filepath.Join(absDir, "src")
-				if out, err := build.CombinedOutput(); err != nil {
-					fmt.Printf("Local build failed:\n%s\n", string(out))
+			// Scoped token, or an installed copy: the app won't build this
+			// directory for us. Run the local build first — the same code
+			// `dev build` runs, for every language — then copy it into the
+			// installed plugin if that is a copy, and the reload below
+			// becomes a restart of what is now on disk.
+			var ok, manifestReloaded bool
+			if devAccessScope != "" || installed != "" {
+				if err := buildPluginDir(absDir, hostTarget()); err != nil {
+					fmt.Printf("Local build failed: %v\n", err)
 					since = time.Now()
 					continue
 				}
+				if installed != "" {
+					if err := syncInstalledCopy(absDir, installed); err != nil {
+						fmt.Println(err)
+						since = time.Now()
+						continue
+					}
+				}
+				ok = restartViaEndpoint(manifest.ID, token)
+			} else {
+				ok, manifestReloaded = reloadViaEndpoint(manifest.ID, token)
 			}
-
-			ok, manifestReloaded := reloadViaEndpoint(manifest.ID, token)
 			switch {
 			case ok && manifestReloaded:
 				fmt.Printf("Rebuilt and reloaded %s (manifest changes applied).\n", manifest.ID)
@@ -162,7 +183,7 @@ func hasChanges(pluginDir string, since time.Time) bool {
 }
 
 func watchedSource(name string) bool {
-	for _, ext := range []string{".go", ".templ", ".rs", ".ts", ".js", ".html", ".css", ".json"} {
+	for _, ext := range []string{".go", ".templ", ".rs", ".ts", ".js", ".py", ".html", ".css", ".json"} {
 		if strings.HasSuffix(name, ext) {
 			// connect.json is written by the plugin's own listener at
 			// runtime; treating it as an edit would rebuild on every start.
@@ -196,6 +217,10 @@ func readHostToken() string {
 // devAccessScope is set alongside readDevAccessToken's result: the plugin
 // id a scoped token answers for. Empty when running on a host token.
 var devAccessScope string
+
+// devAccessPrefer names the plugin whose Developer Access grant
+// readDevAccessToken tries first. Empty: the first grant by name.
+var devAccessPrefer string
 var addressWarnOnce sync.Once
 
 // readDevAccessToken resolves the first Developer Access discovery file,
@@ -215,6 +240,17 @@ func readDevAccessToken() string {
 		}
 	}
 	sort.Strings(names)
+	// A caller that knows its plugin tries that plugin's grant first: a
+	// token scoped to another plugin is refused for this one.
+	if devAccessPrefer != "" {
+		want := devAccessPrefer + ".json"
+		for i, n := range names {
+			if n == want {
+				names = append([]string{n}, append(names[:i:i], names[i+1:]...)...)
+				break
+			}
+		}
+	}
 	for _, n := range names {
 		raw, err := os.ReadFile(filepath.Join(dir, n))
 		if err != nil {
@@ -304,4 +340,46 @@ func restartViaEndpoint(pluginID, token string) bool {
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+// installedCopy returns the directory the app loads plugin id from when that
+// directory is a COPY of srcDir — what `branchkit-cli plugin install .`
+// makes. It returns "" when the installed plugin is srcDir itself or a
+// symlink to it (a linked development install), and when the plugin is not
+// installed in the plugins folder at all.
+func installedCopy(id, srcDir string) string {
+	dst := filepath.Join(userPluginsDir(), id)
+	info, err := os.Lstat(dst)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return ""
+	}
+	a, errA := filepath.EvalSymlinks(dst)
+	b, errB := filepath.EvalSymlinks(srcDir)
+	if errA != nil || errB != nil || a == b {
+		return ""
+	}
+	return dst
+}
+
+// syncInstalledCopy copies a rebuilt plugin over its installed copy. It
+// refuses when the manifest now asks for more than the installed one did
+// (a new privilege, effect, host, or run command): that change goes through
+// `plugin install`, where it is shown before it lands.
+func syncInstalledCopy(srcDir, dst string) error {
+	newM, err := readManifest(filepath.Join(srcDir, "plugin.json"))
+	if err != nil {
+		return err
+	}
+	if oldM, err := readManifest(filepath.Join(dst, "plugin.json")); err == nil {
+		if diffConsent(oldM, newM).expands() {
+			return fmt.Errorf("plugin.json now requests more than the installed copy — run `branchkit-cli plugin install .` to review the change, then save again")
+		}
+	}
+	if err := safeCopyDir(srcDir, dst, 0); err != nil {
+		return fmt.Errorf("copying into %s: %w", dst, err)
+	}
+	if newM.Run != "" {
+		setExecutable(dst, newM.Run)
+	}
+	return nil
 }

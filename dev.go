@@ -385,6 +385,7 @@ func scaffoldTSPlugin(dir string, data templateData) error {
 		{"templates/ts/gitignore.tmpl", ".gitignore"},
 		{"templates/ts/README.md.tmpl", "README.md"},
 		{"templates/ts/src/index.ts.tmpl", "src/index.ts"},
+		{"templates/ts/src/actions_gen.ts.tmpl", "src/actions_gen.ts"},
 		{"templates/ts/src/index.test.ts.tmpl", "src/index.test.ts"},
 		{"templates/ts/.github/workflows/conformance.yml.tmpl", ".github/workflows/conformance.yml"},
 	}

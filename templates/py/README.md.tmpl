@@ -56,5 +56,5 @@ branchkit-cli dev chain                    # recent command chains, then: dev ch
 
 ## Learn more
 
-- [Your First Plugin](https://branchkit.dev/guide/getting-started/your-first-plugin)
+- [Quickstart](https://branchkit.dev/guide/getting-started/quickstart)
 - [Plugin SDK (Python)](https://github.com/branchkit/plugin-sdk-py)

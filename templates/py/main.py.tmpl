@@ -38,8 +38,8 @@ def getting_started(params):
         <div class="value">Types &ldquo;Hello, BranchKit!&rdquo;</div>
       </div>
       <div class="settings-row">
-        <div class="label">&ldquo;hello &lt;name&gt;&rdquo;</div>
-        <div class="value">Types &ldquo;Hello, &lt;name&gt;!&rdquo; with any spoken word</div>
+        <div class="label">&ldquo;hello &lt;app&gt;&rdquo;</div>
+        <div class="value">Types &ldquo;Hello, &lt;app ID&gt;!&rdquo; for an installed app</div>
       </div>
     </bk-table>
   </bk-card>

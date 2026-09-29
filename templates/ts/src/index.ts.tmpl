@@ -1,8 +1,8 @@
 import { Plugin } from "@branchkitdev/plugin-sdk-ts";
 
-interface GreetParams {
-  name?: string;
-}
+// GreetParams is generated from plugin.json into actions_gen.ts. Edit
+// action_types in plugin.json and re-run branchkit-gen to change it.
+import type { GreetParams } from "./actions_gen.js";
 
 const plugin = new Plugin();
 
@@ -33,8 +33,8 @@ plugin.settingsTab("getting_started", () => `
         <div class="value">Types &ldquo;Hello, BranchKit!&rdquo;</div>
       </div>
       <div class="settings-row">
-        <div class="label">&ldquo;hello &lt;name&gt;&rdquo;</div>
-        <div class="value">Types &ldquo;Hello, &lt;name&gt;!&rdquo; with any spoken word</div>
+        <div class="label">&ldquo;hello &lt;app&gt;&rdquo;</div>
+        <div class="value">Types &ldquo;Hello, &lt;app ID&gt;!&rdquo; for an installed app</div>
       </div>
     </bk-table>
   </bk-card>
