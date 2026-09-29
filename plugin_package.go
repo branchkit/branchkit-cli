@@ -77,6 +77,28 @@ type payloadEntry struct {
 	executable bool
 }
 
+// runProgram names the file in dir that a manifest's `run` executes: the
+// command itself for a compiled plugin ("./snippets-plugin"), the script for
+// an interpreted one ("python3 main.py" → "main.py", where the interpreter is
+// the platform's managed runtime, not a file in the plugin). Treating the
+// whole string as a file name made every interpreted plugin unpackageable.
+func runProgram(dir, runField string) string {
+	fields := strings.Fields(runField)
+	if len(fields) == 0 {
+		return ""
+	}
+	first := strings.TrimPrefix(fields[0], "./")
+	if len(fields) == 1 || fileExists(filepath.Join(dir, first)) {
+		return first
+	}
+	for _, f := range fields[1:] {
+		if p := strings.TrimPrefix(f, "./"); fileExists(filepath.Join(dir, p)) {
+			return p
+		}
+	}
+	return first
+}
+
 // collectPayload gathers the release payload from a plugin directory. When
 // binaryOverride is non-empty it's the cross-compiled binary to include under
 // the run-field basename (and any same-named file in the dir is skipped, so a
@@ -86,7 +108,7 @@ func collectPayload(dir, runField, binaryOverride string, extraExcludes []string
 	if !fileExists(manifestPath) {
 		return nil, fmt.Errorf("no plugin.json in %s", dir)
 	}
-	runBinaryBase := strings.TrimPrefix(runField, "./")
+	runBinaryBase := runProgram(dir, runField)
 
 	excludeExtra := map[string]bool{}
 	for _, e := range extraExcludes {

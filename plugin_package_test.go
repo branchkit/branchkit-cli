@@ -232,3 +232,46 @@ func keys(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// A Python plugin's run names the managed interpreter and a script. The
+// script is the program: it must be present, and it ships with the rest of
+// the directory (the vendored SDK included).
+func TestPackageInterpretedRun(t *testing.T) {
+	dir := t.TempDir()
+	for rel, body := range map[string]string{
+		"plugin.json":           `{"id": "snippets", "run": "python3 main.py", "requires": {"runtimes": ["python"]}}`,
+		"main.py":               "import branchkit\n",
+		"actions_gen.py":        "",
+		"branchkit/__init__.py": "",
+	} {
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := runProgram(dir, "python3 main.py"); got != "main.py" {
+		t.Fatalf("runProgram = %q, want main.py", got)
+	}
+	entries, err := collectPayload(dir, "python3 main.py", "", nil)
+	if err != nil {
+		t.Fatalf("an interpreted plugin must package: %v", err)
+	}
+	got := map[string]bool{}
+	for _, e := range entries {
+		got[e.tarPath] = true
+	}
+	for _, want := range []string{"plugin.json", "main.py", "actions_gen.py", "branchkit/__init__.py"} {
+		if !got[want] {
+			t.Errorf("payload missing %q; has %v", want, keys(got))
+		}
+	}
+	if _, err := collectPayload(dir, "python3 missing.py", "", nil); err == nil {
+		t.Fatal("a run script that does not exist must be an error")
+	}
+	if got := runProgram(dir, "./snippets-plugin"); got != "snippets-plugin" {
+		t.Fatalf("compiled run: runProgram = %q", got)
+	}
+}
