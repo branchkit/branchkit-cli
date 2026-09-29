@@ -32,6 +32,7 @@
     "microphone",
     "network",
     "notifications",
+    "notifications.others",
     "overlay",
     "power",
     "privacy",
