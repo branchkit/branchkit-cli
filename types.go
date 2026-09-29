@@ -55,6 +55,35 @@ type RequiresCfg struct {
 	// WMI classes the plugin reads (Windows), one grant each on the
 	// plugin's page.
 	Wmi *WmiCfg `json:"wmi,omitempty"`
+	// Other apps' settings domains the plugin reads or changes, one grant
+	// each on the plugin's page.
+	Preferences *PreferencesCfg `json:"preferences,omitempty"`
+}
+
+// PreferencesCfg mirrors the actuator's `requires.preferences`: each entry
+// `<store>:<domain>` (defaults:com.apple.dock,
+// gsettings:org.gnome.desktop.interface, registry:Software\7-Zip).
+type PreferencesCfg struct {
+	Read  []string `json:"read,omitempty"`
+	Write []string `json:"write,omitempty"`
+}
+
+// preferenceGrants is each declared domain with what the plugin may do
+// there, one string per grant: a domain moved from read to write shows as
+// a change, because it is one.
+func preferenceGrants(m PluginManifest) []string {
+	p := m.Requires.Preferences
+	if p == nil {
+		return nil
+	}
+	out := make([]string, 0, len(p.Read)+len(p.Write))
+	for _, d := range p.Read {
+		out = append(out, "reads "+d)
+	}
+	for _, d := range p.Write {
+		out = append(out, "reads and changes "+d)
+	}
+	return out
 }
 
 // WmiCfg mirrors the actuator's `requires.wmi`.

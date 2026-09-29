@@ -272,6 +272,18 @@ var consentAxes = []consentAxis{
 		addFmt: "  + WMI: %s (allow it on the plugin's page)\n",
 		delFmt: "  - WMI: %s\n",
 	},
+	// Other apps' settings (macOS defaults, GSettings, the user's
+	// registry): one grant per domain, read or read and changed.
+	{
+		name:    "preferences",
+		extract: preferenceGrants,
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  App settings: %s (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + App settings: %s (allow it on the plugin's page)\n",
+		delFmt: "  - App settings: %s\n",
+	},
 	// Not part of the request block: a blob read is a consent axis that
 	// lives in `consumes`, because what is being asked for is another
 	// plugin's data rather than a platform capability. It is here rather

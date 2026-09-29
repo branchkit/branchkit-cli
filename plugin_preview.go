@@ -25,6 +25,7 @@ type previewResult struct {
 	Network     []string        `json:"network"`
 	Dbus        []string        `json:"dbus"`
 	Wmi         []string        `json:"wmi"`
+	Preferences []string        `json:"preferences"`
 	Sockets     int             `json:"sockets"`
 	Runtimes    []string        `json:"runtimes"`
 	Effects     []previewEffect `json:"effects"`
@@ -44,25 +45,27 @@ type previewResult struct {
 // previewUpdate mirrors consentDiff for the settings panel, plus the
 // installed version for the "v1 → v2" line.
 type previewUpdate struct {
-	InstalledVersion  string          `json:"installed_version"`
-	AddedPrivileges   []string        `json:"added_privileges"`
-	AddedOptional     []string        `json:"added_optional_privileges"`
-	AddedEffects      []previewEffect `json:"added_effects"`
-	RemovedPrivileges []string        `json:"removed_privileges"`
-	RemovedOptional   []string        `json:"removed_optional_privileges"`
-	RemovedEffects    []string        `json:"removed_effects"`
-	AddedNetwork      []string        `json:"added_network"`
-	RemovedNetwork    []string        `json:"removed_network"`
-	AddedDbus         []string        `json:"added_dbus"`
-	RemovedDbus       []string        `json:"removed_dbus"`
-	AddedWmi          []string        `json:"added_wmi"`
-	RemovedWmi        []string        `json:"removed_wmi"`
-	AddedSockets      []string        `json:"added_sockets"`
-	RemovedSockets    []string        `json:"removed_sockets"`
-	AddedRuntimes     []string        `json:"added_runtimes"`
-	RemovedRuntimes   []string        `json:"removed_runtimes"`
-	RunChanged        bool            `json:"run_changed"`
-	Expands           bool            `json:"expands"`
+	InstalledVersion   string          `json:"installed_version"`
+	AddedPrivileges    []string        `json:"added_privileges"`
+	AddedOptional      []string        `json:"added_optional_privileges"`
+	AddedEffects       []previewEffect `json:"added_effects"`
+	RemovedPrivileges  []string        `json:"removed_privileges"`
+	RemovedOptional    []string        `json:"removed_optional_privileges"`
+	RemovedEffects     []string        `json:"removed_effects"`
+	AddedNetwork       []string        `json:"added_network"`
+	RemovedNetwork     []string        `json:"removed_network"`
+	AddedDbus          []string        `json:"added_dbus"`
+	RemovedDbus        []string        `json:"removed_dbus"`
+	AddedWmi           []string        `json:"added_wmi"`
+	RemovedWmi         []string        `json:"removed_wmi"`
+	AddedPreferences   []string        `json:"added_preferences"`
+	RemovedPreferences []string        `json:"removed_preferences"`
+	AddedSockets       []string        `json:"added_sockets"`
+	RemovedSockets     []string        `json:"removed_sockets"`
+	AddedRuntimes      []string        `json:"added_runtimes"`
+	RemovedRuntimes    []string        `json:"removed_runtimes"`
+	RunChanged         bool            `json:"run_changed"`
+	Expands            bool            `json:"expands"`
 }
 
 // previewEffect is one consent unit of effects, carrying the author-written
@@ -170,6 +173,7 @@ func cmdPreview(source string) {
 	if manifest.Requires.Wmi != nil {
 		result.Wmi = emptyNotNil(manifest.Requires.Wmi.Classes)
 	}
+	result.Preferences = emptyNotNil(preferenceGrants(manifest))
 	result.Sockets = len(socketsSet(manifest))
 	result.Runtimes = emptyNotNil(manifest.Requires.Runtimes)
 
@@ -180,25 +184,27 @@ func cmdPreview(source string) {
 		// The wire field names are a fixed contract with the settings
 		// panel; the VALUES come from the axis registry's diff.
 		up := previewUpdate{
-			InstalledVersion:  old.Version,
-			AddedPrivileges:   emptyNotNil(d.axis("privileges").Added),
-			AddedOptional:     emptyNotNil(d.axis("optional_privileges").Added),
-			AddedEffects:      []previewEffect{},
-			RemovedPrivileges: emptyNotNil(d.axis("privileges").Removed),
-			RemovedOptional:   emptyNotNil(d.axis("optional_privileges").Removed),
-			RemovedEffects:    emptyNotNil(d.RemovedEffects),
-			AddedNetwork:      displayNetworkList(d.axis("network").Added),
-			RemovedNetwork:    displayNetworkList(d.axis("network").Removed),
-			AddedDbus:         emptyNotNil(d.axis("dbus").Added),
-			RemovedDbus:       emptyNotNil(d.axis("dbus").Removed),
-			AddedWmi:          emptyNotNil(d.axis("wmi").Added),
-			RemovedWmi:        emptyNotNil(d.axis("wmi").Removed),
-			AddedSockets:      emptyNotNil(d.axis("sockets").Added),
-			RemovedSockets:    emptyNotNil(d.axis("sockets").Removed),
-			AddedRuntimes:     emptyNotNil(d.axis("runtimes").Added),
-			RemovedRuntimes:   emptyNotNil(d.axis("runtimes").Removed),
-			RunChanged:        d.RunChanged,
-			Expands:           d.expands(),
+			InstalledVersion:   old.Version,
+			AddedPrivileges:    emptyNotNil(d.axis("privileges").Added),
+			AddedOptional:      emptyNotNil(d.axis("optional_privileges").Added),
+			AddedEffects:       []previewEffect{},
+			RemovedPrivileges:  emptyNotNil(d.axis("privileges").Removed),
+			RemovedOptional:    emptyNotNil(d.axis("optional_privileges").Removed),
+			RemovedEffects:     emptyNotNil(d.RemovedEffects),
+			AddedNetwork:       displayNetworkList(d.axis("network").Added),
+			RemovedNetwork:     displayNetworkList(d.axis("network").Removed),
+			AddedDbus:          emptyNotNil(d.axis("dbus").Added),
+			RemovedDbus:        emptyNotNil(d.axis("dbus").Removed),
+			AddedWmi:           emptyNotNil(d.axis("wmi").Added),
+			RemovedWmi:         emptyNotNil(d.axis("wmi").Removed),
+			AddedPreferences:   emptyNotNil(d.axis("preferences").Added),
+			RemovedPreferences: emptyNotNil(d.axis("preferences").Removed),
+			AddedSockets:       emptyNotNil(d.axis("sockets").Added),
+			RemovedSockets:     emptyNotNil(d.axis("sockets").Removed),
+			AddedRuntimes:      emptyNotNil(d.axis("runtimes").Added),
+			RemovedRuntimes:    emptyNotNil(d.axis("runtimes").Removed),
+			RunChanged:         d.RunChanged,
+			Expands:            d.expands(),
 		}
 		for _, e := range d.AddedEffects {
 			up.AddedEffects = append(up.AddedEffects, previewEffect{
