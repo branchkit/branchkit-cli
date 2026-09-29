@@ -70,6 +70,9 @@ func runStaticAnalysis(dir string) TestPhaseResult {
 	phase.Tests = append(phase.Tests, checkPrivilegeNames(manifest)...)
 	phase.Tests = append(phase.Tests, checkMinAPIVersion(manifest)...)
 	phase.Tests = append(phase.Tests, checkRunBinary(dir, manifest))
+	// Go only: a request literal missing a field the platform refuses
+	// empty (dev_test_sdk_fields.go).
+	phase.Tests = append(phase.Tests, checkSDKRequiredFields(dir))
 
 	return phase
 }
