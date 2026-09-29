@@ -22,20 +22,23 @@ type previewResult struct {
 	// the manifest with no later grant moment, so the panel is the only
 	// place a user sees them; network hosts become grants with a switch on
 	// the plugin's card, allowed there after install (2026-09-18).
-	Network     []string        `json:"network"`
-	Dbus        []string        `json:"dbus"`
-	Wmi         []string        `json:"wmi"`
-	Preferences []string        `json:"preferences"`
-	Devices     []string        `json:"devices"`
-	Sockets     int             `json:"sockets"`
-	Runtimes    []string        `json:"runtimes"`
-	Effects     []previewEffect `json:"effects"`
-	Conformance string          `json:"conformance"`
-	Tier        string          `json:"tier"`
-	Blocklisted bool            `json:"blocklisted"`
-	BlockReason string          `json:"block_reason,omitempty"`
-	Source      string          `json:"source"`
-	Tag         string          `json:"tag"`
+	Network     []string `json:"network"`
+	Dbus        []string `json:"dbus"`
+	Wmi         []string `json:"wmi"`
+	Preferences []string `json:"preferences"`
+	// Domains declared for changing: a grant of their own, shown with the
+	// high-risk privileges.
+	PreferenceWrites []string        `json:"preference_writes"`
+	Devices          []string        `json:"devices"`
+	Sockets          int             `json:"sockets"`
+	Runtimes         []string        `json:"runtimes"`
+	Effects          []previewEffect `json:"effects"`
+	Conformance      string          `json:"conformance"`
+	Tier             string          `json:"tier"`
+	Blocklisted      bool            `json:"blocklisted"`
+	BlockReason      string          `json:"block_reason,omitempty"`
+	Source           string          `json:"source"`
+	Tag              string          `json:"tag"`
 	// Update is present when this plugin is already installed: the consent
 	// DIFF against the manifest the install would replace. The settings
 	// panel renders this instead of the full summary — standing consent
@@ -61,6 +64,8 @@ type previewUpdate struct {
 	RemovedWmi         []string        `json:"removed_wmi"`
 	AddedPreferences   []string        `json:"added_preferences"`
 	RemovedPreferences []string        `json:"removed_preferences"`
+	AddedPrefWrites    []string        `json:"added_preference_writes"`
+	RemovedPrefWrites  []string        `json:"removed_preference_writes"`
 	AddedDevices       []string        `json:"added_devices"`
 	RemovedDevices     []string        `json:"removed_devices"`
 	AddedSockets       []string        `json:"added_sockets"`
@@ -176,7 +181,8 @@ func cmdPreview(source string) {
 	if manifest.Requires.Wmi != nil {
 		result.Wmi = emptyNotNil(manifest.Requires.Wmi.Classes)
 	}
-	result.Preferences = emptyNotNil(preferenceGrants(manifest))
+	result.Preferences = emptyNotNil(preferenceReads(manifest))
+	result.PreferenceWrites = emptyNotNil(preferenceWrites(manifest))
 	result.Devices = emptyNotNil(deviceGrants(manifest))
 	result.Sockets = len(socketsSet(manifest))
 	result.Runtimes = emptyNotNil(manifest.Requires.Runtimes)
@@ -203,6 +209,8 @@ func cmdPreview(source string) {
 			RemovedWmi:         emptyNotNil(d.axis("wmi").Removed),
 			AddedPreferences:   emptyNotNil(d.axis("preferences").Added),
 			RemovedPreferences: emptyNotNil(d.axis("preferences").Removed),
+			AddedPrefWrites:    emptyNotNil(d.axis("preference_writes").Added),
+			RemovedPrefWrites:  emptyNotNil(d.axis("preference_writes").Removed),
 			AddedDevices:       emptyNotNil(d.axis("devices").Added),
 			RemovedDevices:     emptyNotNil(d.axis("devices").Removed),
 			AddedSockets:       emptyNotNil(d.axis("sockets").Added),

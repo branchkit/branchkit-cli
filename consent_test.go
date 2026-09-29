@@ -260,7 +260,10 @@ func TestConsentAxesCoverEveryRequiresField(t *testing.T) {
 		}
 	}
 	// Axes that name their block explicitly are checked against it.
-	blocks := map[string]map[string]bool{"provides": tags(ProvidesCfg{})}
+	blocks := map[string]map[string]bool{
+		"provides": tags(ProvidesCfg{}),
+		"requires": declared,
+	}
 	for _, ax := range consentAxes {
 		if ax.block == "" {
 			continue
@@ -304,5 +307,33 @@ func TestRequestableHostsAreDisclosedAndGainingThemExpands(t *testing.T) {
 	}
 	if !diffConsent(mk(`{"hosts":["a.test"]}`), mk(`{"hosts":["a.test"],"requestable":true}`)).expands() {
 		t.Fatal("becoming requestable must require fresh consent")
+	}
+}
+
+// Changing an app's settings is its own grant: a domain moved from read to
+// write adds a change grant (fresh consent) and leaves reading as it was,
+// and the disclosure says what changing can do.
+func TestPreferenceWriteIsItsOwnGrant(t *testing.T) {
+	mk := func(read, write []string) PluginManifest {
+		return PluginManifest{Requires: RequiresCfg{Preferences: &PreferencesCfg{Read: read, Write: write}}}
+	}
+	old := mk([]string{"gsettings:org.example.app"}, nil)
+	now := mk(nil, []string{"gsettings:org.example.app"})
+	d := diffConsent(old, now)
+	if got := d.axis("preference_writes").Added; len(got) != 1 || got[0] != "gsettings:org.example.app" {
+		t.Fatalf("change grant not added: %+v", d.axis("preference_writes"))
+	}
+	if r := d.axis("preferences"); len(r.Added) != 0 || len(r.Removed) != 0 {
+		t.Fatalf("reading should be unchanged: %+v", r)
+	}
+	if !d.expands() {
+		t.Fatal("a new change grant must require fresh consent")
+	}
+	for _, ax := range consentAxes {
+		if ax.name == "preference_writes" {
+			if s := ax.summary(preferenceWrites(now)); !strings.Contains(s, "can change what programs it runs") {
+				t.Fatalf("disclosure does not state the danger: %q", s)
+			}
+		}
 	}
 }

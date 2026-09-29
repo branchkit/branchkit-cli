@@ -273,16 +273,31 @@ var consentAxes = []consentAxis{
 		delFmt: "  - WMI: %s\n",
 	},
 	// Other apps' settings (macOS defaults, GSettings, the user's
-	// registry): one grant per domain, read or read and changed.
+	// registry): reading each declared domain is one grant, and changing
+	// one declared for writing is a second grant with its own switch.
+	// Changing is stated as dangerous: an app's settings can name a program
+	// it runs, and no list of such settings can be complete.
 	{
 		name:    "preferences",
-		extract: preferenceGrants,
+		extract: preferenceReads,
 		display: plainDisplay,
 		summary: func(v []string) string {
 			return fmt.Sprintf("  App settings: %s (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
 		},
 		addFmt: "  + App settings: %s (allow it on the plugin's page)\n",
 		delFmt: "  - App settings: %s\n",
+	},
+	{
+		name:    "preference_writes",
+		block:   "requires",
+		field:   "preferences",
+		extract: preferenceWrites,
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Changes app settings: %s\n    Changing an app's settings can change what programs it runs (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + Changes app settings: %s (can change what programs the app runs; allow it on the plugin's page)\n",
+		delFmt: "  - Changes app settings: %s\n",
 	},
 	// Devices: HID products and Bluetooth LE services. A HID product is one
 	// grant; a Bluetooth service is allowed per device on the plugin's page

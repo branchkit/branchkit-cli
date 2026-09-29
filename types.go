@@ -95,22 +95,32 @@ type PreferencesCfg struct {
 	Write []string `json:"write,omitempty"`
 }
 
-// preferenceGrants is each declared domain with what the plugin may do
-// there, one string per grant: a domain moved from read to write shows as
-// a change, because it is one.
-func preferenceGrants(m PluginManifest) []string {
+// preferenceReads is each domain the plugin may read, one per grant: every
+// declared domain, since one declared for changing is read as well.
+func preferenceReads(m PluginManifest) []string {
 	p := m.Requires.Preferences
 	if p == nil {
 		return nil
 	}
+	seen := map[string]bool{}
 	out := make([]string, 0, len(p.Read)+len(p.Write))
-	for _, d := range p.Read {
-		out = append(out, "reads "+d)
-	}
-	for _, d := range p.Write {
-		out = append(out, "reads and changes "+d)
+	for _, d := range append(append([]string{}, p.Read...), p.Write...) {
+		if !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
 	}
 	return out
+}
+
+// preferenceWrites is each domain the plugin may change: a grant of its
+// own, so a domain moved from read to write shows as a new one.
+func preferenceWrites(m PluginManifest) []string {
+	p := m.Requires.Preferences
+	if p == nil {
+		return nil
+	}
+	return p.Write
 }
 
 // WmiCfg mirrors the actuator's `requires.wmi`.
