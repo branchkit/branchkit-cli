@@ -72,8 +72,12 @@ func TestSyncInstalledCopy(t *testing.T) {
 
 	// A rebuild with the same consent surface is copied across.
 	writeWatchFile(t, filepath.Join(src, "snippets-plugin"), "v2")
-	if err := syncInstalledCopy(src, dst); err != nil {
+	changed, err := syncInstalledCopy(src, dst)
+	if err != nil {
 		t.Fatalf("sync: %v", err)
+	}
+	if changed {
+		t.Fatal("plugin.json did not change, but sync reported it did")
 	}
 	if b, _ := os.ReadFile(filepath.Join(dst, "snippets-plugin")); string(b) != "v2" {
 		t.Fatalf("installed binary not updated: %q", b)
@@ -84,12 +88,20 @@ func TestSyncInstalledCopy(t *testing.T) {
 	writeWatchFile(t, filepath.Join(src, "plugin.json"),
 		strings.Replace(watchManifest, `["input"]`, `["input", "clipboard"]`, 1))
 	writeWatchFile(t, filepath.Join(src, "snippets-plugin"), "v3")
-	err := syncInstalledCopy(src, dst)
+	_, err = syncInstalledCopy(src, dst)
 	if err == nil || !strings.Contains(err.Error(), "plugin install") {
 		t.Fatalf("expected a refusal naming plugin install, got %v", err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(dst, "snippets-plugin")); string(b) != "v2" {
 		t.Fatalf("refused sync still copied: %q", b)
+	}
+
+	// A manifest edit that asks for nothing new is copied, and reported.
+	writeWatchFile(t, filepath.Join(src, "plugin.json"),
+		strings.Replace(watchManifest, `"Snippets"`, `"Snippets!"`, 1))
+	changed, err = syncInstalledCopy(src, dst)
+	if err != nil || !changed {
+		t.Fatalf("manifest edit: changed=%v err=%v", changed, err)
 	}
 }
 

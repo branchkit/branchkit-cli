@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -125,10 +126,19 @@ func cmdDevWatch(args []string) {
 					continue
 				}
 				if installed != "" {
-					if err := syncInstalledCopy(absDir, installed); err != nil {
+					changed, err := syncInstalledCopy(absDir, installed)
+					if err != nil {
 						fmt.Println(err)
 						since = time.Now()
 						continue
+					}
+					// The app's own watcher reloads a changed plugin.json
+					// (collections, commands) after a short debounce; the
+					// restart spawns from the manifest it holds, so let
+					// that land first.
+					if changed {
+						manifestReloaded = true
+						time.Sleep(manifestSettle)
 					}
 				}
 				ok = restartViaEndpoint(manifest.ID, token)
@@ -365,21 +375,30 @@ func installedCopy(id, srcDir string) string {
 // refuses when the manifest now asks for more than the installed one did
 // (a new privilege, effect, host, or run command): that change goes through
 // `plugin install`, where it is shown before it lands.
-func syncInstalledCopy(srcDir, dst string) error {
+//
+// changed reports whether plugin.json differed from the installed one.
+func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 	newM, err := readManifest(filepath.Join(srcDir, "plugin.json"))
 	if err != nil {
-		return err
+		return false, err
 	}
 	if oldM, err := readManifest(filepath.Join(dst, "plugin.json")); err == nil {
 		if diffConsent(oldM, newM).expands() {
-			return fmt.Errorf("plugin.json now requests more than the installed copy — run `branchkit-cli plugin install .` to review the change, then save again")
+			return false, fmt.Errorf("plugin.json now requests more than the installed copy — run `branchkit-cli plugin install .` to review the change, then save again")
 		}
 	}
+	before, _ := os.ReadFile(filepath.Join(dst, "plugin.json"))
+	after, _ := os.ReadFile(filepath.Join(srcDir, "plugin.json"))
 	if err := safeCopyDir(srcDir, dst, 0); err != nil {
-		return fmt.Errorf("copying into %s: %w", dst, err)
+		return false, fmt.Errorf("copying into %s: %w", dst, err)
 	}
 	if newM.Run != "" {
 		setExecutable(dst, newM.Run)
 	}
-	return nil
+	return !bytes.Equal(before, after), nil
 }
+
+// manifestSettle is how long dev watch waits after copying a changed
+// plugin.json before restarting: longer than the app's file-watcher
+// debounce (500 ms).
+const manifestSettle = 1500 * time.Millisecond
