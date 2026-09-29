@@ -58,6 +58,33 @@ type RequiresCfg struct {
 	// Other apps' settings domains the plugin reads or changes, one grant
 	// each on the plugin's page.
 	Preferences *PreferencesCfg `json:"preferences,omitempty"`
+	// HID products and Bluetooth LE services the plugin drives, one grant
+	// each on the plugin's page.
+	Devices *DevicesCfg `json:"devices,omitempty"`
+}
+
+// DevicesCfg mirrors the actuator's `requires.devices`: HID products as
+// `<vendor>:<product>` (046d:c52b) and GATT services (fff0).
+type DevicesCfg struct {
+	Hid []string `json:"hid,omitempty"`
+	Ble []string `json:"ble,omitempty"`
+}
+
+// deviceGrants is each declared device, one string per grant, naming its
+// kind so a HID product and a Bluetooth service never read alike.
+func deviceGrants(m PluginManifest) []string {
+	d := m.Requires.Devices
+	if d == nil {
+		return nil
+	}
+	out := make([]string, 0, len(d.Hid)+len(d.Ble))
+	for _, p := range d.Hid {
+		out = append(out, "HID "+p)
+	}
+	for _, s := range d.Ble {
+		out = append(out, "Bluetooth service "+s)
+	}
+	return out
 }
 
 // PreferencesCfg mirrors the actuator's `requires.preferences`: each entry

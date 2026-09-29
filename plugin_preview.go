@@ -26,6 +26,7 @@ type previewResult struct {
 	Dbus        []string        `json:"dbus"`
 	Wmi         []string        `json:"wmi"`
 	Preferences []string        `json:"preferences"`
+	Devices     []string        `json:"devices"`
 	Sockets     int             `json:"sockets"`
 	Runtimes    []string        `json:"runtimes"`
 	Effects     []previewEffect `json:"effects"`
@@ -60,6 +61,8 @@ type previewUpdate struct {
 	RemovedWmi         []string        `json:"removed_wmi"`
 	AddedPreferences   []string        `json:"added_preferences"`
 	RemovedPreferences []string        `json:"removed_preferences"`
+	AddedDevices       []string        `json:"added_devices"`
+	RemovedDevices     []string        `json:"removed_devices"`
 	AddedSockets       []string        `json:"added_sockets"`
 	RemovedSockets     []string        `json:"removed_sockets"`
 	AddedRuntimes      []string        `json:"added_runtimes"`
@@ -174,6 +177,7 @@ func cmdPreview(source string) {
 		result.Wmi = emptyNotNil(manifest.Requires.Wmi.Classes)
 	}
 	result.Preferences = emptyNotNil(preferenceGrants(manifest))
+	result.Devices = emptyNotNil(deviceGrants(manifest))
 	result.Sockets = len(socketsSet(manifest))
 	result.Runtimes = emptyNotNil(manifest.Requires.Runtimes)
 
@@ -199,6 +203,8 @@ func cmdPreview(source string) {
 			RemovedWmi:         emptyNotNil(d.axis("wmi").Removed),
 			AddedPreferences:   emptyNotNil(d.axis("preferences").Added),
 			RemovedPreferences: emptyNotNil(d.axis("preferences").Removed),
+			AddedDevices:       emptyNotNil(d.axis("devices").Added),
+			RemovedDevices:     emptyNotNil(d.axis("devices").Removed),
 			AddedSockets:       emptyNotNil(d.axis("sockets").Added),
 			RemovedSockets:     emptyNotNil(d.axis("sockets").Removed),
 			AddedRuntimes:      emptyNotNil(d.axis("runtimes").Added),

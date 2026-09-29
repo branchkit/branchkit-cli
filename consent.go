@@ -284,6 +284,20 @@ var consentAxes = []consentAxis{
 		addFmt: "  + App settings: %s (allow it on the plugin's page)\n",
 		delFmt: "  - App settings: %s\n",
 	},
+	// Devices: HID products and Bluetooth LE services. A HID product is one
+	// grant; a Bluetooth service is allowed per device on the plugin's page
+	// when the plugin first reaches for one. Keyboards, pointers and
+	// security keys are never reachable, whatever is declared.
+	{
+		name:    "devices",
+		extract: deviceGrants,
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Devices: %s (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + Device: %s (allow it on the plugin's page)\n",
+		delFmt: "  - Device: %s\n",
+	},
 	// Not part of the request block: a blob read is a consent axis that
 	// lives in `consumes`, because what is being asked for is another
 	// plugin's data rather than a platform capability. It is here rather
