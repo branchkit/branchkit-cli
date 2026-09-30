@@ -178,6 +178,11 @@ func cmdDevSmoke(args []string) {
 		finish()
 		return
 	}
+	if devAccessScope != "" {
+		add("connectivity", "fail", needsDevelopmentBuild("smoke"))
+		finish()
+		return
+	}
 	if _, status, err := devHTTP("GET", "/plugins", "", nil); err != nil || status != 200 {
 		add("connectivity", "fail", fmt.Sprintf("GET /plugins: status=%d err=%v", status, err))
 		finish()
@@ -772,7 +777,8 @@ func cmdDevSay(args []string) {
 		fmt.Fprintln(os.Stderr, "Usage: branchkit-cli dev say <text> [--pipeline name] [--simulate]")
 		fmt.Fprintln(os.Stderr, "Injects a synthetic transcript — matched commands REALLY execute.")
 		fmt.Fprintln(os.Stderr, "--simulate runs the identical path but sinks every action dispatch,")
-		fmt.Fprintln(os.Stderr, "reporting what WOULD have run. Matcher tag writes still apply.")
+		fmt.Fprintln(os.Stderr, "reporting what WOULD have run. Mode tags it sets are put back afterwards,")
+		fmt.Fprintln(os.Stderr, "except by a pipeline its plugin runs itself; bus events still emit.")
 		os.Exit(1)
 	}
 	token := readHostToken()
@@ -816,7 +822,7 @@ func cmdDevChain(args []string) {
 	}
 	token := readHostToken()
 	if token == "" {
-		fmt.Fprintln(os.Stderr, "Error: no host.token — is BranchKit running?")
+		fmt.Fprintln(os.Stderr, "Error: no host token or Developer Access grant — is BranchKit running?")
 		os.Exit(1)
 	}
 
@@ -876,10 +882,36 @@ func cmdDevChain(args []string) {
 			fmt.Printf("\nPlugin callers in chain: %s — sub-warn plugin logs don't reach the bus; see `branchkit-cli dev logs`\n",
 				strings.Join(result.PluginCallers, ", "))
 		}
-	} else {
+	} else if len(result.Chains) > 0 {
 		for _, c := range result.Chains {
 			fmt.Printf("%s  %s  %2d records  %-8s %s\n",
 				c.CorrelationID, c.When, c.RecordCount, c.MaxSeverity, c.HeadlineEvent)
 		}
+	} else if len(result.Records) > 0 {
+		// A Developer Access grant sees only its own plugin's records, so the
+		// app answers with those instead of the app-wide chain index.
+		if devAccessScope != "" {
+			fmt.Fprintf(os.Stderr, "Developer Access is scoped to '%s': these are its recent records, not the app-wide chain index (that needs a development build).\n", devAccessScope)
+		}
+		for _, r := range result.Records {
+			params := string(r.Params)
+			if len(params) > 120 {
+				params = params[:120] + "…"
+			}
+			fmt.Printf("%s  %-8s %-10s %-24s %s\n", r.TsUTC, r.Severity, r.Source, r.EventType, params)
+		}
+	} else if devAccessScope != "" {
+		fmt.Printf("No recent records for '%s' in the hot window\n", devAccessScope)
+	} else {
+		fmt.Println("No recent chains in the hot window")
 	}
+}
+
+// needsDevelopmentBuild explains why a command that reads app-wide state
+// cannot run on a Developer Access grant, which answers for one plugin only.
+func needsDevelopmentBuild(cmd string) string {
+	return fmt.Sprintf("`dev %s` reads app-wide state, and the Developer Access grant in use is scoped to plugin '%s'. "+
+		"Run it against a development build (pass --dev, or set BRANCHKIT_DEV=1). "+
+		"For your own plugin: dev plog, dev events, dev chain, dev vocab and dev say --simulate work on the grant.",
+		cmd, devAccessScope)
 }

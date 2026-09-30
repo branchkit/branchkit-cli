@@ -650,11 +650,30 @@ func buildPluginDir(absDir string, target buildTarget) error {
 		return fmt.Errorf("no plugin.json found in %s", absDir)
 	}
 	var manifest struct {
-		ID  string `json:"id"`
-		Run string `json:"run"`
+		ID  string    `json:"id"`
+		Run string    `json:"run"`
+		Dev devConfig `json:"dev"`
 	}
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return fmt.Errorf("parsing plugin.json: %w", err)
+	}
+
+	// The manifest's own build recipe comes first: only the plugin knows
+	// whether it needs `templ generate` before `go build`, or something
+	// else entirely. It is the same recipe the app's rebuild endpoint runs,
+	// so `dev build`, `dev watch` and a live rebuild build one way.
+	if len(manifest.Dev.Build) > 0 {
+		switch {
+		case !target.isHost():
+			// A recipe names no target — its output path is the host
+			// binary — so a cross-build goes by layout instead.
+			fmt.Printf("dev.build names no target; building %s for %s from its source layout\n", manifest.ID, target)
+		case os.Getenv(devBuildRecipeEnv) != "" || recipeRunsThisCommand(manifest.Dev.Build):
+			// The recipe is (or runs) `branchkit-cli dev build`: running it
+			// again would never end, so build by layout.
+		default:
+			return runDevBuildRecipe(absDir, manifest.ID, manifest.Dev)
+		}
 	}
 
 	srcDir := filepath.Join(absDir, "src")
@@ -692,6 +711,59 @@ func buildPluginDir(absDir string, target buildTarget) error {
 	default:
 		return fmt.Errorf("unknown build system — expected go.mod in src/, package.json, or main.py")
 	}
+}
+
+// devConfig is the manifest's `dev` block: the commands that build the
+// plugin, each a full argv run with no shell, and the directory (relative to
+// the plugin directory) they run in.
+type devConfig struct {
+	Build    [][]string `json:"build"`
+	BuildDir *string    `json:"build_dir"`
+}
+
+// devBuildRecipeEnv is set in every recipe step's environment. A step that
+// calls `branchkit-cli dev build` itself, directly or through a script, then
+// builds by layout instead of running the recipe again.
+const devBuildRecipeEnv = "BRANCHKIT_CLI_IN_DEV_BUILD"
+
+// recipeRunsThisCommand reports whether a step is `branchkit-cli dev build`,
+// which the TypeScript scaffold's recipe is.
+func recipeRunsThisCommand(steps [][]string) bool {
+	for _, step := range steps {
+		if len(step) >= 3 && step[1] == "dev" && step[2] == "build" {
+			prog := strings.TrimSuffix(filepath.Base(step[0]), ".exe")
+			if prog == "branchkit-cli" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// runDevBuildRecipe runs the manifest's `dev.build` steps in order in
+// `dev.build_dir`, stopping at the first failure. Each step's argv is printed
+// before it runs.
+func runDevBuildRecipe(absDir, id string, dev devConfig) error {
+	dir := absDir
+	if dev.BuildDir != nil && *dev.BuildDir != "" {
+		if filepath.IsAbs(*dev.BuildDir) {
+			return fmt.Errorf("dev.build_dir %q must be relative to the plugin directory", *dev.BuildDir)
+		}
+		dir = filepath.Join(absDir, *dev.BuildDir)
+	}
+	env := append(os.Environ(), devBuildRecipeEnv+"=1")
+	fmt.Printf("Building %s with its dev.build recipe (in %s)...\n", id, dir)
+	for _, step := range dev.Build {
+		if len(step) == 0 {
+			continue
+		}
+		fmt.Printf("  $ %s\n", strings.Join(step, " "))
+		if err := runTool(dir, env, step[0], step[1:]...); err != nil {
+			return fmt.Errorf("dev.build step `%s` failed: %w", strings.Join(step, " "), err)
+		}
+	}
+	fmt.Printf("Built %s\n", id)
+	return nil
 }
 
 func promptInput(label, defaultVal string) string {

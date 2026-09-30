@@ -23,7 +23,9 @@ import (
 // This replaces the recognition_log half of scripts/margin-distribution.py:
 // the fold now lives only in the actuator, and this is a real consumer of it.
 func cmdDevMargins(args []string) {
-	collection := "plugin.voice.recognition_log"
+	// No default: which keyed recognition log to read is the caller's to
+	// name, since any plugin may keep one.
+	collection := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--collection":
@@ -37,9 +39,19 @@ func cmdDevMargins(args []string) {
 		}
 	}
 
+	if collection == "" {
+		fmt.Fprintln(os.Stderr, "Error: --collection is required — name the keyed recognition log to read")
+		printDevMarginsUsage()
+		os.Exit(2)
+	}
+
 	token := readHostToken()
 	if token == "" {
-		fmt.Fprintln(os.Stderr, "Error: no host.token — is BranchKit running?")
+		fmt.Fprintln(os.Stderr, "Error: no host token or Developer Access grant — is BranchKit running?")
+		os.Exit(1)
+	}
+	if devAccessScope != "" {
+		fmt.Fprintln(os.Stderr, "Error: "+needsDevelopmentBuild("margins"))
 		os.Exit(1)
 	}
 
@@ -212,7 +224,7 @@ func maxFloat(v []float64) float64 {
 }
 
 func printDevMarginsUsage() {
-	fmt.Println("Usage: branchkit-cli dev margins [--collection <name>]")
+	fmt.Println("Usage: branchkit-cli dev margins --collection <name>")
 	fmt.Println("  Reports the recognition-margin distribution (verdict-split) of a")
 	fmt.Println("  keyed recognition log, read via its compacted projection.")
 }
