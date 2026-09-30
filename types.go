@@ -61,6 +61,10 @@ type RequiresCfg struct {
 	// HID products and Bluetooth LE services the plugin drives, one grant
 	// each on the plugin's page.
 	Devices *DevicesCfg `json:"devices,omitempty"`
+	// The platform operations the plugin calls, and which it cannot work
+	// without. The app compares them with what this computer can do and
+	// says so at install, before anything runs.
+	Capabilities *capabilitiesDecl `json:"capabilities,omitempty"`
 }
 
 // DevicesCfg mirrors the actuator's `requires.devices`: HID products as

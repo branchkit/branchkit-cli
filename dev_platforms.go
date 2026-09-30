@@ -391,12 +391,16 @@ func sortedKeys(m map[string]bool) []string {
 }
 
 func cmdDevPlatforms(args []string) {
-	jsonOut := false
+	jsonOut, write, check := false, false, false
 	var dirs []string
 	for _, a := range args {
 		switch {
 		case a == "--json":
 			jsonOut = true
+		case a == "--write":
+			write = true
+		case a == "--check":
+			check = true
 		case a == "--help" || a == "-h":
 			printDevPlatformsUsage()
 			return
@@ -431,6 +435,15 @@ func cmdDevPlatforms(args []string) {
 			continue
 		}
 		reports = append(reports, r)
+	}
+
+	if write || check {
+		for _, r := range reports {
+			if !writeOrCheckUses(r, write) {
+				exit = 1
+			}
+		}
+		os.Exit(exit)
 	}
 
 	if jsonOut {
@@ -643,7 +656,7 @@ func printRatedMatrix(p func(string, ...any), used []availabilityOp, doc *availa
 }
 
 func printDevPlatformsUsage() {
-	fmt.Println(`branchkit-cli dev platforms [DIR...] [--json]
+	fmt.Println(`branchkit-cli dev platforms [DIR...] [--json | --write | --check]
 
 Which platforms will this plugin actually work on?
 
@@ -651,7 +664,8 @@ Scans a plugin's Go, TypeScript and Python sources for the operations they
 call — typed SDK wrappers, method constants, and method names passed as a
 string to call/notify — then reports where each operation is available.
 Derived from the plugin's own source and the platform's shipped availability
-data — nothing to declare and nothing to keep in sync.
+data. The manifest carries a copy (requires.capabilities.uses) for the app to
+read before anything runs; --write keeps it in step, never by hand.
 
 It says what it read. Test files, generated *_gen files, dependencies
 (node_modules, vendor, venvs, a vendored SDK) and build output (dist) are
@@ -661,6 +675,12 @@ run time is invisible to any source scan.
 
   DIR      plugin source directory (default: the current directory)
   --json   machine-readable output
+  --write  set requires.capabilities.uses in DIR/plugin.json to what the
+           source calls, so BranchKit can tell a person before installing
+           what will not work on their computer. Only that list changes;
+           the rest of the file is left as it is. Not written when the scan
+           could not read all the source.
+  --check  exit 1 when requires.capabilities.uses differs from the source
 
 Reads platform-availability.json from the docs tree: $BRANCHKIT_DOCS_DIR, the
 synced cache (branchkit-cli docs sync), or the installed app bundle.`)

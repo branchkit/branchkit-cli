@@ -361,6 +361,26 @@ var consentAxes = []consentAxis{
 		addFmt: "  + runtime: %s (read+exec of the managed runtime)\n",
 		delFmt: "  - runtime: %s\n",
 	},
+	// Platform operations the plugin cannot start without. Only `required`:
+	// one added by an update can stop the plugin starting on this computer,
+	// which is worth asking about again. A newly called optional operation
+	// grants nothing (privileges do), so it is not a new consent question;
+	// the app's install panel names the ones this computer lacks.
+	{
+		name: "capabilities",
+		extract: func(m PluginManifest) []string {
+			if m.Requires.Capabilities == nil {
+				return nil
+			}
+			return m.Requires.Capabilities.Required
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Cannot start without: %s\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + cannot start without: %s\n",
+		delFmt: "  - no longer requires: %s\n",
+	},
 }
 
 // axisDiff is one axis's added/removed members, canonical form.

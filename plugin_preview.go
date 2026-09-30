@@ -28,17 +28,19 @@ type previewResult struct {
 	Preferences []string `json:"preferences"`
 	// Domains declared for changing: a grant of their own, shown with the
 	// high-risk privileges.
-	PreferenceWrites []string        `json:"preference_writes"`
-	Devices          []string        `json:"devices"`
-	Sockets          int             `json:"sockets"`
-	Runtimes         []string        `json:"runtimes"`
-	Effects          []previewEffect `json:"effects"`
-	Conformance      string          `json:"conformance"`
-	Tier             string          `json:"tier"`
-	Blocklisted      bool            `json:"blocklisted"`
-	BlockReason      string          `json:"block_reason,omitempty"`
-	Source           string          `json:"source"`
-	Tag              string          `json:"tag"`
+	PreferenceWrites []string `json:"preference_writes"`
+	Devices          []string `json:"devices"`
+	// Carried for the app, which alone knows what this computer refuses.
+	Capabilities *capabilitiesDecl `json:"capabilities,omitempty"`
+	Sockets      int               `json:"sockets"`
+	Runtimes     []string          `json:"runtimes"`
+	Effects      []previewEffect   `json:"effects"`
+	Conformance  string            `json:"conformance"`
+	Tier         string            `json:"tier"`
+	Blocklisted  bool              `json:"blocklisted"`
+	BlockReason  string            `json:"block_reason,omitempty"`
+	Source       string            `json:"source"`
+	Tag          string            `json:"tag"`
 	// Update is present when this plugin is already installed: the consent
 	// DIFF against the manifest the install would replace. The settings
 	// panel renders this instead of the full summary — standing consent
@@ -161,6 +163,7 @@ func cmdPreview(source string) {
 		BlockReason:        blockReason,
 		Source:             source,
 		Tag:                tag,
+		Capabilities:       manifest.Requires.Capabilities,
 	}
 	if result.Privileges == nil {
 		result.Privileges = []string{}

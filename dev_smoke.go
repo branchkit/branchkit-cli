@@ -195,7 +195,7 @@ func cmdDevSmoke(args []string) {
 	if err != nil || status != 200 || json.Unmarshal(raw, &plist) != nil {
 		add("plugins", "fail", fmt.Sprintf("GET /v1/plugins: status=%d err=%v", status, err))
 	} else {
-		var broken, pending []string
+		var broken, pending, unsupported []string
 		running := 0
 		for _, p := range plist {
 			if !p.Enabled {
@@ -204,8 +204,14 @@ func cmdDevSmoke(args []string) {
 			switch p.Status {
 			case "Running":
 				running++
-			case "Pending", "Initializing", "NeedsApproval":
+			// The API spells it "Needs Approval"; the one-word form is kept
+			// for an older app.
+			case "Pending", "Initializing", "Needs Approval", "NeedsApproval":
 				pending = append(pending, p.ID+"="+p.Status)
+			// Expected where this computer cannot provide what the plugin
+			// requires: not a fault, but said.
+			case "Unsupported":
+				unsupported = append(unsupported, p.ID)
 			default: // Errored, Degraded, Rejected, unknown
 				d := p.ID + "=" + p.Status
 				if p.Reason != "" {
@@ -219,6 +225,9 @@ func cmdDevSmoke(args []string) {
 			add("plugins", "fail", strings.Join(broken, "; "))
 		case len(pending) > 0:
 			add("plugins", "warn", fmt.Sprintf("%d running; not settled: %s", running, strings.Join(pending, "; ")))
+		case len(unsupported) > 0:
+			add("plugins", "pass", fmt.Sprintf("%d running; cannot run on this computer: %s",
+				running, strings.Join(unsupported, ", ")))
 		default:
 			add("plugins", "pass", fmt.Sprintf("all %d enabled plugins Running", running))
 		}
