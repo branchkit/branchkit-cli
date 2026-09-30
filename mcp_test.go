@@ -77,6 +77,14 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 		switch r.URL.Path {
 		case "/v1/connection/window-text":
 			w.Write([]byte(`{"connection":"claude","read":"screen_text","data":{"text":"Disk not found"}}`))
+		case "/v1/connection/run-command":
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			if body["words"] == "snap left" {
+				w.Write([]byte(`{"outcome":"ran","detail":"ran 'snap left': done"}`))
+			} else {
+				w.Write([]byte(`{"outcome":"declined","detail":"the person declined; do not retry"}`))
+			}
 		case "/v1/connection/screenshot":
 			w.WriteHeader(403)
 			w.Write([]byte("Claude is not allowed to read 'screenshot'."))
@@ -91,6 +99,8 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 	replies := mcpRoundTrip(t, "claude",
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"window_text","arguments":{}}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"screenshot","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"run_command","arguments":{"words":"snap left"}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"run_command","arguments":{"words":"empty trash"}}}`,
 	)
 	ok := replies[0]["result"].(map[string]any)
 	if ok["isError"] != false || !strings.Contains(text(ok), "Disk not found") {
@@ -99,6 +109,14 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 	refused := replies[1]["result"].(map[string]any)
 	if refused["isError"] != true || !strings.Contains(text(refused), "not allowed") {
 		t.Errorf("a refusal is a readable tool error: %v", refused)
+	}
+	ran := replies[2]["result"].(map[string]any)
+	if ran["isError"] != false || !strings.Contains(text(ran), "ran") {
+		t.Errorf("run_command passes the words and reports the run: %v", ran)
+	}
+	declined := replies[3]["result"].(map[string]any)
+	if declined["isError"] != true || !strings.Contains(text(declined), "declined") {
+		t.Errorf("a declined command is a tool error the AI must not retry: %v", declined)
 	}
 }
 

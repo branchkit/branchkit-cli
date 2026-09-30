@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // mcpProtocolVersions are the MCP revisions this bridge speaks, newest
@@ -36,6 +37,8 @@ type mcpTool struct {
 	path string
 	// Not sent: the result is a PNG to return as an image.
 	image bool
+	// Not sent: the call waits for the person to answer a question.
+	waits bool
 }
 
 func noArgs() map[string]any {
@@ -72,6 +75,25 @@ var mcpTools = []mcpTool{
 		Description: "The BranchKit voice commands the person can say right now, grouped as BranchKit shows them.",
 		InputSchema: noArgs(),
 		path:        "/v1/connection/commands",
+	},
+	{
+		Name: "run_command",
+		Description: "Run one of the person's BranchKit commands, named in the words they would say " +
+			"(\"snap left\", \"open safari\"). BranchKit matches the words to their commands, asks the person " +
+			"in its own words, and runs it only if they allow it; this call waits for their answer (up to two " +
+			"minutes). Use sayable_commands to see what exists. If they decline or choose Not Now, do not retry.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"words": map[string]any{
+					"type":        "string",
+					"description": "The command, as the person would say it.",
+				},
+			},
+			"required": []string{"words"},
+		},
+		path:  "/v1/connection/run-command",
+		waits: true,
 	},
 	{
 		Name:        "screenshot",
@@ -182,14 +204,15 @@ func dispatchMCP(msg rpcMessage, connection string) (any, *rpcError) {
 		return map[string]any{"tools": mcpTools}, nil
 	case "tools/call":
 		var p struct {
-			Name string `json:"name"`
+			Name      string         `json:"name"`
+			Arguments map[string]any `json:"arguments"`
 		}
 		if err := json.Unmarshal(msg.Params, &p); err != nil {
 			return nil, &rpcError{-32602, "invalid params"}
 		}
 		for _, t := range mcpTools {
 			if t.Name == p.Name {
-				return callTool(t, connection), nil
+				return callTool(t, connection, p.Arguments), nil
 			}
 		}
 		return nil, &rpcError{-32602, fmt.Sprintf("unknown tool %q", p.Name)}
@@ -225,7 +248,7 @@ func connectionToken(connection string) (string, error) {
 	return d.Token, nil
 }
 
-func callTool(t mcpTool, connection string) map[string]any {
+func callTool(t mcpTool, connection string, args map[string]any) map[string]any {
 	token, err := connectionToken(connection)
 	if err != nil {
 		return toolText(err.Error(), true)
@@ -233,7 +256,16 @@ func callTool(t mcpTool, connection string) map[string]any {
 	if err := resolveDevBaseURL(); err != nil {
 		return toolText("BranchKit is not reachable: "+err.Error(), true)
 	}
-	raw, status, err := devHTTP("POST", t.path, token, map[string]any{})
+	body := map[string]any{}
+	for k, v := range args {
+		body[k] = v
+	}
+	timeout := 10 * time.Second
+	if t.waits {
+		// BranchKit holds the call open while the person answers.
+		timeout = 150 * time.Second
+	}
+	raw, status, err := devHTTPTimeout("POST", t.path, token, body, timeout)
 	if err != nil {
 		return toolText("BranchKit is not reachable: "+err.Error(), true)
 	}
@@ -243,6 +275,16 @@ func callTool(t mcpTool, connection string) map[string]any {
 			msg = "BranchKit refused this connection's token; it may have been removed or BranchKit restarted mid-call. Try again."
 		}
 		return toolText(msg, true)
+	}
+	if t.waits {
+		var r struct {
+			Outcome string `json:"outcome"`
+			Detail  string `json:"detail"`
+		}
+		if json.Unmarshal(raw, &r) != nil {
+			return toolText("BranchKit sent an unreadable answer", true)
+		}
+		return toolText(r.Detail, r.Outcome != "ran")
 	}
 	var res struct {
 		Data json.RawMessage `json:"data"`

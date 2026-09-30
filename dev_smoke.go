@@ -34,6 +34,12 @@ import (
 var devBaseURL = ""
 
 func devHTTP(method, path, token string, body any) ([]byte, int, error) {
+	return devHTTPTimeout(method, path, token, body, 10*time.Second)
+}
+
+// devHTTPTimeout is devHTTP with the caller's timeout, for calls BranchKit
+// holds open on purpose (a connected app waiting for the person's answer).
+func devHTTPTimeout(method, path, token string, body any, timeout time.Duration) ([]byte, int, error) {
 	var reader io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -52,7 +58,7 @@ func devHTTP(method, path, token string, body any) ([]byte, int, error) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	client := devClient(10 * time.Second)
+	client := devClient(timeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, err
