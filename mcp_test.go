@@ -80,6 +80,9 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 		case "/v1/connection/run-command":
 			var body map[string]any
 			json.NewDecoder(r.Body).Decode(&body)
+			// BranchKit keeps the call open with newlines while the
+			// person answers, then sends the result.
+			w.Write([]byte("\n\n"))
 			if body["words"] == "snap left" {
 				w.Write([]byte(`{"outcome":"ran","detail":"ran 'snap left': done"}`))
 			} else {
