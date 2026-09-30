@@ -182,6 +182,8 @@ func main() {
 			printRegistryUsage()
 			os.Exit(1)
 		}
+	case "mcp":
+		cmdMCP(os.Args[2:])
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -208,6 +210,7 @@ var groupUsage = map[string]func(){
 	"model":    printArtifactUsage, // deprecated alias
 	"runtime":  printRuntimeUsage,
 	"dev":      printDevUsage,
+	"mcp":      printMCPUsage,
 	"docs":     printDocsUsage,
 	"registry": printRegistryUsage,
 }
@@ -278,6 +281,7 @@ func printUsage() {
 	fmt.Println("  plugin update [plugin-id]          Update one or all plugins")
 	fmt.Println("  model download <engine/model>      Download a speech model")
 	fmt.Println("  model list                         List downloaded models")
+	fmt.Println("  mcp --connection <id>              Serve BranchKit reads to an AI app over MCP (stdio)")
 	fmt.Println("  runtime install <name>             Install a managed language runtime (python)")
 	fmt.Println("  runtime list                       List installed managed runtimes")
 	fmt.Println("  docs path                          Print the platform docs directory (markdown — grep it)")
