@@ -340,7 +340,7 @@ func printDevUsage() {
 	fmt.Println("        your code actually calls and says where each one answers —")
 	fmt.Println("        at build time, while you are here to act on it")
 	fmt.Println("  watch [path]")
-	fmt.Println("        Watch for changes, rebuild, and reload via actuator")
+	fmt.Println("        Watch for changes, rebuild, and have the app restart the plugin")
 	fmt.Println("  logs [plugin-id] [--source TAG] [--json]")
 	fmt.Println("        Tail the app log (actuator.log; --json streams show-all.current.jsonl),")
 	fmt.Println("        optionally filtered")
