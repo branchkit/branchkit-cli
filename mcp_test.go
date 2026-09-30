@@ -75,6 +75,8 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 			return
 		}
 		switch r.URL.Path {
+		case "/v1/connection/hello":
+			w.Write([]byte(`{"name":"Claude","allowed":["frontmost","screen_text"]}`))
 		case "/v1/connection/window-text":
 			w.Write([]byte(`{"connection":"claude","read":"screen_text","data":{"text":"Disk not found"}}`))
 		case "/v1/connection/run-command":
@@ -98,6 +100,14 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "run"), 0o755)
 	os.WriteFile(filepath.Join(dir, "run", "address.json"),
 		[]byte(`{"v":1,"pid":0,"ui":{"port":`+strconv.Itoa(port)+`}}`), 0o600)
+
+	hello := mcpRoundTrip(t, "claude",
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
+	)
+	instructions := hello[0]["result"].(map[string]any)["instructions"].(string)
+	if !strings.Contains(instructions, "Switched on for this app now: frontmost, screen_text.") {
+		t.Errorf("initialize says hello and names the switches that are on: %q", instructions)
+	}
 
 	replies := mcpRoundTrip(t, "claude",
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"window_text","arguments":{}}}`,

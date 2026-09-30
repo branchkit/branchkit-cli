@@ -190,13 +190,17 @@ func dispatchMCP(msg rpcMessage, connection string) (any, *rpcError) {
 				version = v
 			}
 		}
+		instructions := "BranchKit lets you read what is on the person's screen, with their permission, " +
+			"through exact accessibility text rather than pictures. Each tool is allowed only if the person " +
+			"switched it on for this app in BranchKit Settings > Connections; a refusal says which switch."
+		if allowed := sayHello(connection); len(allowed) > 0 {
+			instructions += " Switched on for this app now: " + strings.Join(allowed, ", ") + "."
+		}
 		return map[string]any{
 			"protocolVersion": version,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "branchkit", "version": version},
-			"instructions": "BranchKit lets you read what is on the person's screen, with their permission, " +
-				"through exact accessibility text rather than pictures. Each tool is allowed only if the person " +
-				"switched it on for this app in BranchKit Settings > Connections; a refusal says which switch.",
+			"instructions":    instructions,
 		}, nil
 	case "ping":
 		return map[string]any{}, nil
@@ -246,6 +250,31 @@ func connectionToken(connection string) (string, error) {
 		return "", fmt.Errorf("connection %q has no token yet; is BranchKit running?", connection)
 	}
 	return d.Token, nil
+}
+
+// sayHello tells BranchKit the app has started this connection, so its
+// Settings page shows setup as finished before the first read, and returns
+// the switches the person has on. Best effort: nil when BranchKit is not
+// reachable, and the bridge works the same either way.
+func sayHello(connection string) []string {
+	token, err := connectionToken(connection)
+	if err != nil {
+		return nil
+	}
+	if resolveDevBaseURL() != nil {
+		return nil
+	}
+	raw, status, err := devHTTPTimeout("POST", "/v1/connection/hello", token, map[string]any{}, 3*time.Second)
+	if err != nil || status != 200 {
+		return nil
+	}
+	var r struct {
+		Allowed []string `json:"allowed"`
+	}
+	if json.Unmarshal(raw, &r) != nil {
+		return nil
+	}
+	return r.Allowed
 }
 
 func callTool(t mcpTool, connection string, args map[string]any) map[string]any {
