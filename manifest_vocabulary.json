@@ -67,6 +67,9 @@
   "platform_collections": [
     "_platform.accessibility",
     "_platform.actuator_log_level",
+    "_platform.binding_overrides",
+    "_platform.bindings",
+    "_platform.bindings.active",
     "_platform.calibration.active",
     "_platform.frozen_writers",
     "_platform.input",

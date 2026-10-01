@@ -859,12 +859,25 @@ func actionEnvelopeErrors(action map[string]any) []string {
 	return errs
 }
 
+// bindingsKey is where a manifest contributes hotkeys: the platform's
+// `_platform.bindings` collection, keyed by combo.
+const bindingsKey = "_platform.bindings"
+
 // checkKeybindBindings enforces the one-params dialect on collection_data
-// keybinds: a binding's envelope is closed (action / params) and the
-// platform refuses stray keys at load — refuse them here first.
+// bindings: a binding's envelope is closed (action / params) and the
+// platform refuses stray keys at load — refuse them here first. It also
+// catches the key hotkeys used to go under, `keybinds`, which the platform
+// now refuses: a manifest that still uses it binds nothing.
 func checkKeybindBindings(m map[string]any) []TestResult {
 	cd, _ := m["collection_data"].(map[string]any)
-	kb, _ := cd["keybinds"].(map[string]any)
+	if _, legacy := cd["keybinds"]; legacy {
+		return []TestResult{{
+			Name: "keybinds", Status: "fail",
+			Detail: "hotkeys moved from collection_data.keybinds to collection_data[\"" + bindingsKey +
+				"\"] — same shape, keyed by combo; under the old key they are not bound",
+		}}
+	}
+	kb, _ := cd[bindingsKey].(map[string]any)
 	if len(kb) == 0 {
 		return nil
 	}

@@ -254,7 +254,7 @@ func TestActionEnvelopeErrors(t *testing.T) {
 // A keybind binding's params must be an object, mirroring the seeder.
 func TestKeybindNonObjectParamsFails(t *testing.T) {
 	m := manifestFromJSON(t, `{
-		"collection_data": {"keybinds": {
+		"collection_data": {"_platform.bindings": {
 			"alt+p": {"action": "x.y", "params": "flat"},
 			"alt+n": {"action": "x.y", "params": {"a": 1}}
 		}}
@@ -266,6 +266,16 @@ func TestKeybindNonObjectParamsFails(t *testing.T) {
 	}
 	if good := findResult(results, "keybind_alt+n"); good != nil && good.Status == "fail" {
 		t.Fatalf("nested binding should not fail: %+v", good)
+	}
+}
+
+// Hotkeys under the old `keybinds` key bind nothing; the check says where
+// they go now instead of passing silently.
+func TestKeybindsUnderTheOldKeyFail(t *testing.T) {
+	m := manifestFromJSON(t, `{"collection_data": {"keybinds": {"alt+p": {"action": "x.y"}}}}`)
+	got := findResult(checkKeybindBindings(m), "keybinds")
+	if got == nil || got.Status != "fail" || !strings.Contains(got.Detail, "_platform.bindings") {
+		t.Fatalf("expected a failure naming the new key, got %+v", got)
 	}
 }
 
