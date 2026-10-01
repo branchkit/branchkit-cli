@@ -80,8 +80,8 @@ var mcpTools = []mcpTool{
 		Name: "run_command",
 		Description: "Run one of the person's BranchKit commands, named in the words they would say " +
 			"(\"snap left\", \"open safari\"). BranchKit matches the words to their commands, asks the person " +
-			"in its own words, and runs it only if they allow it; this call waits for their answer (up to two " +
-			"minutes). Use sayable_commands to see what exists. If they decline or choose Not Now, do not retry.",
+			"in its own words, and runs it only if they allow it (at once, for a command they always allow); " +
+			"this call waits for their answer (up to two minutes). Use sayable_commands to see what exists. If they decline or choose Not Now, do not retry.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -289,11 +289,10 @@ func callTool(t mcpTool, connection string, args map[string]any) map[string]any 
 	for k, v := range args {
 		body[k] = v
 	}
-	timeout := 10 * time.Second
-	if t.waits {
-		// BranchKit holds the call open while the person answers.
-		timeout = 150 * time.Second
-	}
+	// BranchKit holds the call open while the person answers: a request to
+	// run a command always asks, and when the person chose to be asked
+	// about every read too, so does a read.
+	timeout := 150 * time.Second
 	raw, status, err := devHTTPTimeout("POST", t.path, token, body, timeout)
 	if err != nil {
 		return toolText("BranchKit is not reachable: "+err.Error(), true)
@@ -317,9 +316,15 @@ func callTool(t mcpTool, connection string, args map[string]any) map[string]any 
 	}
 	var res struct {
 		Data json.RawMessage `json:"data"`
+		// Set when BranchKit asked the person about this read and they did
+		// not allow it: what to tell them.
+		Refused string `json:"refused"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
 		return toolText("BranchKit sent an unreadable answer", true)
+	}
+	if res.Refused != "" {
+		return toolText(res.Refused, true)
 	}
 	if t.image {
 		var img struct {

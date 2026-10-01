@@ -90,6 +90,9 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 			} else {
 				w.Write([]byte(`{"outcome":"declined","detail":"the person declined; do not retry"}`))
 			}
+		case "/v1/connection/selected-text":
+			// Asked about every read: the person said no.
+			w.Write([]byte("\n" + `{"refused":"the person declined this read; do not retry"}`))
 		case "/v1/connection/screenshot":
 			w.WriteHeader(403)
 			w.Write([]byte("Claude is not allowed to read 'screenshot'."))
@@ -114,6 +117,7 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"screenshot","arguments":{}}}`,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"run_command","arguments":{"words":"snap left"}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"run_command","arguments":{"words":"empty trash"}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"selected_text","arguments":{}}}`,
 	)
 	ok := replies[0]["result"].(map[string]any)
 	if ok["isError"] != false || !strings.Contains(text(ok), "Disk not found") {
@@ -126,6 +130,10 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 	ran := replies[2]["result"].(map[string]any)
 	if ran["isError"] != false || !strings.Contains(text(ran), "ran") {
 		t.Errorf("run_command passes the words and reports the run: %v", ran)
+	}
+	asked := replies[4]["result"].(map[string]any)
+	if asked["isError"] != true || !strings.Contains(text(asked), "declined this read") {
+		t.Errorf("a read the person declined when asked is a readable tool error: %v", asked)
 	}
 	declined := replies[3]["result"].(map[string]any)
 	if declined["isError"] != true || !strings.Contains(text(declined), "declined") {
