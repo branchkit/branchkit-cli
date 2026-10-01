@@ -90,6 +90,16 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 			} else {
 				w.Write([]byte(`{"outcome":"declined","detail":"the person declined; do not retry"}`))
 			}
+		case "/v1/connection/propose-plan":
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			steps, _ := body["steps"].([]any)
+			w.Write([]byte("\n"))
+			if len(steps) == 2 {
+				w.Write([]byte(`{"outcome":"allowed","detail":"the person allowed the plan"}`))
+			} else {
+				w.Write([]byte(`{"outcome":"declined","detail":"the person declined the plan; do not run it"}`))
+			}
 		case "/v1/connection/selected-text":
 			// Asked about every read: the person said no.
 			w.Write([]byte("\n" + `{"refused":"the person declined this read; do not retry"}`))
@@ -118,6 +128,8 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"run_command","arguments":{"words":"snap left"}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"run_command","arguments":{"words":"empty trash"}}}`,
 		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"selected_text","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"propose_plan","arguments":{"steps":["desk two","snap left"]}}}`,
+		`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"propose_plan","arguments":{"steps":["empty trash"]}}}`,
 	)
 	ok := replies[0]["result"].(map[string]any)
 	if ok["isError"] != false || !strings.Contains(text(ok), "Disk not found") {
@@ -134,6 +146,14 @@ func TestMCPToolCallUsesTheConnectionTokenAndSurfacesRefusals(t *testing.T) {
 	asked := replies[4]["result"].(map[string]any)
 	if asked["isError"] != true || !strings.Contains(text(asked), "declined this read") {
 		t.Errorf("a read the person declined when asked is a readable tool error: %v", asked)
+	}
+	allowed := replies[5]["result"].(map[string]any)
+	if allowed["isError"] != false || !strings.Contains(text(allowed), "allowed the plan") {
+		t.Errorf("propose_plan passes the steps and reports an allowed plan: %v", allowed)
+	}
+	refusedPlan := replies[6]["result"].(map[string]any)
+	if refusedPlan["isError"] != true {
+		t.Errorf("a declined plan is a tool error: %v", refusedPlan)
 	}
 	declined := replies[3]["result"].(map[string]any)
 	if declined["isError"] != true || !strings.Contains(text(declined), "declined") {

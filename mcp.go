@@ -96,6 +96,28 @@ var mcpTools = []mcpTool{
 		waits: true,
 	},
 	{
+		Name: "propose_plan",
+		Description: "Before a task of several commands, show the person the whole plan: every command you mean " +
+			"to run, in order, each in the words they would say. BranchKit lists the steps in its own words and " +
+			"asks once if the person checks in once per task; if they allow it, run each step with run_command " +
+			"when you are ready, and every step that can be undone runs without asking again. A step that can't " +
+			"be undone still asks; anything not in the plan, or out of order, asks again. Plans end after their " +
+			"last step or in 10 minutes. This call waits for the answer (up to two minutes).",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"steps": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "The commands, in order, as the person would say them.",
+				},
+			},
+			"required": []string{"steps"},
+		},
+		path:  "/v1/connection/propose-plan",
+		waits: true,
+	},
+	{
 		Name:        "screenshot",
 		Description: "A picture of the window in front. Off unless the person turned it on for this app; prefer window_text for reading.",
 		InputSchema: noArgs(),
@@ -312,7 +334,8 @@ func callTool(t mcpTool, connection string, args map[string]any) map[string]any 
 		if json.Unmarshal(raw, &r) != nil {
 			return toolText("BranchKit sent an unreadable answer", true)
 		}
-		return toolText(r.Detail, r.Outcome != "ran")
+		ok := r.Outcome == "ran" || r.Outcome == "allowed" || r.Outcome == "noted"
+		return toolText(r.Detail, !ok)
 	}
 	var res struct {
 		Data json.RawMessage `json:"data"`
