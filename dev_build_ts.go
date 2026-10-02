@@ -138,6 +138,7 @@ type tsManifest struct {
 		Sockets *struct {
 			Listen []json.RawMessage `json:"listen"`
 		} `json:"sockets"`
+		Network json.RawMessage `json:"network"`
 	} `json:"requires"`
 }
 
@@ -199,6 +200,24 @@ func (t buildTarget) outputPath(absDir, base string) string {
 		return filepath.Join(absDir, base)
 	}
 	return filepath.Join(absDir, "dist", t.String(), base)
+}
+
+// tsNodeLosesNetworkOnLinux reports whether a plugin built on Node reaches
+// the internet through the platform proxy. On Linux that proxy is handed off
+// as a passed socket (BRANCHKIT_PROXY=fd://N), which only Bun can receive,
+// so such a plugin has no network there until Bun can serve an inherited
+// listener (oven-sh/bun#22559) and every TS plugin builds on Bun.
+// "outbound" and the hosts form go through the proxy; "localhost" does not.
+func tsNodeLosesNetworkOnLinux(m tsManifest) bool {
+	if tsEngine(m) != "node" || len(m.Requires.Network) == 0 {
+		return false
+	}
+	var tier string
+	if json.Unmarshal(m.Requires.Network, &tier) == nil {
+		return tier == "outbound"
+	}
+	var hosts map[string]json.RawMessage
+	return json.Unmarshal(m.Requires.Network, &hosts) == nil
 }
 
 // tsEngine is the whole engine decision.
@@ -322,6 +341,9 @@ func buildTypeScriptPluginFor(absDir string, target buildTarget) error {
 		err = buildWithBun(absDir, bun, entry, tmp, target)
 	case "node":
 		fmt.Printf("Building TypeScript plugin %s%s (Node %s — it declares sockets.listen, which Bun cannot serve)...\n", m.ID, forWhom, nodeVersion)
+		if tsNodeLosesNetworkOnLinux(m) {
+			fmt.Fprintf(os.Stderr, "warning: %s also declares network access. On Linux the platform hands a plugin its network proxy as a passed socket, which Node cannot receive, so this plugin has no network there until Bun can serve its listener (oven-sh/bun#22559). macOS and Windows are unaffected.\n", m.ID)
+		}
 		err = buildWithNode(absDir, bun, entry, tmp, target)
 	}
 	if err != nil {

@@ -39,6 +39,29 @@ func TestTsEngine(t *testing.T) {
 	}
 }
 
+// A Node-built plugin that reaches the internet through the platform proxy
+// is the one TS case without network on Linux (the proxy is handed off as a
+// passed socket, which Node cannot receive). Warned about at build time.
+func TestTsNodeLosesNetworkOnLinux(t *testing.T) {
+	listen := `"sockets":{"listen":[{"id":"ext","port":0}]}`
+	cases := []struct {
+		name, manifest string
+		want           bool
+	}{
+		{"bun, hosts", `{"id":"p","run":"./p-plugin","requires":{"network":{"hosts":["api.example.com"]}}}`, false},
+		{"node, no network", `{"id":"p","run":"./p-plugin","requires":{` + listen + `}}`, false},
+		{"node, localhost only", `{"id":"p","run":"./p-plugin","requires":{` + listen + `,"network":"localhost"}}`, false},
+		{"node, hosts", `{"id":"p","run":"./p-plugin","requires":{` + listen + `,"network":{"hosts":["api.example.com"]}}}`, true},
+		{"node, requestable hosts", `{"id":"p","run":"./p-plugin","requires":{` + listen + `,"network":{"hosts":[],"requestable":true}}}`, true},
+		{"node, outbound", `{"id":"p","run":"./p-plugin","requires":{` + listen + `,"network":"outbound"}}`, true},
+	}
+	for _, c := range cases {
+		if got := tsNodeLosesNetworkOnLinux(tsManifestFrom(t, c.manifest)); got != c.want {
+			t.Errorf("%s: = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 // `run` must name a program in the plugin directory. Every older shape is
 // refused with the manifest lines to write instead.
 func TestTsOutputName(t *testing.T) {
