@@ -93,6 +93,7 @@
     "_platform.user_commands"
   ],
   "non_method_implements_keys": [
-    "settings_tabs"
+    "settings_tabs",
+    "setup_steps"
   ]
 }
