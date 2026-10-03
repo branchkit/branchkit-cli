@@ -88,6 +88,10 @@ func runProgram(dir, runField string) string {
 		return ""
 	}
 	first := strings.TrimPrefix(fields[0], "./")
+	// On Windows the build output is first + ".exe"; package that file.
+	if exe := relWithExeSuffix(dir, first); exe != first {
+		return exe
+	}
 	if len(fields) == 1 || fileExists(filepath.Join(dir, first)) {
 		return first
 	}

@@ -320,7 +320,8 @@ func installFromSource(source string) error {
 	switch {
 	case fileExists(filepath.Join(tempDir, "go.mod")):
 		fmt.Println("Building Go plugin...")
-		cmd := exec.Command("go", "build", "-ldflags=-s -w", "-o", pluginName+"-plugin", ".")
+		// Go adds no .exe to an explicit -o; on Windows the binary needs it.
+		cmd := exec.Command("go", "build", "-ldflags=-s -w", "-o", pluginName+"-plugin"+exeSuffix(), ".")
 		cmd.Dir = tempDir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -386,16 +387,22 @@ func installFromSource(source string) error {
 	// Copy binary
 	if manifest.Run != "" {
 		binaryName := strings.TrimPrefix(manifest.Run, "./")
-		srcBinary := filepath.Join(tempDir, binaryName)
+		srcBinary := withExeSuffix(filepath.Join(tempDir, binaryName))
 		if !fileExists(srcBinary) {
 			// Check Rust target/release
-			srcBinary = filepath.Join(tempDir, "target", "release", binaryName)
+			srcBinary = withExeSuffix(filepath.Join(tempDir, "target", "release", binaryName))
 		}
 		if !fileExists(srcBinary) {
 			os.RemoveAll(tempDir)
 			return fmt.Errorf("built binary '%s' not found", binaryName)
 		}
-		if err := copyFile(srcBinary, filepath.Join(targetDir, binaryName), 0o755); err != nil {
+		// Keep the suffix the build wrote, so the actuator finds the .exe.
+		dest := filepath.Join(targetDir, binaryName)
+		if sfx := exeSuffix(); sfx != "" && strings.HasSuffix(strings.ToLower(srcBinary), sfx) &&
+			!strings.HasSuffix(strings.ToLower(dest), sfx) {
+			dest += sfx
+		}
+		if err := copyFile(srcBinary, dest, 0o755); err != nil {
 			os.RemoveAll(targetDir)
 			os.RemoveAll(tempDir)
 			return fmt.Errorf("failed to copy binary: %w", err)

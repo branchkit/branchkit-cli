@@ -586,7 +586,7 @@ func findHarnessBinary() string {
 		if err != nil {
 			continue
 		}
-		if fileExists(abs) {
+		if abs = withExeSuffix(abs); fileExists(abs) {
 			return abs
 		}
 	}

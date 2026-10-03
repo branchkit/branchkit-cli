@@ -168,7 +168,7 @@ func isCompiledRun(pluginDir, runCmd string) bool {
 		return false
 	}
 	program := strings.TrimPrefix(fields[0], "./")
-	info, err := os.Stat(filepath.Join(pluginDir, program))
+	info, err := os.Stat(withExeSuffix(filepath.Join(pluginDir, program)))
 	return err == nil && !info.IsDir()
 }
 
