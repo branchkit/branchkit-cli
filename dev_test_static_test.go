@@ -269,6 +269,32 @@ func TestKeybindNonObjectParamsFails(t *testing.T) {
 	}
 }
 
+// A binding may name a device `source`, and may carry `while`: the tags that
+// must be active for its key to be taken from the OS. `while` is a non-empty
+// list of tags, for key combinations only.
+func TestKeybindWhileAndSource(t *testing.T) {
+	m := manifestFromJSON(t, `{
+		"collection_data": {"_platform.bindings": {
+			"escape down": {"action": "x.cancel", "while": ["plugin.x.mode.on"]},
+			"g1/button1": {"action": "x.y", "source": "pen"},
+			"escape up": {"action": "x.cancel", "while": "plugin.x.mode.on"},
+			"alt+e": {"action": "x.cancel", "while": []},
+			"g1/button2": {"action": "x.y", "source": "pen", "while": ["plugin.x.mode.on"]}
+		}}
+	}`)
+	results := checkKeybindBindings(m)
+	for _, ok := range []string{"keybind_escape down", "keybind_g1/button1"} {
+		if r := findResult(results, ok); r != nil && r.Status == "fail" {
+			t.Errorf("%s should pass: %+v", ok, r)
+		}
+	}
+	for _, bad := range []string{"keybind_escape up", "keybind_alt+e", "keybind_g1/button2"} {
+		if r := findResult(results, bad); r == nil || r.Status != "fail" {
+			t.Errorf("%s should fail, got %+v", bad, r)
+		}
+	}
+}
+
 // Hotkeys under the old `keybinds` key bind nothing; the check says where
 // they go now instead of passing silently.
 func TestKeybindsUnderTheOldKeyFail(t *testing.T) {

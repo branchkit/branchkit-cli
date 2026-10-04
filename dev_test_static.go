@@ -905,7 +905,9 @@ func checkKeybindBindings(m map[string]any) []TestResult {
 		}
 		var unknown []string
 		for k := range binding {
-			if k != "action" && k != "params" {
+			switch k {
+			case "action", "params", "source", "while":
+			default:
 				unknown = append(unknown, k)
 			}
 		}
@@ -923,6 +925,13 @@ func checkKeybindBindings(m map[string]any) []TestResult {
 				results = append(results, TestResult{
 					Name: "keybind_" + combo, Status: "fail",
 					Detail: "binding \"params\" must be an object",
+				})
+			}
+		}
+		if w, present := binding["while"]; present {
+			if detail := whileBindingError(w, binding["source"]); detail != "" {
+				results = append(results, TestResult{
+					Name: "keybind_" + combo, Status: "fail", Detail: detail,
 				})
 			}
 		}
@@ -1067,4 +1076,25 @@ func containsString(list []any, want string) bool {
 		}
 	}
 	return false
+}
+
+// whileBindingError checks a binding's `while`: the tags that must all be
+// active for the binding to be live, so its key is taken from the OS only
+// for the length of a mode. A non-empty list of non-empty strings, and for a
+// key combination only (a device's trigger is not taken from the OS).
+// Returns "" when it is well formed.
+func whileBindingError(w any, source any) string {
+	list, ok := w.([]any)
+	if !ok || len(list) == 0 {
+		return "binding \"while\" must be a non-empty list of tags, e.g. [\"plugin.<id>.mode.<name>\"]"
+	}
+	for _, t := range list {
+		if s, ok := t.(string); !ok || strings.TrimSpace(s) == "" {
+			return "binding \"while\" must list tags as non-empty strings"
+		}
+	}
+	if s, _ := source.(string); s != "" && s != "keyboard" {
+		return "binding \"while\" applies to key combinations only, not a device's trigger"
+	}
+	return ""
 }
