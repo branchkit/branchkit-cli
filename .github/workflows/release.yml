@@ -7,11 +7,20 @@ name: Release CLI
 # The registry counter-sign workflow, the plugin conformance template, and the
 # shared release-action all consume these. Cut a release with:
 #   git tag v0.1.0 && git push origin v0.1.0
+# A tag with a pre-release suffix (v0.1.0-rc.1) publishes a prerelease,
+# which `releases/latest` skips, so a candidate never becomes what every
+# plugin's CI downloads.
+#
+# Every push to main and every pull request runs the same tests and builds
+# as a dry run: nothing is uploaded unless the ref is a tag, so a release is
+# never the first time its build has run.
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
+  pull_request:
 
 permissions:
   contents: write
@@ -61,7 +70,9 @@ jobs:
           tar -czf "branchkit-cli-${GOOS}-${GOARCH}.tar.gz" "$bin"
 
       - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: branchkit-cli-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
           fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
