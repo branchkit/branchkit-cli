@@ -76,6 +76,12 @@ func verifyBundle(bundleJSON []byte, digestHex string, trustedRootJSONs [][]byte
 		return nil, fmt.Errorf("parse sigstore bundle: %w", err)
 	}
 
+	entries, err := b.TlogEntries()
+	if err != nil {
+		return nil, fmt.Errorf("read transparency-log entries: %w", err)
+	}
+	hasTlog := len(entries) > 0
+
 	var lastErr error
 	for _, rootJSON := range trustedRootJSONs {
 		trustedRoot, err := root.NewTrustedRootFromJSON(rootJSON)
@@ -85,19 +91,22 @@ func verifyBundle(bundleJSON []byte, digestHex string, trustedRootJSONs [][]byte
 		}
 
 		// Require the signature to be anchored in time by at least one trusted
-		// observer. "Observer" covers BOTH shapes we'll encounter: GitHub's
-		// artifact attestations carry a TSA-signed timestamp (no embedded
-		// Rekor entry), while cosign-with-Rekor bundles carry a tlog entry
-		// whose integrated timestamp counts. We deliberately do NOT hard-
-		// require `WithTransparencyLog` — it would reject every GitHub
-		// attestation (they have zero tlog entries). Public-log discoverability
-		// is a stronger property worth revisiting as an author-tooling policy
-		// (have the signing snippet also upload to Rekor), tracked in
-		// the plugin signing work; for v1, observer-timestamp anchoring is the
-		// bar, and the identity + digest binding are the load-bearing checks.
-		verifier, err := verify.NewVerifier(trustedRoot,
-			verify.WithObserverTimestamps(1),
-		)
+		// observer. Two bundle shapes reach here. A PRIVATE repository's
+		// GitHub attestation is signed by GitHub's own instance: a
+		// TSA-signed timestamp and no transparency-log entry. A PUBLIC
+		// repository's goes through Sigstore's Public Good instance: a Rekor
+		// entry and no TSA timestamp. A log entry's integrated time only
+		// counts as an observer timestamp once the entry itself is verified,
+		// so when the bundle carries entries they are verified too; without
+		// that, every public plugin's bundle failed ("integrated timestamps:
+		// 0 < 1"). Requiring a log entry unconditionally would instead reject
+		// every private-repo attestation. Identity + digest binding remain the
+		// load-bearing checks.
+		opts := []verify.VerifierOption{verify.WithObserverTimestamps(1)}
+		if hasTlog {
+			opts = append(opts, verify.WithTransparencyLog(1))
+		}
+		verifier, err := verify.NewVerifier(trustedRoot, opts...)
 		if err != nil {
 			lastErr = fmt.Errorf("build verifier: %w", err)
 			continue

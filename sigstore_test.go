@@ -137,3 +137,39 @@ func TestVerifyBundleRejectsWithoutMatchingRoot(t *testing.T) {
 		t.Fatal("verification succeeded against a trusted root that never issued the certificate")
 	}
 }
+
+// A public repository's GitHub attestation is signed through Sigstore's
+// Public Good instance: its bundle carries a Rekor transparency-log entry
+// and no timestamp-authority timestamp — the opposite shape from the
+// GitHub-instance bundles above. Verification failed on every such bundle
+// ("integrated timestamps: 0 < 1") because the log entry was never
+// verified, so its integrated time never counted.
+//
+// Fixture (captured 2026-10-05): the darwin-arm64 archive of
+// branchkit/branchkit-plugin-announcements v0.2.0-rc.1, its bundle and its
+// digest (public_bundle.jsonl, public_artifact.sha256).
+func TestVerifyBundlePublicGoodTransparencyLog(t *testing.T) {
+	_, _, roots := loadSigstoreFixtures(t)
+	bundleJSON, err := os.ReadFile("testdata/sigstore/public_bundle.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	digestRaw, err := os.ReadFile("testdata/sigstore/public_artifact.sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	digestHex := strings.Fields(string(digestRaw))[0]
+
+	id, err := verifyBundle(bytes.TrimSpace(bundleJSON), digestHex, roots)
+	if err != nil {
+		t.Fatalf("verifyBundle: %v", err)
+	}
+	if id.RepoSlug != "branchkit/branchkit-plugin-announcements" {
+		t.Errorf("RepoSlug = %q", id.RepoSlug)
+	}
+
+	wrong := strings.Repeat("0", 64)
+	if _, err := verifyBundle(bytes.TrimSpace(bundleJSON), wrong, roots); err == nil {
+		t.Error("verified against the wrong digest")
+	}
+}
