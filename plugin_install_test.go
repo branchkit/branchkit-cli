@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -237,5 +238,33 @@ func TestDotIsALocalPath(t *testing.T) {
 		if isLocalPath(s) {
 			t.Errorf("isLocalPath(%q) = true, want false", s)
 		}
+	}
+}
+
+// A local-folder install records where it came from, replacing any record
+// the folder brought with it: the app grants a catalogued plugin's defaults
+// only to a copy whose record names the catalog's own source.
+func TestLocalInstallRecordsItsOwnSource(t *testing.T) {
+	t.Setenv("BRANCHKIT_APP_SUPPORT", t.TempDir())
+	prev := installAssumeYes
+	installAssumeYes = true
+	t.Cleanup(func() { installAssumeYes = prev })
+
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, "plugin.json"),
+		[]byte(`{"id":"voice","name":"Voice","version":"1.0.0"}`), 0o644)
+	// A folder claiming to be the first-party plugin's own install.
+	os.WriteFile(filepath.Join(src, sourceMetaFile),
+		[]byte(`{"source":"branchkit/voice","installed_tag":"v9"}`), 0o644)
+
+	if err := installFromLocal(src); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	meta, ok := readSourceMeta(filepath.Join(userPluginsDir(), "voice"))
+	if !ok {
+		t.Fatal("no source record written")
+	}
+	if !strings.HasPrefix(meta.Source, localSourcePrefix) || !strings.HasSuffix(meta.Source, src) {
+		t.Fatalf("source = %q, want %s%s", meta.Source, localSourcePrefix, src)
 	}
 }

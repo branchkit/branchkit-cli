@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // cmdUpdate updates a single plugin or all plugins with available updates.
@@ -33,6 +34,11 @@ func cmdUpdate(pluginID string) {
 	meta, ok := readSourceMeta(found.ManifestDir)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Error: plugin '%s' has no install source metadata — cannot determine update source\n", pluginID)
+		os.Exit(1)
+	}
+
+	if strings.HasPrefix(meta.Source, localSourcePrefix) {
+		fmt.Fprintf(os.Stderr, "Error: plugin '%s' was installed from a local folder (%s) — install it from that folder again to update it\n", pluginID, strings.TrimPrefix(meta.Source, localSourcePrefix))
 		os.Exit(1)
 	}
 

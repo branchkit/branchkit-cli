@@ -120,6 +120,14 @@ func installFromLocal(source string) error {
 	if manifest.Run != "" {
 		setExecutable(targetDir, manifest.Run)
 	}
+	// Recorded after the copy, so a record the folder brought with it is
+	// replaced: the app grants a catalogued plugin's defaults only to a copy
+	// whose record names the catalog's own source, and a local folder is not
+	// that source even when it reuses a catalogued id.
+	if abs, err := filepath.Abs(source); err == nil {
+		source = abs
+	}
+	writeSourceMeta(targetDir, localSourcePrefix+source, "local", nil, false)
 
 	fmt.Printf("Installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
 	notifyActuator()
@@ -613,6 +621,10 @@ type SourceMeta struct {
 }
 
 const sourceMetaFile = ".branchkit-source.json"
+
+// localSourcePrefix marks a SourceMeta.Source recorded by a local-folder
+// install, followed by the folder's absolute path.
+const localSourcePrefix = "local:"
 
 func writeSourceMeta(pluginDir, source, tag string, attestation *AuthorAttestation, registrySigned bool) {
 	meta := SourceMeta{Source: source, InstalledTag: tag, RegistrySigned: registrySigned}
