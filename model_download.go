@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -184,12 +185,22 @@ func verifySHA256(path, expected string) error {
 	return nil
 }
 
-// extractTarBz2Members writes the named members (matched by basename) from a
-// .tar.bz2 into destDir, flattening any leading archive directories.
+// extractTarBz2Members writes the named members from a .tar.bz2 into
+// destDir. A plain name is a file, matched by basename and written flat at
+// the top of destDir, whatever archive directories led to it. A name ending
+// in "/" is a directory, kept as a tree: every file under it, relative to
+// the archive's top folder (`<top>/espeak-ng-data/en_dict` for
+// "espeak-ng-data/"), is written at that relative path — for model data a
+// runtime opens as a directory, not as files.
 func extractTarBz2Members(archivePath, destDir string, members []string) error {
 	want := make(map[string]bool, len(members))
+	var dirs []string
 	for _, m := range members {
-		want[m] = true
+		if strings.HasSuffix(m, "/") {
+			dirs = append(dirs, m)
+		} else {
+			want[m] = true
+		}
 	}
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -210,26 +221,65 @@ func extractTarBz2Members(archivePath, destDir string, members []string) error {
 		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
+		if dir, rel, ok := underDir(hdr.Name, dirs); ok {
+			target := filepath.Join(destDir, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			if err := writeMember(target, tr, hdr.Size); err != nil {
+				return err
+			}
+			found[dir] = true
+			continue
+		}
 		base := filepath.Base(hdr.Name)
 		if !want[base] {
 			continue
 		}
-		out, err := os.Create(filepath.Join(destDir, base))
-		if err != nil {
+		if err := writeMember(filepath.Join(destDir, base), tr, hdr.Size); err != nil {
 			return err
 		}
-		// hdr.Size is bounded by the archive; copy the declared length.
-		if _, err := io.CopyN(out, tr, hdr.Size); err != nil {
-			out.Close()
-			return err
-		}
-		out.Close()
 		found[base] = true
 	}
-	for m := range want {
+	for _, m := range members {
 		if !found[m] {
 			return fmt.Errorf("archive missing expected member %s", m)
 		}
 	}
 	return nil
+}
+
+// underDir reports whether the archive path `name` lies under one of the
+// directory members, and its path relative to the archive's top folder. A
+// path that would leave destDir ("..", absolute) never matches.
+func underDir(name string, dirs []string) (dir, rel string, ok bool) {
+	clean := path.Clean(strings.TrimPrefix(name, "./"))
+	if strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "../") || clean == ".." {
+		return "", "", false
+	}
+	// Strip the archive's top folder: `kitten-nano/espeak-ng-data/x`.
+	_, rest, found := strings.Cut(clean, "/")
+	if !found {
+		return "", "", false
+	}
+	for _, d := range dirs {
+		if strings.HasPrefix(rest, d) && !strings.Contains(rest, "/../") {
+			return d, rest, true
+		}
+	}
+	return "", "", false
+}
+
+// writeMember copies one archive entry's declared length to `target`.
+func writeMember(target string, r io.Reader, size int64) error {
+	out, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	// The size is bounded by the archive; copy the declared length.
+	if _, err := io.CopyN(out, r, size); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
