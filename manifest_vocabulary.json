@@ -79,6 +79,7 @@
     "_platform.log_retention",
     "_platform.model_download",
     "_platform.never_standalone_penalty",
+    "_platform.notification_prefs",
     "_platform.pipelines",
     "_platform.plugin_log_thresholds",
     "_platform.plugins.data_disposition",
