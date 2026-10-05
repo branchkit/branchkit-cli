@@ -3,6 +3,7 @@ name: Release CLI
 # Publishes the branchkit-cli binary as downloadable tarballs on every version
 # tag, so CI everywhere can fetch it:
 #   https://github.com/branchkit/branchkit-cli/releases/latest/download/branchkit-cli-<os>-<arch>.tar.gz
+#   https://github.com/branchkit/branchkit-cli/releases/download/<tag>/branchkit-cli-<os>-<arch>.tar.gz
 # The registry counter-sign workflow, the plugin conformance template, and the
 # shared release-action all consume these. Cut a release with:
 #   git tag v0.1.0 && git push origin v0.1.0
@@ -16,7 +17,20 @@ permissions:
   contents: write
 
 jobs:
+  # A release cannot be taken back from everyone who downloaded `latest`, so
+  # the tests run before any binary is built.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -25,20 +39,26 @@ jobs:
           - { goos: linux, goarch: arm64 }
           - { goos: darwin, goarch: amd64 }
           - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version-file: go.mod
 
+      # The tarball holds `branchkit-cli` (`branchkit-cli.exe` on Windows),
+      # stamped with the tag so `branchkit-cli version` names the release.
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
-          go build -ldflags="-s -w" -o branchkit-cli .
-          tar -czf "branchkit-cli-${GOOS}-${GOARCH}.tar.gz" branchkit-cli
+          bin=branchkit-cli
+          if [ "$GOOS" = windows ]; then bin=branchkit-cli.exe; fi
+          go build -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o "$bin" .
+          tar -czf "branchkit-cli-${GOOS}-${GOARCH}.tar.gz" "$bin"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2

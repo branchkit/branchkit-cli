@@ -184,6 +184,8 @@ func main() {
 		}
 	case "mcp":
 		cmdMCP(os.Args[2:])
+	case "version", "--version":
+		cmdVersion()
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -286,6 +288,7 @@ func printUsage() {
 	fmt.Println("  runtime list                       List installed managed runtimes")
 	fmt.Println("  docs path                          Print the platform docs directory (markdown — grep it)")
 	fmt.Println("  docs sync                          Copy bundled docs to a stable path")
+	fmt.Println("  version                            Print this CLI's version")
 	fmt.Println()
 	fmt.Println("  dev init [flags]                   Scaffold a new plugin from template")
 	fmt.Println("  dev build [path]                   Build a plugin from source")

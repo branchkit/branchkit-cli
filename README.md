@@ -77,6 +77,7 @@ These need no running app.
 | `dev platforms [path...]` | Which operating systems the plugin will work on, derived from the operations its source calls. `--write` records the result in `plugin.json`; `--check` fails when the recorded list is stale |
 | `docs path` | Print the directory of platform docs bundled with the app (markdown, for grep) |
 | `docs sync` | Copy the bundled docs to a stable path that survives app updates |
+| `version` | Print the CLI's version |
 
 The test harness (`branchkit-test-harness`) runs a real matcher and event bus
 against a plugin without the app. It ships inside the app; set

@@ -20,7 +20,13 @@ jobs:
           if [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi
           OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 
-          DOWNLOAD_URL="https://github.com/branchkit/branchkit-cli/releases/${CLI_VERSION}/download/branchkit-cli-${OS}-${ARCH}.tar.gz"
+          # GitHub serves `latest` at releases/latest/download/ and a tag at
+          # releases/download/<tag>/ — the two paths are not symmetric.
+          case "$CLI_VERSION" in
+            latest) REL="latest/download" ;;
+            *) REL="download/${CLI_VERSION}" ;;
+          esac
+          DOWNLOAD_URL="https://github.com/branchkit/branchkit-cli/releases/${REL}/branchkit-cli-${OS}-${ARCH}.tar.gz"
           curl -fsSL "$DOWNLOAD_URL" -o /tmp/branchkit-cli.tar.gz
           tar -xzf /tmp/branchkit-cli.tar.gz -C /usr/local/bin/
           chmod +x /usr/local/bin/branchkit-cli
