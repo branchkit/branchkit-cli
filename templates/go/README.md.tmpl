@@ -2,17 +2,44 @@
 
 {{.Description}}
 
+A [BranchKit](https://github.com/branchkit) plugin in Go, scaffolded by
+`branchkit-cli dev init`. It ships one action, two voice commands and one key
+binding: a skeleton to replace with your own.
+
+## What it does
+
+| Trigger | Result |
+|---|---|
+| Say "{{.Phrase}} branchkit" | Types "Hello, BranchKit!" at the cursor |
+| Say "hello" and the name of an installed app | Types a greeting naming that app |
+| Press `{{.Keybind}}` | Same as "{{.Phrase}} branchkit" |
+
+It also adds a Getting Started tab to its card in BranchKit's settings. The
+app names come from the `apps` collection, which the bundled system plugin
+provides.
+
 ## Build
 
 ```bash
 branchkit-cli dev build
 ```
 
+This runs the `dev.build` recipe in `plugin.json` (`go build` in `src/`) and
+writes the binary `{{.PluginID}}-plugin` to this directory, where `run` expects
+it. `--os` and `--arch` cross-build into `dist/<os>-<arch>/`.
+
 ## Test
 
 ```bash
-branchkit-cli dev test .
+branchkit-cli dev test .     # manifest and source checks, then conformance
+cd src && go test ./...      # this plugin's own tests (src/main_test.go)
 ```
+
+The conformance run and the Go tests start the plugin under
+`branchkit-test-harness`, which runs a real matcher and event bus without the
+app. The harness ships inside the BranchKit app; when it is not found these
+tests are skipped, not failed. Set `BRANCHKIT_TEST_HARNESS` to use a copy
+elsewhere.
 
 ## Install
 
@@ -20,18 +47,48 @@ branchkit-cli dev test .
 branchkit-cli plugin install . --build
 ```
 
+This builds, copies the plugin into BranchKit's plugins folder, and asks a
+running app to load it. While you work, `branchkit-cli dev watch` rebuilds on
+save and restarts the plugin.
+
+## Change it
+
+- **Actions** are declared in `action_types` in `plugin.json`.
+  `src/actions_gen.go` is generated from them; after editing, regenerate it
+  with [branchkit-gen](https://github.com/branchkit/branchkit-gen):
+  `branchkit-gen --plugin .`
+- **Voice commands** are in `commands.json`.
+- **The key binding** is under `collection_data` → `_platform.bindings` in
+  `plugin.json`.
+- **Permissions** are `requires` in `plugin.json`. The plugin runs sandboxed
+  and gets only what it declares; this one asks for the `input` privilege so it
+  can type.
+
 ## Files
 
 | File | Purpose |
 |---|---|
-| `plugin.json` | Manifest — declares actions, keybinds, voice commands |
-| `commands.json` | Voice command patterns that trigger actions |
-| `src/main.go` | Handler logic — your plugin's behavior |
+| `plugin.json` | Manifest: identity, permissions, actions, key binding, settings tab |
+| `commands.json` | Voice command patterns and the actions they trigger |
+| `src/main.go` | Handler logic: your plugin's behavior |
+| `src/actions_gen.go` | Typed action handlers, generated from `plugin.json` |
+| `src/main_test.go` | Tests against the test harness |
+| `.github/workflows/conformance.yml` | On a `v*` tag: checks, then signed release binaries |
+
+## Releasing
+
+The workflow in `.github/workflows/conformance.yml` runs on every `v*` tag. It
+runs the static checks, builds a binary per platform, and hands each to the
+shared `branchkit/registry/release-action`, which packages, signs (Sigstore,
+keyless) and uploads it to the GitHub release. Set `publisher` in
+`plugin.json` to `"github:YOUR-ORG"` first; installs check the signature
+against it. The workflow downloads a released `branchkit-cli` binary, and none
+is published yet, so it cannot complete until one is.
 
 ## Platform documentation
 
 The full platform docs ship with the app as markdown. Grep them rather than
-guessing — they are the reference for the manifest, the RPC surface, matching,
+guessing. They are the reference for the manifest, the RPC surface, matching,
 collections, and the event bus.
 
 ```bash
@@ -39,18 +96,23 @@ branchkit-cli docs sync          # once, after installing or updating BranchKit
 grep -rl "requires_tags" "$(branchkit-cli docs path)"
 ```
 
+Start with `guide/getting-started/quickstart.md` in that directory.
+
 ## When it does not work
 
 The running app answers questions no document can, because the answer depends
-on what else is installed and what state the machine is in.
+on what else is installed and what state the machine is in. Turn on Developer
+Access on this plugin's card in BranchKit's settings first; these commands use
+that grant and see only this plugin.
 
 ```bash
-branchkit-cli dev smoke                    # side-effect-free health sweep
-branchkit-cli dev plog {{.PluginID}} --since 60s   # what this plugin logged
-branchkit-cli dev chain                    # recent command chains, then: dev chain <tr_id>
+branchkit-cli dev plog {{.PluginID}} --since 60s          # what this plugin logged
+branchkit-cli dev say "{{.Phrase}} branchkit" --simulate  # what would run, without running it
+branchkit-cli dev chain                                   # recent records, then: dev chain <tr_id>
+branchkit-cli dev events --plugin {{.PluginID}} --source audit --types 'consent.**'   # attempted and refused
 ```
 
 ## Learn more
 
-- [Quickstart](https://branchkit.dev/guide/getting-started/quickstart)
-- [Plugin SDK (Go)](https://github.com/branchkit/plugin-sdk-go)
+- [Go plugin SDK](https://github.com/branchkit/plugin-sdk-go)
+- [branchkit-cli](https://github.com/branchkit/branchkit-cli)

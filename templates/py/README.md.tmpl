@@ -2,21 +2,48 @@
 
 {{.Description}}
 
+A [BranchKit](https://github.com/branchkit) plugin in Python, scaffolded by
+`branchkit-cli dev init`. It ships one action, two voice commands and one key
+binding: a skeleton to replace with your own.
+
+## What it does
+
+| Trigger | Result |
+|---|---|
+| Say "{{.Phrase}} branchkit" | Types "Hello, BranchKit!" at the cursor |
+| Say "hello" and the name of an installed app | Types a greeting naming that app |
+| Press `{{.Keybind}}` | Same as "{{.Phrase}} branchkit" |
+
+It also adds a Getting Started tab to its card in BranchKit's settings. The
+app names come from the `apps` collection, which the bundled system plugin
+provides.
+
 ## Setup
 
-The SDK is vendored into the plugin directory — there is no install-time pip
-on users' machines:
+There is no build step. The SDK is vendored into the plugin directory, because
+nothing runs pip on the machines your plugin is installed on. `dev init` has
+already done this; in a fresh clone, run it once:
 
 ```bash
 python3 -m pip install --target . branchkit
 branchkit-cli runtime install python    # once per machine: the managed CPython
 ```
 
+The plugin runs under BranchKit's managed CPython (`requires.runtimes` in
+`plugin.json`), not your system Python.
+
 ## Test
 
 ```bash
-branchkit-cli dev test .
+branchkit-cli dev test .     # manifest and source checks, then conformance
+python3 -m unittest          # this plugin's own tests (test_main.py)
 ```
+
+The conformance run and the tests start the plugin under
+`branchkit-test-harness`, which runs a real matcher and event bus without the
+app. The harness ships inside the BranchKit app. Without it, `dev test` skips
+conformance, and `python3 -m unittest` errors with a message saying where the
+harness is looked for. Set `BRANCHKIT_TEST_HARNESS` to use a copy elsewhere.
 
 ## Install
 
@@ -24,18 +51,43 @@ branchkit-cli dev test .
 branchkit-cli plugin install .
 ```
 
+This copies the plugin, vendored SDK included, into BranchKit's plugins folder
+and asks a running app to load it.
+
+## Change it
+
+- **Actions** are declared in `action_types` in `plugin.json`.
+  `actions_gen.py` is generated from them; after editing, regenerate it with
+  [branchkit-gen](https://github.com/branchkit/branchkit-gen):
+  `branchkit-gen --plugin .`
+- **Voice commands** are in `commands.json`.
+- **The key binding** is under `collection_data` → `_platform.bindings` in
+  `plugin.json`.
+- **Permissions** are `requires` in `plugin.json`. The plugin runs sandboxed
+  and gets only what it declares; this one asks for the `input` privilege so it
+  can type.
+
 ## Files
 
 | File | Purpose |
 |---|---|
-| `plugin.json` | Manifest — declares actions, keybinds, voice commands, the python runtime |
-| `commands.json` | Voice command patterns that trigger actions |
-| `main.py` | Handler logic — your plugin's behavior |
+| `plugin.json` | Manifest: identity, permissions, runtime, actions, key binding, settings tab |
+| `commands.json` | Voice command patterns and the actions they trigger |
+| `main.py` | Handler logic: your plugin's behavior |
+| `actions_gen.py` | Typed action params, generated from `plugin.json` |
+| `test_main.py` | Tests against the test harness |
+| `.github/workflows/conformance.yml` | On a `v*` tag: the static checks |
+
+## Continuous checks
+
+`.github/workflows/conformance.yml` runs `branchkit-cli dev test . --static-only`
+on every `v*` tag. It downloads a released `branchkit-cli` binary, and none is
+published yet, so it cannot complete until one is.
 
 ## Platform documentation
 
 The full platform docs ship with the app as markdown. Grep them rather than
-guessing — they are the reference for the manifest, the RPC surface, matching,
+guessing. They are the reference for the manifest, the RPC surface, matching,
 collections, and the event bus.
 
 ```bash
@@ -43,18 +95,23 @@ branchkit-cli docs sync          # once, after installing or updating BranchKit
 grep -rl "requires_tags" "$(branchkit-cli docs path)"
 ```
 
+Start with `guide/getting-started/quickstart.md` in that directory.
+
 ## When it does not work
 
 The running app answers questions no document can, because the answer depends
-on what else is installed and what state the machine is in.
+on what else is installed and what state the machine is in. Turn on Developer
+Access on this plugin's card in BranchKit's settings first; these commands use
+that grant and see only this plugin.
 
 ```bash
-branchkit-cli dev smoke                    # side-effect-free health sweep
-branchkit-cli dev plog {{.PluginID}} --since 60s   # what this plugin logged
-branchkit-cli dev chain                    # recent command chains, then: dev chain <tr_id>
+branchkit-cli dev plog {{.PluginID}} --since 60s          # what this plugin logged
+branchkit-cli dev say "{{.Phrase}} branchkit" --simulate  # what would run, without running it
+branchkit-cli dev chain                                   # recent records, then: dev chain <tr_id>
+branchkit-cli dev events --plugin {{.PluginID}} --source audit --types 'consent.**'   # attempted and refused
 ```
 
 ## Learn more
 
-- [Quickstart](https://branchkit.dev/guide/getting-started/quickstart)
-- [Plugin SDK (Python)](https://github.com/branchkit/plugin-sdk-py)
+- [Python plugin SDK](https://github.com/branchkit/plugin-sdk-py)
+- [branchkit-cli](https://github.com/branchkit/branchkit-cli)
