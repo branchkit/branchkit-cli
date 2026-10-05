@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -263,6 +264,11 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 	}
 	if manifest.Run != "" {
 		setExecutable(stageDir, manifest.Run)
+	}
+	for _, bin := range stageBinaries(manifest, runtime.GOOS) {
+		if p := filepath.Join(stageDir, filepath.FromSlash(bin)); fileExists(p) {
+			os.Chmod(p, 0o755)
+		}
 	}
 	// Source metadata (update checking + the verified-author and
 	// registry-signed records the actuator's trust-tier resolution reads)

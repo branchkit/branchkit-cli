@@ -275,3 +275,61 @@ func TestPackageInterpretedRun(t *testing.T) {
 		t.Fatalf("compiled run: runProgram = %q", got)
 	}
 }
+
+// A plugin that ships a pipeline stage: the stage binary is marked
+// executable in the archive (it used to ship 0644 and install unrunnable),
+// a missing one refuses the release, and a stage another OS's constraint
+// excludes is not required.
+func TestStageBinariesShipExecutable(t *testing.T) {
+	dir := writeFakePlugin(t, "./demo")
+	m := PluginManifest{Run: "./demo", Provides: &ProvidesCfg{Stages: map[string]StageDecl{
+		"a":       {Binary: "engine"},
+		"b":       {Binary: "./engine"},
+		"bare":    {},
+		"maconly": {Binary: "mac_engine", Platform: []byte(`"macos"`)},
+		"desktop": {Binary: "desk_engine", Platform: []byte(`["linux","windows"]`)},
+	}}}
+	if got, want := strings.Join(stageBinaries(m, "linux"), ","), "bare,desk_engine,engine"; got != want {
+		t.Fatalf("linux stage binaries = %s, want %s", got, want)
+	}
+	if got, want := strings.Join(stageBinaries(m, "windows"), ","), "bare.exe,desk_engine.exe,engine.exe"; got != want {
+		t.Fatalf("windows stage binaries = %s, want %s", got, want)
+	}
+	if got, want := strings.Join(stageBinaries(m, "darwin"), ","), "bare,engine,mac_engine"; got != want {
+		t.Fatalf("darwin stage binaries = %s, want %s", got, want)
+	}
+
+	entries, err := collectPayload(dir, "./demo", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := markStageBinaries(entries, []string{"engine"}); err == nil || !strings.Contains(err.Error(), "engine") {
+		t.Fatalf("missing stage binary: err = %v, want one naming it", err)
+	}
+
+	for _, f := range []string{"engine", "bare", "mac_engine"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("bin"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, err = collectPayload(dir, "./demo", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := markStageBinaries(entries, stageBinaries(m, "darwin")); err != nil {
+		t.Fatal(err)
+	}
+	tarPath := filepath.Join(t.TempDir(), "p.tar.gz")
+	if err := writeDeterministicTarGz(entries, tarPath); err != nil {
+		t.Fatal(err)
+	}
+	got := tarEntries(t, tarPath)
+	for _, f := range []string{"engine", "bare", "mac_engine", "demo"} {
+		if got[f].mode != 0o755 {
+			t.Errorf("%s mode = %o, want 755", f, got[f].mode)
+		}
+	}
+	if got["LICENSE"].mode != 0o644 {
+		t.Errorf("LICENSE mode = %o, want 644", got["LICENSE"].mode)
+	}
+}

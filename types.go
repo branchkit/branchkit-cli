@@ -191,6 +191,19 @@ type ProvidesCfg struct {
 	// install (the disk ceiling, what sheds when full, how long the bytes
 	// live, and whether the platform or the provider vouches for them).
 	Blobs map[string]BlobDecl `json:"blobs,omitempty"`
+	// Pipeline stages this plugin ships. Read here for their binaries:
+	// packaging marks each one executable and refuses a release without it.
+	Stages map[string]StageDecl `json:"stages,omitempty"`
+}
+
+// StageDecl is the part of a `provides.stages` entry the CLI needs.
+type StageDecl struct {
+	// Binary is relative to the plugin directory; omitted means the stage
+	// name (the actuator's rule).
+	Binary string `json:"binary,omitempty"`
+	// Platform is "macos" | "linux" | "windows" or a list of them; omitted
+	// means every platform. Raw because both shapes are legal.
+	Platform json.RawMessage `json:"platform,omitempty"`
 }
 
 // BlobDecl is the part of a `provides.blobs` entry a person consents to.

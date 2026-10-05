@@ -26,6 +26,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -253,6 +254,84 @@ func writeChecksum(tarPath string) (string, error) {
 	return sum, nil
 }
 
+// stageBinaries names the files, relative to the plugin directory with
+// forward slashes, that the manifest's stages spawn on goos: each stage's
+// `binary` (default: its name), with ".exe" on Windows, the way the
+// actuator resolves it. Stages whose platform excludes goos are skipped.
+func stageBinaries(m PluginManifest, goos string) []string {
+	if m.Provides == nil {
+		return nil
+	}
+	platform := map[string]string{"darwin": "macos", "linux": "linux", "windows": "windows"}[goos]
+	seen := map[string]bool{}
+	var out []string
+	for name, st := range m.Provides.Stages {
+		if !stageRunsOn(st.Platform, platform) {
+			continue
+		}
+		bin := st.Binary
+		if bin == "" {
+			bin = name
+		}
+		bin = strings.TrimPrefix(filepath.ToSlash(bin), "./")
+		if goos == "windows" && !strings.HasSuffix(bin, ".exe") {
+			bin += ".exe"
+		}
+		if !seen[bin] {
+			seen[bin] = true
+			out = append(out, bin)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// stageRunsOn reports whether a stage's platform constraint (absent, one
+// name, or a list) includes platform.
+func stageRunsOn(raw json.RawMessage, platform string) bool {
+	if len(raw) == 0 || string(raw) == "null" {
+		return true
+	}
+	var one string
+	if json.Unmarshal(raw, &one) == nil {
+		return one == platform
+	}
+	var many []string
+	if json.Unmarshal(raw, &many) == nil {
+		for _, p := range many {
+			if p == platform {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
+// markStageBinaries makes every stage binary in the payload executable,
+// and refuses a payload missing one: a plugin released without the stage
+// binary it declares installs cleanly and then fails the first time the
+// stage is used, far from the release that caused it.
+func markStageBinaries(entries []payloadEntry, bins []string) error {
+	var missing []string
+	for _, bin := range bins {
+		found := false
+		for i := range entries {
+			if entries[i].tarPath == bin {
+				entries[i].executable = true
+				found = true
+			}
+		}
+		if !found {
+			missing = append(missing, bin)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("stage binary not in the plugin directory: %s (build it and place it there before packaging)", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
 func cmdPluginPackage(args []string) {
 	dir := "."
 	binary := ""
@@ -314,6 +393,10 @@ func cmdPluginPackage(args []string) {
 
 	entries, err := collectPayload(absDir, manifest.Run, binary, excludes)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := markStageBinaries(entries, stageBinaries(manifest, goos)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
