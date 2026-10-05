@@ -74,6 +74,7 @@
     "_platform.bindings.active",
     "_platform.calibration.active",
     "_platform.frozen_writers",
+    "_platform.hud_prefs",
     "_platform.input",
     "_platform.key_names",
     "_platform.log_recording",
