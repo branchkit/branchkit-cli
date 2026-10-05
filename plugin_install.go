@@ -662,21 +662,32 @@ func readSourceMeta(pluginDir string) (SourceMeta, bool) {
 // arguments is, the plugin is interpreted (`python3 main.py`) and there is
 // nothing to chmod — and nothing to warn about.
 func setExecutable(dir, runCmd string) {
+	if !setExecutableFor(dir, runCmd, exeSuffix()) {
+		program := strings.TrimPrefix(strings.Fields(runCmd)[0], "./")
+		fmt.Fprintf(os.Stderr, "  WARN: '%s' not found in %s — has the plugin been built? (`branchkit-cli dev build`)\n", program, dir)
+	}
+}
+
+// setExecutableFor is setExecutable for a given executable suffix, so a
+// test on any OS holds the Windows rule. It reports whether the program was
+// found. On Windows the built program is program+".exe": looking only for
+// the bare name reported every correct Windows install as unbuilt.
+func setExecutableFor(dir, runCmd, suffix string) bool {
 	words := strings.Fields(runCmd)
 	if len(words) == 0 {
-		return
+		return true
 	}
 	program := strings.TrimPrefix(words[0], "./")
-	if path := filepath.Join(dir, program); fileExists(path) {
+	if path := withExeSuffixFor(filepath.Join(dir, program), suffix); fileExists(path) {
 		os.Chmod(path, 0o755)
-		return
+		return true
 	}
 	for _, w := range words[1:] {
 		if fileExists(filepath.Join(dir, strings.TrimPrefix(w, "./"))) {
-			return
+			return true
 		}
 	}
-	fmt.Fprintf(os.Stderr, "  WARN: '%s' not found in %s — has the plugin been built? (`branchkit-cli dev build`)\n", program, dir)
+	return false
 }
 
 func fileExists(path string) bool {

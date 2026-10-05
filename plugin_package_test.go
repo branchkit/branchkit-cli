@@ -333,3 +333,22 @@ func TestStageBinariesShipExecutable(t *testing.T) {
 		t.Errorf("LICENSE mode = %o, want 644", got["LICENSE"].mode)
 	}
 }
+
+// Install finds a Windows build's program under its .exe name: the bare
+// name from the manifest's run is not a file there, and looking only for it
+// warned on every correct Windows install that the plugin was unbuilt.
+func TestSetExecutableFindsExeProgram(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "demo.exe"), []byte("bin"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !setExecutableFor(dir, "./demo", ".exe") {
+		t.Fatal("did not find demo.exe for run ./demo")
+	}
+	if setExecutableFor(dir, "./demo", "") {
+		t.Fatal("found ./demo without a suffix, but only demo.exe exists")
+	}
+	if setExecutableFor(dir, "./missing", ".exe") {
+		t.Fatal("reported a missing program as found")
+	}
+}
