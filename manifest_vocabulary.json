@@ -54,6 +54,7 @@
     "system.control",
     "system.indicator",
     "text.caret",
+    "text.selection",
     "user",
     "windows"
   ],
