@@ -45,6 +45,7 @@
     "speech",
     "stage.audio_devices",
     "stage.displays",
+    "stage.gpu",
     "stage.microphone",
     "stage.neural_engine",
     "stage.power",
