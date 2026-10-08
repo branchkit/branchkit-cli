@@ -41,10 +41,10 @@ bun test                     # this plugin's own tests (src/index.test.ts)
 
 `bun test` needs Bun on your `PATH`. The conformance run and the tests start
 the plugin under `branchkit-test-harness`, which runs a real matcher and event
-bus without the app. The harness ships inside the BranchKit app. Without it,
-`dev test` skips conformance, and `bun test` fails with a message saying where
-the harness is looked for. Set `BRANCHKIT_TEST_HARNESS` to use a copy
-elsewhere.
+bus without the app. The harness ships inside the BranchKit app; when it is
+not found these tests are skipped, not failed. Set `BRANCHKIT_TEST_HARNESS` to
+use a copy elsewhere, and `BRANCHKIT_REQUIRE_HARNESS=1` (in CI, say) to make a
+missing harness a failure instead of a skip.
 
 ## Install
 

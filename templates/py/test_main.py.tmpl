@@ -1,14 +1,24 @@
 import unittest
 
-from branchkit.harness import Harness
+from branchkit.harness import Harness, harness_binary_available
 
 # The tests exercise what this plugin OWNS: its exact-phrase command and
 # the params it carries. The "hello <apps>" capture is deliberately not
 # unit-tested — it matches against the apps collection, which the system
 # plugin provides in a running BranchKit; verify it live with
 # `branchkit-cli dev say "hello safari" --simulate`.
+#
+# They run under branchkit-test-harness, which ships inside the BranchKit
+# app (or set BRANCHKIT_TEST_HARNESS to a copy). Without it they are skipped,
+# not failed; set BRANCHKIT_REQUIRE_HARNESS=1 (in CI, say) to make a missing
+# harness a failure instead.
 
 
+@unittest.skipUnless(
+    harness_binary_available(),
+    "branchkit-test-harness not found: it ships inside the BranchKit app; "
+    "set BRANCHKIT_TEST_HARNESS to use a copy elsewhere",
+)
 class GreetTests(unittest.TestCase):
     def test_greet_matches(self):
         with Harness.start(".") as h:
