@@ -993,6 +993,18 @@ func checkKeybindBindings(m map[string]any) []TestResult {
 	return results
 }
 
+// requiresField reads a key of the manifest's `requires` block, where
+// privileges and runtimes are declared. Reading them at the top level saw
+// nothing, so every Python scaffold warned that `python3` was missing.
+func requiresField(m map[string]any, key string) any {
+	if req, ok := m["requires"].(map[string]any); ok {
+		if v, ok := req[key]; ok {
+			return v
+		}
+	}
+	return m[key]
+}
+
 func checkRunBinary(dir string, m map[string]any) TestResult {
 	run, ok := m["run"]
 	if !ok || run == nil {
@@ -1012,13 +1024,13 @@ func checkRunBinary(dir string, m map[string]any) TestResult {
 			Detail: fmt.Sprintf("run %q launches a JavaScript runtime, which cannot start under the plugin sandbox — "+
 				"set \"run\" to \"./<id>-plugin\" and build it with `branchkit-cli dev build`", s)}
 	}
-	if privs, _ := m["privileges"].([]any); strings.HasSuffix(strings.Fields(s)[0], ".sh") && !containsString(privs, "shell") {
+	if privs, _ := requiresField(m, "privileges").([]any); strings.HasSuffix(strings.Fields(s)[0], ".sh") && !containsString(privs, "shell") {
 		return TestResult{Name: "run_binary", Status: "fail",
 			Detail: fmt.Sprintf("run %q is a shell script, and executing one needs the \"shell\" privilege — "+
 				"the sandbox refuses it otherwise", s)}
 	}
 
-	target, via := runTarget(dir, s, m["runtimes"])
+	target, via := runTarget(dir, s, requiresField(m, "runtimes"))
 	if target == "" {
 		return TestResult{Name: "run_binary", Status: "warn",
 			Detail: fmt.Sprintf("run %q names an interpreter but no script", s)}

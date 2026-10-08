@@ -470,3 +470,20 @@ func TestAnnotateDocsMarksOnlyFailuresAndWarnings(t *testing.T) {
 		}
 	}
 }
+
+// runtimes and privileges are declared under `requires`, as every
+// scaffold writes them.
+func TestRunBinaryReadsRequiresBlock(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.py"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := map[string]any{"run": "python3 main.py", "requires": map[string]any{"runtimes": []any{"python"}}}
+	if got := checkRunBinary(dir, m); got.Status != "pass" || got.Detail != "main.py (run by python3)" {
+		t.Errorf("python scaffold: %s %q", got.Status, got.Detail)
+	}
+	sh := map[string]any{"run": "./start.sh", "requires": map[string]any{"privileges": []any{"shell"}}}
+	if got := checkRunBinary(dir, sh); got.Status == "fail" {
+		t.Errorf("shell declared under requires should not fail: %q", got.Detail)
+	}
+}
