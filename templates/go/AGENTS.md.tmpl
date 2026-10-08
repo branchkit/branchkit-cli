@@ -1,0 +1,91 @@
+# AGENTS.md
+
+Instructions for AI coding agents working on this BranchKit plugin
+(`{{.PluginID}}`, Go). People should start with `README.md`.
+
+BranchKit is a desktop plugin platform. A plugin is a separate process that
+speaks JSON-RPC with the BranchKit app. Its manifest, `plugin.json`, declares
+everything it provides and everything it needs.
+
+## The loop
+
+```bash
+branchkit-cli dev test .       # builds the plugin, checks it, runs it under the test harness
+cd src && go test ./...        # this plugin's own tests (they start the built binary)
+```
+
+You are done when `branchkit-cli dev test .` and the plugin's own tests pass.
+Neither touches the running app. Install into the app only when the user asks
+(`branchkit-cli plugin install . --build`): the app on their machine is in use.
+
+## Read the docs before guessing an API
+
+The platform docs ship with the app as markdown, matching the installed
+version:
+
+```bash
+D="$(branchkit-cli docs path)"
+cat "$D/llms.txt"                  # one line per page
+grep -rn "<term>" "$D"
+```
+
+| To do this | Read |
+|---|---|
+| Add a voice command, capture a spoken value | `how-to/voice/defining-commands.md`, `reference/specs/pattern-syntax.md` |
+| Add a setting the user edits | `how-to/ui/settings-ui.md`, `guide/collections/settings.md` |
+| Let the user edit a list of names to say | `guide/collections/named-entities.md` |
+| Show the user a status or a message | `guide/platform-model/hud.md`, `how-to/ui/notifications.md` |
+| React to something happening (an app gains focus, ...) | `guide/platform-model/events.md`, `guide/platform-model/plugin-api-surface.md` |
+| Keep a record the user can read and switch off | `guide/collections/log.md` |
+| Run another plugin's action | `guide/platform-model/actions.md`, then `branchkit-cli plugin info <id>` for its actions and params |
+| Build the settings tab's HTML | `reference/settings-components.md`, `guide/platform-model/datastar-and-styling.md` |
+| Write to this plugin's log | `guide/diagnostics/plugin-logging.md` |
+| Test with the harness | `how-to/debug/test-a-plugin.md` |
+| Any RPC method and its params | `reference/specs/plugin-api.md` |
+| Any manifest field | `reference/specs/manifest.md` |
+| Privileges and what each allows | `reference/specs/privileges.md` |
+| Whether an operation works on each OS | `reference/platform-availability.md` |
+
+## Rules that are easy to get wrong
+
+- **Tests run the built binary** `{{.PluginID}}-plugin`, not your source.
+  `dev test` builds first; run `go test` after it (or after
+  `branchkit-cli dev build`), or it tests the old code and can pass.
+- **Call the platform through the SDK's typed methods**, e.g.
+  `plugin.CollectionAppend(branchkit.CollectionAppendRequest{...})` for the
+  method `collection.append`: the method name in CamelCase (initialisms stay
+  upper case, so `hud.show` is `HUDShow`), one request struct.
+  `reference/specs/plugin-api.md` lists every method's params; from `src/`,
+  `go doc github.com/branchkit/plugin-sdk-go CollectionAppendRequest` shows
+  the struct.
+- **`src/actions_gen.go` is generated** from `action_types` in `plugin.json`.
+  Never edit it by hand. After changing `action_types`, regenerate it from this
+  directory: `go run github.com/branchkit/branchkit-gen@latest --plugin .`
+  (needs Go 1.24 or newer).
+- **The plugin is sandboxed** and gets only what `plugin.json` declares:
+  privileges under `requires`, the collections it reads under `consumes`,
+  network hosts, files. An undeclared call is refused at run time, and the
+  tests may not catch it, so declare first: each method in
+  `reference/specs/plugin-api.md` names the privilege it needs.
+- **Collections this plugin provides are named `plugin.{{.PluginID}}.<name>`.**
+  Other names belong to other plugins or the platform.
+- **The settings tab uses Datastar 1.0** (`data-on:click`, `data-init`).
+  Older forms (`data-on-click`, `data-on-load`) appear in examples on the web
+  and silently do nothing here.
+- **Log with the SDK**: `plugin.Info("TAG", map[string]any{...})` (also `Debug`, `Warn`, `Error`).
+  Never print to stdout: stdout carries the JSON-RPC messages. Do not log
+  the user's own text (what they said, typed, or have on screen).
+- **Tests live in `src/main_test.go`** and run the plugin under
+  `branchkit-test-harness`, a real matcher and event bus without the app.
+  Simulate a phrase, inject an event, read a HUD channel or a collection:
+  see `how-to/debug/test-a-plugin.md`; for the rest of the harness API,
+  `go doc github.com/branchkit/plugin-sdk-go/harness Harness` (from `src/`).
+
+## When it fails
+
+- `dev test` prints one line per check; `!` is a warning, not a failure.
+  A failing or warning check prints `docs: <page>`, a path under
+  `$D`: read that page first. `dev test --json` gives the same as JSON.
+- Only if the user has installed the plugin and turned on Developer Access on
+  its card in Settings: `branchkit-cli dev plog {{.PluginID}} --since 60s`
+  shows what it logged in the running app.

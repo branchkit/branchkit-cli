@@ -13,6 +13,54 @@ type TestResult struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Detail string `json:"detail,omitempty"`
+	// Doc is the docs page that explains a failing or warning check, as a
+	// path under `branchkit-cli docs path` (the same path on the website,
+	// with the site's address in front).
+	Doc string `json:"doc,omitempty"`
+}
+
+// checkDocs maps a check's name, by prefix, to the page that explains it.
+// First match wins, so a longer prefix goes before a shorter one it starts
+// with. A check with no entry prints no page; keep this beside the checks.
+var checkDocs = []struct{ prefix, doc string }{
+	{"manifest_", "reference/specs/manifest.md"},
+	{"required_field_", "reference/specs/manifest.md"},
+	{"id_format", "reference/specs/validation.md"},
+	{"action_prefix_format", "guide/platform-model/actions.md"},
+	{"action_type", "guide/platform-model/actions.md"},
+	{"command", "how-to/voice/defining-commands.md"},
+	{"capture", "reference/specs/pattern-syntax.md"},
+	{"keybind", "guide/platform-model/triggers-and-authority.md"},
+	{"settings_tab", "how-to/ui/settings-ui.md"},
+	{"collection_data", "guide/collections/data.md"},
+	{"consumed_collections", "guide/collections/ownership-and-namespaces.md"},
+	{"provided_collections", "guide/collections/overview.md"},
+	{"collection_", "guide/collections/overview.md"},
+	{"privilege", "reference/specs/privileges.md"},
+	{"min_api_version", "reference/specs/api-versioning.md"},
+	{"sdk_required_fields", "reference/specs/plugin-api.md"},
+	{"run_binary", "guide/getting-started/plugin-structure.md"},
+}
+
+func docForCheck(name string) string {
+	for _, c := range checkDocs {
+		if strings.HasPrefix(name, c.prefix) {
+			return c.doc
+		}
+	}
+	return ""
+}
+
+// annotateDocs points every failing or warning check at its page: an agent
+// (or a person) reading a failure is then one read from the answer, not a
+// grep over the whole docs tree.
+func annotateDocs(phase *TestPhaseResult) {
+	for i := range phase.Tests {
+		t := &phase.Tests[i]
+		if t.Status == "fail" || t.Status == "warn" {
+			t.Doc = docForCheck(t.Name)
+		}
+	}
 }
 
 type TestPhaseResult struct {
@@ -1056,6 +1104,9 @@ func printTestResults(phase TestPhaseResult, jsonOutput bool) int {
 				line += " — " + t.Detail
 			}
 			fmt.Println(line)
+			if t.Doc != "" {
+				fmt.Printf("      docs: %s\n", t.Doc)
+			}
 		}
 		fmt.Println()
 	}

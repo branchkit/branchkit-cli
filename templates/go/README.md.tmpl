@@ -31,7 +31,7 @@ it. `--os` and `--arch` cross-build into `dist/<os>-<arch>/`.
 ## Test
 
 ```bash
-branchkit-cli dev test .     # manifest and source checks, then conformance
+branchkit-cli dev test .     # build, manifest and source checks, then conformance
 cd src && go test ./...      # this plugin's own tests (src/main_test.go)
 ```
 
@@ -74,6 +74,7 @@ save and restarts the plugin.
 | `src/actions_gen.go` | Typed action handlers, generated from `plugin.json` |
 | `src/main_test.go` | Tests against the test harness |
 | `.github/workflows/conformance.yml` | On a `v*` tag: checks, then signed release binaries |
+| `AGENTS.md`, `CLAUDE.md` | Instructions for AI coding agents working on this plugin |
 
 ## Releasing
 

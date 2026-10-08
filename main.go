@@ -134,6 +134,8 @@ func main() {
 			cmdDevBuild(os.Args[3:])
 		case "test":
 			cmdDevTest(os.Args[3:])
+		case "agents":
+			cmdDevAgents(os.Args[3:])
 		case "watch":
 			cmdDevWatch(os.Args[3:])
 		case "logs":
@@ -292,7 +294,8 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("  dev init [flags]                   Scaffold a new plugin from template")
 	fmt.Println("  dev build [path]                   Build a plugin from source")
-	fmt.Println("  dev test [path] [flags]            Run static analysis on a plugin")
+	fmt.Println("  dev test [path] [flags]            Build, check and conformance-test a plugin")
+	fmt.Println("  dev agents [path] [--force]        Write AGENTS.md (instructions for AI coding agents)")
 	fmt.Println("  dev watch [path]                   Watch + rebuild + reload on changes")
 	fmt.Println()
 	fmt.Println("  Diagnose a plugin against the running app:")
@@ -336,8 +339,14 @@ func printDevUsage() {
 	fmt.Println("  build [path] [--os darwin|linux|windows] [--arch amd64|arm64]   cross-builds land in dist/<os>-<arch>/")
 	fmt.Println("        Build with the manifest's dev.build recipe; with none, or when")
 	fmt.Println("        cross-building, detect the build system from the source layout")
-	fmt.Println("  test [path] [--static-only] [--json]")
-	fmt.Println("        Run static analysis on a plugin")
+	fmt.Println("  test [path] [--static-only] [--no-build] [--json]")
+	fmt.Println("        Build the plugin, then check its manifest and source and run it")
+	fmt.Println("        under the test harness. A failure or warning names its docs page")
+	fmt.Println("        (under `branchkit-cli docs path`)")
+	fmt.Println("  agents [path] [--force]")
+	fmt.Println("        Write AGENTS.md, instructions for an AI coding agent working on the")
+	fmt.Println("        plugin, and a CLAUDE.md that imports it. `dev init` writes both; this")
+	fmt.Println("        adds them to a plugin made before it did")
 	fmt.Println("  platforms [path...] [--json]")
 	fmt.Println("        Which platforms will this plugin work on? Derives the operations")
 	fmt.Println("        your code actually calls and says where each one answers —")

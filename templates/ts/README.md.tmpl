@@ -35,7 +35,7 @@ instead. You do not choose, and your code does not change.
 ## Test
 
 ```bash
-branchkit-cli dev test .     # manifest and source checks, then conformance
+branchkit-cli dev test .     # build, manifest and source checks, then conformance
 bun test                     # this plugin's own tests (src/index.test.ts)
 ```
 
@@ -78,6 +78,7 @@ running app to load it.
 | `src/actions_gen.ts` | Typed action params, generated from `plugin.json` |
 | `src/index.test.ts` | Tests against the test harness |
 | `.github/workflows/conformance.yml` | On a `v*` tag: the static checks |
+| `AGENTS.md`, `CLAUDE.md` | Instructions for AI coding agents working on this plugin |
 | `{{.PluginID}}-plugin` | The compiled plugin: build output, not checked in |
 
 ## Continuous checks

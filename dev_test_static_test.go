@@ -433,3 +433,40 @@ func TestProvidedCollectionNonObjectNonStringStillFails(t *testing.T) {
 		t.Fatalf("the message should name both legal forms: %s", r.Detail)
 	}
 }
+
+// Every page a check points at exists. The docs live in another repository;
+// in a workspace checkout they sit beside this one, and elsewhere the test
+// has nothing to check against and skips.
+func TestCheckDocsPagesExist(t *testing.T) {
+	roots := []string{"../branchkit-web/content", "../branchkit-web/specs/markdown"}
+	if _, err := os.Stat(roots[0]); err != nil {
+		t.Skip("branchkit-web not beside this checkout")
+	}
+	for _, c := range checkDocs {
+		found := false
+		for _, r := range roots {
+			if _, err := os.Stat(filepath.Join(r, c.doc)); err == nil {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("check prefix %q points at %s, which is not a docs page", c.prefix, c.doc)
+		}
+	}
+}
+
+func TestAnnotateDocsMarksOnlyFailuresAndWarnings(t *testing.T) {
+	phase := TestPhaseResult{Tests: []TestResult{
+		{Name: "command_grammar", Status: "fail"},
+		{Name: "keybinds", Status: "warn"},
+		{Name: "settings_tabs", Status: "pass"},
+		{Name: "no_such_check", Status: "fail"},
+	}}
+	annotateDocs(&phase)
+	want := []string{"how-to/voice/defining-commands.md", "guide/platform-model/triggers-and-authority.md", "", ""}
+	for i, w := range want {
+		if phase.Tests[i].Doc != w {
+			t.Errorf("%s: doc = %q, want %q", phase.Tests[i].Name, phase.Tests[i].Doc, w)
+		}
+	}
+}

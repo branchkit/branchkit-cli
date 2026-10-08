@@ -1,0 +1,12 @@
+{
+  "name": "branchkit",
+  "description": "Tools for building BranchKit plugins with an AI coding agent.",
+  "owner": { "name": "BranchKit" },
+  "plugins": [
+    {
+      "name": "branchkit",
+      "source": "./agent-plugin",
+      "description": "The branchkit-plugin skill: scaffold, build, test and debug a BranchKit plugin."
+    }
+  ]
+}

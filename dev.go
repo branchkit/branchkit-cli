@@ -328,6 +328,8 @@ func scaffoldGoPlugin(dir string, data templateData) error {
 		{"templates/go/src/actions_gen.go.tmpl", "src/actions_gen.go"},
 		{"templates/go/src/main_test.go.tmpl", "src/main_test.go"},
 		{"templates/go/README.md.tmpl", "README.md"},
+		{"templates/go/AGENTS.md.tmpl", "AGENTS.md"},
+		{"templates/go/CLAUDE.md.tmpl", "CLAUDE.md"},
 		{"templates/go/gitignore.tmpl", ".gitignore"},
 		{"templates/go/.github/workflows/conformance.yml.tmpl", ".github/workflows/conformance.yml"},
 	}
@@ -384,6 +386,8 @@ func scaffoldTSPlugin(dir string, data templateData) error {
 		// Named without its dot: go:embed skips dotfiles under a `*` pattern.
 		{"templates/ts/gitignore.tmpl", ".gitignore"},
 		{"templates/ts/README.md.tmpl", "README.md"},
+		{"templates/ts/AGENTS.md.tmpl", "AGENTS.md"},
+		{"templates/ts/CLAUDE.md.tmpl", "CLAUDE.md"},
 		{"templates/ts/src/index.ts.tmpl", "src/index.ts"},
 		{"templates/ts/src/actions_gen.ts.tmpl", "src/actions_gen.ts"},
 		{"templates/ts/src/index.test.ts.tmpl", "src/index.test.ts"},
@@ -432,6 +436,8 @@ func scaffoldPyPlugin(dir string, data templateData) error {
 		{"templates/py/actions_gen.py.tmpl", "actions_gen.py"},
 		{"templates/py/test_main.py.tmpl", "test_main.py"},
 		{"templates/py/README.md.tmpl", "README.md"},
+		{"templates/py/AGENTS.md.tmpl", "AGENTS.md"},
+		{"templates/py/CLAUDE.md.tmpl", "CLAUDE.md"},
 		{"templates/py/gitignore.tmpl", ".gitignore"},
 		{"templates/py/.github/workflows/conformance.yml.tmpl", ".github/workflows/conformance.yml"},
 	}
@@ -471,6 +477,7 @@ func cmdDevTest(args []string) {
 	dir := "."
 	jsonOutput := false
 	staticOnly := false
+	noBuild := false
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -478,6 +485,8 @@ func cmdDevTest(args []string) {
 			jsonOutput = true
 		case "--static-only":
 			staticOnly = true
+		case "--no-build":
+			noBuild = true
 		default:
 			if !strings.HasPrefix(args[i], "-") {
 				dir = args[i]
@@ -496,7 +505,20 @@ func cmdDevTest(args []string) {
 		os.Exit(1)
 	}
 
+	// Conformance runs the built binary, not the source. Without a build
+	// first, a test after an edit ran the old code and could pass: two of
+	// five agents in one evaluation read that green as proof of a change
+	// that had never been compiled. Go builds incrementally and Python has
+	// no build step, so building every time costs little.
+	if !staticOnly && !noBuild {
+		if err := buildForTest(absDir, jsonOutput); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: build failed, so nothing was tested: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	phase := runStaticAnalysis(absDir)
+	annotateDocs(&phase)
 	failures := printTestResults(phase, jsonOutput)
 
 	if !staticOnly {
@@ -511,6 +533,21 @@ func cmdDevTest(args []string) {
 	if !jsonOutput {
 		fmt.Println("All tests passed")
 	}
+}
+
+// buildForTest builds the plugin for this machine. With --json the build's
+// own output goes to stderr, so stdout stays the results document.
+func buildForTest(absDir string, jsonOutput bool) error {
+	target, err := parseBuildTarget("", "")
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		stdout := os.Stdout
+		os.Stdout = os.Stderr
+		defer func() { os.Stdout = stdout }()
+	}
+	return buildPluginDir(absDir, target)
 }
 
 func runHarnessConformance(dir string, jsonOutput bool) int {

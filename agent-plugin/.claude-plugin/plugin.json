@@ -1,0 +1,10 @@
+{
+  "name": "branchkit",
+  "version": "0.1.0",
+  "description": "Build, test and debug BranchKit plugins with branchkit-cli, the docs that ship with the app, and the test harness.",
+  "author": {
+    "name": "BranchKit"
+  },
+  "homepage": "https://branchkit.dev/guide/getting-started/build-with-ai",
+  "license": "MIT"
+}
