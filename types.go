@@ -25,11 +25,27 @@ type PluginManifest struct {
 	ActionPrefix string       `json:"action_prefix,omitempty"`
 	HudTargets   []string     `json:"hud_targets,omitempty"`
 	Provides     *ProvidesCfg `json:"provides,omitempty"`
+	// ActionTypes is what `plugin info` prints so another plugin's author
+	// (or their agent) can dispatch to it without opening its manifest.
+	ActionTypes map[string]actionTypeDecl `json:"action_types,omitempty"`
 	// Requires is everything the user is shown and accepts at install.
 	// One block rather than five loose fields so this tool, the actuator's
 	// install panel and the signing chain read the same subtree instead of
 	// each rebuilding the list.
 	Requires RequiresCfg `json:"requires,omitempty"`
+}
+
+// actionTypeDecl is the part of an `action_types` entry a caller needs.
+type actionTypeDecl struct {
+	Label  string            `json:"label,omitempty"`
+	Fields []actionFieldDecl `json:"fields,omitempty"`
+}
+
+type actionFieldDecl struct {
+	Key         string `json:"key"`
+	FieldType   string `json:"field_type,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+	Placeholder string `json:"placeholder,omitempty"`
 }
 
 // RequiresCfg mirrors the actuator's `requires` block.
