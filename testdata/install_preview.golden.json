@@ -1,0 +1,385 @@
+{
+  "id": "golden",
+  "name": "Golden",
+  "version": "2.0.0",
+  "description": "Declares something on every consent axis.",
+  "author": "Example",
+  "disclosures": [
+    {
+      "axis": "privileges",
+      "items": [
+        "windows",
+        "shell"
+      ],
+      "text": "Privileges: windows, shell",
+      "grant": true
+    },
+    {
+      "axis": "optional_privileges",
+      "items": [
+        "clipboard"
+      ],
+      "text": "Optional privileges: clipboard",
+      "grant": true
+    },
+    {
+      "axis": "network",
+      "items": [
+        "api.example",
+        "more hosts it asks for while running (each off until you allow it)"
+      ],
+      "text": "Network: api.example, more hosts it asks for while running (each off until you allow it) (allow each host on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "sockets",
+      "items": [
+        "{\"id\":\"extension\"}"
+      ],
+      "text": "Listen sockets: 1 loopback listener(s)",
+      "grant": false
+    },
+    {
+      "axis": "dbus",
+      "items": [
+        "session:org.example.App/org.example.App.Ping"
+      ],
+      "text": "D-Bus: calls session:org.example.App/org.example.App.Ping (allow each method on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "wmi",
+      "items": [
+        "root/cimv2/Win32_Battery"
+      ],
+      "text": "WMI: reads root/cimv2/Win32_Battery (allow each class on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "preferences",
+      "items": [
+        "defaults:com.example.reader",
+        "defaults:com.example.writer"
+      ],
+      "text": "App settings: defaults:com.example.reader, defaults:com.example.writer (allow each on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "preference_writes",
+      "items": [
+        "defaults:com.example.writer"
+      ],
+      "text": "Changes app settings: defaults:com.example.writer — Changing an app's settings can change what programs it runs (allow each on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "devices",
+      "items": [
+        "HID 046d:c52b",
+        "Bluetooth service fff0"
+      ],
+      "text": "Devices: HID 046d:c52b, Bluetooth service fff0 (allow each on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "blobs",
+      "items": [
+        "camera/frames"
+      ],
+      "text": "Shared data: reads camera/frames (allow each on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "events",
+      "items": [
+        "_platform.window.**"
+      ],
+      "text": "Events: receives _platform.window.** (allow each on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "dispatch",
+      "items": [
+        "tiling"
+      ],
+      "text": "Runs other plugins' actions: tiling (allow each on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "collection_reads",
+      "items": [
+        "apps"
+      ],
+      "text": "Reads collections: apps (allow each on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "collection_writes",
+      "items": [
+        "snippets"
+      ],
+      "text": "Writes collections: snippets (allow each on the plugin's page after install)",
+      "grant": true
+    },
+    {
+      "axis": "provided_blobs",
+      "items": [
+        "frames (up to 1 MB on disk, drops the oldest data when full, cleared when the plugin stops, checked by BranchKit)"
+      ],
+      "text": "Offers shared data: frames (up to 1 MB on disk, drops the oldest data when full, cleared when the plugin stops, checked by BranchKit)",
+      "grant": false
+    },
+    {
+      "axis": "runtimes",
+      "items": [
+        "python"
+      ],
+      "text": "Managed runtimes: python",
+      "grant": false
+    },
+    {
+      "axis": "capabilities",
+      "items": [
+        "speech.say"
+      ],
+      "text": "Cannot start without: speech.say",
+      "grant": false
+    },
+    {
+      "axis": "stages",
+      "items": [
+        "ocr",
+        "stt (bin/stt-engine)"
+      ],
+      "text": "Pipeline stages: ocr, stt (bin/stt-engine) (programs of its own that BranchKit starts)",
+      "grant": false
+    },
+    {
+      "axis": "native_messaging",
+      "items": [
+        "Chrome extension abcdefghijklmnopabcdefghijklmnop",
+        "Firefox extension golden@example.com"
+      ],
+      "text": "Browser extensions it pairs with: Chrome extension abcdefghijklmnopabcdefghijklmnop, Firefox extension golden@example.com (registered with each browser)",
+      "grant": false
+    },
+    {
+      "axis": "run",
+      "items": [
+        "./golden-plugin --v2"
+      ],
+      "text": "Runs: ./golden-plugin --v2 (in the plugin's sandbox)",
+      "grant": false
+    }
+  ],
+  "capabilities": {
+    "uses": [
+      "speech.say",
+      "native.dbus_call"
+    ],
+    "required": [
+      "speech.say"
+    ]
+  },
+  "effects": [
+    {
+      "name": "Focus",
+      "description": "Mutes notifications while active.",
+      "asserts": [
+        "suppress_notifications"
+      ]
+    }
+  ],
+  "conformance": "passed",
+  "tier": "community",
+  "blocklisted": false,
+  "source": "github.com/example/golden",
+  "tag": "v2.0.0",
+  "update": {
+    "installed_version": "1.0.0",
+    "added": [
+      {
+        "axis": "privileges",
+        "item": "shell",
+        "text": "shell",
+        "grant": true
+      },
+      {
+        "axis": "privileges",
+        "item": "windows",
+        "text": "windows",
+        "grant": true
+      },
+      {
+        "axis": "optional_privileges",
+        "item": "clipboard",
+        "text": "clipboard (optional — granted only if you approve a later request)",
+        "grant": true
+      },
+      {
+        "axis": "network",
+        "item": "api.example",
+        "text": "network: api.example (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "network",
+        "item": "more hosts it asks for while running (each off until you allow it)",
+        "text": "network: more hosts it asks for while running (each off until you allow it) (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "sockets",
+        "item": "{\"id\":\"extension\"}",
+        "text": "listen socket: {\"id\":\"extension\"}",
+        "grant": false
+      },
+      {
+        "axis": "dbus",
+        "item": "session:org.example.App/org.example.App.Ping",
+        "text": "D-Bus: session:org.example.App/org.example.App.Ping (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "wmi",
+        "item": "root/cimv2/Win32_Battery",
+        "text": "WMI: root/cimv2/Win32_Battery (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "preferences",
+        "item": "defaults:com.example.reader",
+        "text": "App settings: defaults:com.example.reader (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "preferences",
+        "item": "defaults:com.example.writer",
+        "text": "App settings: defaults:com.example.writer (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "preference_writes",
+        "item": "defaults:com.example.writer",
+        "text": "Changes app settings: defaults:com.example.writer (can change what programs the app runs; allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "devices",
+        "item": "Bluetooth service fff0",
+        "text": "Device: Bluetooth service fff0 (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "devices",
+        "item": "HID 046d:c52b",
+        "text": "Device: HID 046d:c52b (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "blobs",
+        "item": "camera/frames",
+        "text": "reads shared data: camera/frames (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "events",
+        "item": "_platform.window.**",
+        "text": "receives events: _platform.window.** (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "dispatch",
+        "item": "tiling",
+        "text": "runs other plugins' actions: tiling (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "collection_reads",
+        "item": "apps",
+        "text": "reads collection: apps (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "collection_writes",
+        "item": "snippets",
+        "text": "writes collection: snippets (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "provided_blobs",
+        "item": "frames (up to 1 MB on disk, drops the oldest data when full, cleared when the plugin stops, checked by BranchKit)",
+        "text": "offers shared data: frames (up to 1 MB on disk, drops the oldest data when full, cleared when the plugin stops, checked by BranchKit)",
+        "grant": false
+      },
+      {
+        "axis": "runtimes",
+        "item": "python",
+        "text": "runtime: python (read+exec of the managed runtime)",
+        "grant": false
+      },
+      {
+        "axis": "capabilities",
+        "item": "speech.say",
+        "text": "cannot start without: speech.say",
+        "grant": false
+      },
+      {
+        "axis": "stages",
+        "item": "ocr",
+        "text": "pipeline stage: ocr (a program of its own that BranchKit starts)",
+        "grant": false
+      },
+      {
+        "axis": "stages",
+        "item": "stt (bin/stt-engine)",
+        "text": "pipeline stage: stt (bin/stt-engine) (a program of its own that BranchKit starts)",
+        "grant": false
+      },
+      {
+        "axis": "native_messaging",
+        "item": "Chrome extension abcdefghijklmnopabcdefghijklmnop",
+        "text": "pairs with browser extension: Chrome extension abcdefghijklmnopabcdefghijklmnop",
+        "grant": false
+      },
+      {
+        "axis": "native_messaging",
+        "item": "Firefox extension golden@example.com",
+        "text": "pairs with browser extension: Firefox extension golden@example.com",
+        "grant": false
+      }
+    ],
+    "removed": [
+      {
+        "axis": "privileges",
+        "item": "screenshot",
+        "text": "screenshot",
+        "grant": true
+      },
+      {
+        "axis": "network",
+        "item": "old.example",
+        "text": "network: old.example",
+        "grant": true
+      },
+      {
+        "axis": "collection_writes",
+        "item": "notes",
+        "text": "writes collection: notes",
+        "grant": true
+      }
+    ],
+    "added_effects": [
+      {
+        "name": "Focus",
+        "description": "Mutes notifications while active.",
+        "asserts": [
+          "suppress_notifications"
+        ]
+      }
+    ],
+    "removed_effects": [],
+    "run_changed": true,
+    "expands": true
+  }
+}

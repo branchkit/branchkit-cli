@@ -610,7 +610,13 @@ func runSummary(m PluginManifest) string {
 // gone, the words the same. One copy, so the terminal and the panel
 // cannot say different things about the same member.
 func disclosureText(line string) string {
-	s := strings.Join(strings.Fields(line), " ")
+	var parts []string
+	for _, l := range strings.Split(line, "\n") {
+		if l = strings.Join(strings.Fields(l), " "); l != "" {
+			parts = append(parts, l)
+		}
+	}
+	s := strings.Join(parts, " — ")
 	s = strings.TrimPrefix(s, "+ ")
 	return strings.TrimPrefix(s, "- ")
 }
