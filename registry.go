@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -134,18 +135,83 @@ func findCatalogEntryBySource(source string) *catalogEntry {
 // for the person there. repo is the `owner/repo` being installed; "" for a
 // local folder, which the app never treats as first-party.
 //
-// An unreachable catalog answers true: the answer decides whether an update
-// may proceed without a fresh yes, and an unknown answer must not be the
-// one that skips the question.
+// The app decides from the catalog file it reads (localCatalog), not the
+// registry online, so that is the answer — and only when the registry online
+// agrees with it. Either one unreadable, or the two disagreeing (the registry
+// moved after the app was built, a plugin promoted or demoted, an overridden
+// catalog URL), answers true: the answer decides whether an update may
+// proceed without a fresh yes, and an unknown answer must not be the one
+// that skips the question.
 func grantsArriveOn(pluginID, repo string) bool {
 	if repo == "" {
 		return false
 	}
-	cat, err := fetchCatalog()
+	local, ok := localCatalog()
+	if !ok {
+		return true
+	}
+	remote, err := remoteCatalog()
 	if err != nil {
 		return true
 	}
-	return catalogGrantsOn(cat, pluginID, repo)
+	onLocally := catalogGrantsOn(local, pluginID, repo)
+	if onLocally != catalogGrantsOn(remote, pluginID, repo) {
+		return true
+	}
+	return onLocally
+}
+
+// remoteCatalog is the registry online; a variable so tests can stand in.
+var remoteCatalog = fetchCatalog
+
+// localCatalog is the catalog the app reads; a variable so tests can stand
+// in. See readLocalCatalog.
+var localCatalog = readLocalCatalog
+
+// readLocalCatalog reads the catalog file the app decides first-party from,
+// trying the places it tries in its order — the copy in its app-support
+// folder, then the one in its bundle's resources, then a source checkout's
+// registry — and returning the first that reads and parses. ok is false
+// when none does.
+func readLocalCatalog() (catalog, bool) {
+	for _, path := range localCatalogPaths() {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var cat catalog
+		if yaml.Unmarshal(data, &cat) == nil {
+			return cat, true
+		}
+	}
+	return catalog{}, false
+}
+
+// localCatalogPaths is where the app looks for its catalog, in its order.
+func localCatalogPaths() []string {
+	paths := []string{filepath.Join(appSupportDir(), "catalog.yaml")}
+	if r := os.Getenv("BRANCHKIT_RESOURCES"); r != "" {
+		paths = append(paths, filepath.Join(r, "catalog.yaml"))
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return paths
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	if app := enclosingAppBundle(exe); app != "" {
+		paths = append(paths, filepath.Join(app, "Contents", "Resources", "catalog.yaml"))
+	} else {
+		// Other packagings keep the app's resources beside its binaries.
+		dir := filepath.Dir(exe)
+		paths = append(paths, filepath.Join(dir, "resources", "catalog.yaml"), filepath.Join(dir, "catalog.yaml"))
+	}
+	// A development build reads the registry checkout in its source tree.
+	for i, dir := 0, filepath.Dir(exe); i < 4; i, dir = i+1, filepath.Dir(dir) {
+		paths = append(paths, filepath.Join(dir, "branchkit-registry", "catalog.yaml"))
+	}
+	return paths
 }
 
 // catalogGrantsOn is grantsArriveOn's rule against a fetched catalog.

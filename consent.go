@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // installAssumeYes suppresses the interactive consent question (--yes). The
@@ -633,15 +634,55 @@ func joinAxes(published []publishedAxis, readers []consentAxis) []consentAxis {
 }
 
 // ownCollections is the set of collections the plugin introduces itself.
+//
+// Not every name it declares: the app gives a name two plugins declare to
+// the one that had it first, and the other joins that collection and needs
+// a grant to write it. This CLI cannot see who was first, so a name another
+// plugin also claims — in the catalog, or installed here — is not counted
+// as its own and stays on the grant axes, where it is asked about.
 func ownCollections(m PluginManifest) map[string]bool {
 	out := map[string]bool{}
-	if m.Provides != nil {
-		for name := range m.Provides.Collections {
+	if m.Provides == nil {
+		return out
+	}
+	claims := collectionClaimants()
+	for name := range m.Provides.Collections {
+		contested := false
+		for _, id := range claims[name] {
+			if id != m.ID {
+				contested = true
+			}
+		}
+		if !contested {
 			out[name] = true
 		}
 	}
 	return out
 }
+
+// collectionClaimants maps each collection name to the plugins that claim
+// it: the catalog the app reads (each entry's `collections`) and the
+// plugins installed here (their provides.collections). Read once per run; a
+// variable so tests can stand in.
+var collectionClaimants = sync.OnceValue(func() map[string][]string {
+	out := map[string][]string{}
+	if cat, ok := localCatalog(); ok {
+		for _, e := range cat.Plugins {
+			for _, name := range e.Collections {
+				out[name] = append(out[name], e.ID)
+			}
+		}
+	}
+	for _, p := range discoverPlugins() {
+		if p.Manifest.Provides == nil {
+			continue
+		}
+		for name := range p.Manifest.Provides.Collections {
+			out[name] = append(out[name], p.Manifest.ID)
+		}
+	}
+	return out
+})
 
 // othersCollections drops the plugin's own collections from names.
 func othersCollections(m PluginManifest, names []string) []string {

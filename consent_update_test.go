@@ -1,6 +1,9 @@
 package main
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -204,6 +207,101 @@ func TestCatalogGrantsOn(t *testing.T) {
 	}
 	if grantsArriveOn("voice", "") {
 		t.Error("a local folder's grants never arrive on")
+	}
+}
+
+// TestMain keeps every test off this computer's catalog, its installed
+// plugins and the network: each test that needs a catalog or a claimant
+// stands one in.
+func TestMain(m *testing.M) {
+	localCatalog = func() (catalog, bool) { return catalog{}, false }
+	remoteCatalog = func() (catalog, error) { return catalog{}, errors.New("no network in tests") }
+	collectionClaimants = func() map[string][]string { return nil }
+	os.Exit(m.Run())
+}
+
+// The answer follows the catalog the app reads, and only when the registry
+// online agrees with it: a disagreement either way, or either one
+// unreadable, asks.
+func TestGrantsArriveOnFollowsTheAppsCatalog(t *testing.T) {
+	savedLocal, savedRemote := localCatalog, remoteCatalog
+	defer func() { localCatalog, remoteCatalog = savedLocal, savedRemote }()
+	cat := func(tier string) catalog {
+		return catalog{Plugins: []catalogEntry{{ID: "voice", Source: "github:branchkit/branchkit-plugin-voice", Tier: tier}}}
+	}
+	const repo = "branchkit/branchkit-plugin-voice"
+	cases := []struct {
+		name          string
+		local, remote string // "" = unreadable
+		want          bool
+	}{
+		{"both first-party", "first-party", "first-party", true},
+		{"both community", "community", "community", false},
+		{"app first-party, online community", "first-party", "community", true},
+		{"app community, online first-party", "community", "first-party", true},
+		{"app catalog unreadable", "", "community", true},
+		{"online catalog unreachable", "community", "", true},
+	}
+	for _, c := range cases {
+		localCatalog = func() (catalog, bool) { return cat(c.local), c.local != "" }
+		remoteCatalog = func() (catalog, error) {
+			if c.remote == "" {
+				return catalog{}, errors.New("unreachable")
+			}
+			return cat(c.remote), nil
+		}
+		if got := grantsArriveOn("voice", repo); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// The app gives a collection name two plugins declare to the one that had it
+// first; the other needs a grant to write it. A name another plugin also
+// claims, in the catalog or installed here, is not counted as the plugin's
+// own: it stays a grant, and is asked about.
+func TestAContestedCollectionIsNotOwn(t *testing.T) {
+	saved := collectionClaimants
+	defer func() { collectionClaimants = saved }()
+	m := parseManifest(t, `{
+		"id": "notes",
+		"provides": {"collections": {"snippets": {}, "notes": {}}},
+		"consumes": {"writes": ["snippets", "notes"]}
+	}`)
+	collectionClaimants = func() map[string][]string {
+		return map[string][]string{"snippets": {"snippets", "notes"}, "notes": {"notes"}}
+	}
+	got := map[string][]string{}
+	for _, d := range previewDisclosures(m) {
+		got[d.Axis] = d.Items
+	}
+	if !reflect.DeepEqual(got["collection_writes"], []string{"snippets"}) {
+		t.Errorf("a contested name must stay a grant: %v", got["collection_writes"])
+	}
+	if !reflect.DeepEqual(got["own_collections"], []string{"notes"}) {
+		t.Errorf("only an uncontested name is its own: %v", got["own_collections"])
+	}
+}
+
+// The places the app reads its catalog from, in its order: its app-support
+// copy first.
+func TestLocalCatalogPathsStartWithAppSupport(t *testing.T) {
+	t.Setenv("BRANCHKIT_APP_SUPPORT", t.TempDir())
+	t.Setenv("BRANCHKIT_RESOURCES", filepath.Join(t.TempDir(), "res"))
+	paths := localCatalogPaths()
+	if len(paths) < 2 || paths[0] != filepath.Join(os.Getenv("BRANCHKIT_APP_SUPPORT"), "catalog.yaml") ||
+		paths[1] != filepath.Join(os.Getenv("BRANCHKIT_RESOURCES"), "catalog.yaml") {
+		t.Fatalf("paths: %v", paths)
+	}
+	if err := os.WriteFile(paths[1], nil, 0o644); err == nil {
+		t.Fatal("resources dir should not exist")
+	}
+	if err := os.WriteFile(paths[0], []byte("plugins:\n  - id: voice\n    source: github:branchkit/branchkit-plugin-voice\n    tier: first-party\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cat, ok := readLocalCatalog()
+	if !ok || len(cat.Plugins) != 1 || cat.Plugins[0].Tier != "first-party" {
+		t.Fatalf("read %+v ok=%v", cat, ok)
 	}
 }
 
