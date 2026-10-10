@@ -555,8 +555,9 @@ func runHarnessConformance(dir string, jsonOutput bool) int {
 	if binary == "" {
 		if !jsonOutput {
 			fmt.Println("Skipping conformance tests (branchkit-test-harness not found)")
-			fmt.Println("  The harness ships inside BranchKit.app (Contents/Resources); install")
-			fmt.Println("  the app, or point BRANCHKIT_TEST_HARNESS at a harness binary.")
+			fmt.Println("  The harness ships with BranchKit beside this CLI (macOS: inside")
+			fmt.Println("  BranchKit.app; Linux packages: /usr/bin; Windows: the install folder);")
+			fmt.Println("  install the app, or point BRANCHKIT_TEST_HARNESS at a harness binary.")
 		}
 		return 0
 	}
@@ -593,9 +594,10 @@ func findHarnessBinary() string {
 	}
 
 	var candidates []string
-	// The harness ships in the app bundle next to this CLI
-	// (Contents/Resources/), so a CLI launched from the bundle — or
-	// symlinked onto PATH from it — finds it beside its own executable.
+	// The harness ships next to this CLI — in the macOS bundle
+	// (Contents/Resources/), in /usr/bin with the Linux packages, in the
+	// install folder on Windows — so a CLI launched from there, or
+	// symlinked onto PATH from it, finds it beside its own executable.
 	if exe, err := os.Executable(); err == nil {
 		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 			exe = resolved

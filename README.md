@@ -80,7 +80,9 @@ These need no running app.
 | `version` | Print the CLI's version |
 
 The test harness (`branchkit-test-harness`) runs a real matcher and event bus
-against a plugin without the app. It ships inside the app; set
+against a plugin without the app. It ships with the app beside this CLI
+(`BranchKit.app/Contents/Resources` on macOS, `/usr/bin` with the Linux
+packages, the install folder on Windows), where the CLI finds it; set
 `BRANCHKIT_TEST_HARNESS` to use a copy elsewhere.
 
 ### Diagnosing a plugin in the running app
