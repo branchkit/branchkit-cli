@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -172,11 +173,10 @@ func socketsSet(m PluginManifest) []string {
 // change is always expansion-class — there is no "narrower" program).
 type consentAxis struct {
 	name string
-	// block/field name the manifest field this axis reads, for the
-	// stale-axis check; "" means `name` is a field of `requires` or
-	// `consumes`. Needed where one field name appears in two blocks:
-	// `consumes.blobs` (reads) and `provides.blobs` (offers) are both
-	// "blobs".
+	// block and field name the manifest property this axis reads,
+	// `<block>.<field>`, which the schema ratchet checks against the
+	// actuator's manifest schema. Two axes may read one property
+	// (`consumes.events` splits into switched and always-delivered).
 	block   string
 	field   string
 	extract func(PluginManifest) []string
@@ -185,13 +185,56 @@ type consentAxis struct {
 	summary func([]string) string
 	addFmt  string // one "+" line per added member (display applied)
 	delFmt  string // one "-" line per removed member
-	// grant: each member becomes a grant record with a switch on the
-	// plugin's page (off there until allowed, for a plugin that is not
-	// bundled). Otherwise the member is enforced from the manifest as
-	// written, with no later moment to say no, and the install or update
-	// screen is the only place a person sees it. The app's panel groups
-	// the two apart.
-	grant bool
+	kind    axisKind
+	update  axisUpdate
+}
+
+// axisKind is what one member of an axis is to the person installing. The
+// app's panel groups by it, so the CLI and the panel agree on which lines
+// are switches without either naming an axis.
+type axisKind string
+
+const (
+	// Each member becomes a grant record with a switch on the plugin's
+	// page (off there until allowed, for a plugin that is not bundled).
+	kindGrant axisKind = "grant"
+	// Enforced from the manifest as written, with no later moment to say
+	// no: the install or update screen is the only place a person sees it.
+	kindScope axisKind = "scope"
+	// Told, not asked: the member grants nothing (why the plugin asks, what
+	// it downloads for its own stages, the data it keeps for itself).
+	kindNote axisKind = "note"
+)
+
+// axisUpdate is when a member an update adds needs a fresh yes — which a
+// scripted update with nobody at the terminal cannot give, so it blocks.
+type axisUpdate string
+
+const (
+	// Always: a new member changes what the plugin can do the moment the
+	// update lands.
+	updateExpands axisUpdate = "expands"
+	// Only when the new grant would arrive switched on, which is the case
+	// for a plugin that ships with BranchKit. Any other plugin's new grant
+	// arrives off on its page and waits for the person there — the
+	// manifest is the request, the grant store the authority — so the
+	// update itself widens nothing.
+	updateExpandsWhenGrantedOn axisUpdate = "expands_when_granted_on"
+	// Never: shown, but a change asks for nothing and revokes nothing.
+	updateInformational axisUpdate = "informational"
+)
+
+// addExpands reports whether a member this axis gains in an update needs a
+// fresh yes, given whether the plugin's new grants arrive on.
+func (ax consentAxis) addExpands(grantsOn bool) bool {
+	switch ax.update {
+	case updateExpands:
+		return true
+	case updateExpandsWhenGrantedOn:
+		return grantsOn
+	default:
+		return false
+	}
 }
 
 func plainDisplay(s string) string { return s }
@@ -199,6 +242,8 @@ func plainDisplay(s string) string { return s }
 var consentAxes = []consentAxis{
 	{
 		name:    "privileges",
+		block:   "requires",
+		field:   "privileges",
 		extract: func(m PluginManifest) []string { return m.Requires.Privileges },
 		display: plainDisplay,
 		summary: func(v []string) string {
@@ -206,10 +251,13 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + %s\n",
 		delFmt: "  - %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpands,
 	},
 	{
 		name:    "optional_privileges",
+		block:   "requires",
+		field:   "optional_privileges",
 		extract: func(m PluginManifest) []string { return m.Requires.OptionalPrivileges },
 		display: plainDisplay,
 		summary: func(v []string) string {
@@ -217,7 +265,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + %s (optional — granted only if you approve a later request)\n",
 		delFmt: "  - %s (optional)\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpands,
 	},
 	// The sandbox axes. Network HOSTS are grant records since 2026-09-18:
 	// like every other grant a non-bundled plugin asks for, each is allowed
@@ -229,6 +278,8 @@ var consentAxes = []consentAxis{
 	// tightest sandbox.
 	{
 		name:    "network",
+		block:   "requires",
+		field:   "network",
 		extract: networkSet,
 		display: networkDisplay,
 		summary: func(v []string) string {
@@ -236,10 +287,13 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + network: %s (allow it on the plugin's page)\n",
 		delFmt: "  - network: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpands,
 	},
 	{
 		name:    "sockets",
+		block:   "requires",
+		field:   "sockets",
 		extract: socketsSet,
 		display: plainDisplay,
 		summary: func(v []string) string {
@@ -247,12 +301,16 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + listen socket: %s\n",
 		delFmt: "  - listen socket: %s\n",
+		kind:   kindScope,
+		update: updateExpands,
 	},
 	// D-Bus methods (Linux): like network hosts, each is a grant with a
 	// switch on the plugin's page, off until allowed there for a plugin
 	// that is not bundled, and read on every call.
 	{
-		name: "dbus",
+		name:  "dbus",
+		block: "requires",
+		field: "dbus",
 		extract: func(m PluginManifest) []string {
 			if m.Requires.Dbus == nil {
 				return nil
@@ -265,11 +323,14 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + D-Bus: %s (allow it on the plugin's page)\n",
 		delFmt: "  - D-Bus: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpands,
 	},
 	// WMI classes (Windows): the same, one grant per class read.
 	{
-		name: "wmi",
+		name:  "wmi",
+		block: "requires",
+		field: "wmi",
 		extract: func(m PluginManifest) []string {
 			if m.Requires.Wmi == nil {
 				return nil
@@ -282,7 +343,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + WMI: %s (allow it on the plugin's page)\n",
 		delFmt: "  - WMI: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpands,
 	},
 	// Other apps' settings (macOS defaults, GSettings, the user's
 	// registry): reading each declared domain is one grant, and changing
@@ -291,6 +353,8 @@ var consentAxes = []consentAxis{
 	// it runs, and no list of such settings can be complete.
 	{
 		name:    "preferences",
+		block:   "requires",
+		field:   "preferences",
 		extract: preferenceReads,
 		display: plainDisplay,
 		summary: func(v []string) string {
@@ -298,7 +362,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + App settings: %s (allow it on the plugin's page)\n",
 		delFmt: "  - App settings: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpands,
 	},
 	{
 		name:    "preference_writes",
@@ -311,7 +376,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + Changes app settings: %s (can change what programs the app runs; allow it on the plugin's page)\n",
 		delFmt: "  - Changes app settings: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpands,
 	},
 	// Devices: HID products and Bluetooth LE services. A HID product is one
 	// grant; a Bluetooth service is allowed per device on the plugin's page
@@ -319,6 +385,8 @@ var consentAxes = []consentAxis{
 	// security keys are never reachable, whatever is declared.
 	{
 		name:    "devices",
+		block:   "requires",
+		field:   "devices",
 		extract: deviceGrants,
 		display: plainDisplay,
 		summary: func(v []string) string {
@@ -326,7 +394,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + Device: %s (allow it on the plugin's page)\n",
 		delFmt: "  - Device: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpands,
 	},
 	// Not part of the request block: a blob read is a consent axis that
 	// lives in `consumes`, because what is being asked for is another
@@ -334,7 +403,9 @@ var consentAxes = []consentAxis{
 	// than handled separately (as effects are) because it is a plain list
 	// of names, which is exactly what an axis carries.
 	{
-		name: "blobs",
+		name:  "blobs",
+		block: "consumes",
+		field: "blobs",
 		extract: func(m PluginManifest) []string {
 			if m.Consumes == nil {
 				return nil
@@ -347,13 +418,15 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + reads shared data: %s (allow it on the plugin's page)\n",
 		delFmt: "  - reads shared data: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpands,
 	},
 	// What the plugin consumes from other plugins and the platform: each a
 	// grant record on the plugin's page, the same as a blob read. Until
 	// these were axes the only place a person saw them was the card, after
 	// install, and an update that started dispatching to a new plugin read
-	// as "nothing new".
+	// as "nothing new". A new one asks again only for a plugin whose grants
+	// arrive on (updateExpandsWhenGrantedOn).
 	//
 	// Event subscriptions split in two, by the app's own rule for which
 	// carry a switch (subscriptionIsGrant): platform events and those only
@@ -372,7 +445,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + receives events: %s (allow it on the plugin's page)\n",
 		delFmt: "  - receives events: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpandsWhenGrantedOn,
 	},
 	{
 		name:  "always_events",
@@ -387,6 +461,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + always receives events: %s (platform events and its own; no switch)\n",
 		delFmt: "  - always receives events: %s\n",
+		kind:   kindScope,
+		update: updateExpands,
 	},
 	{
 		name:  "dispatch",
@@ -404,8 +480,13 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + runs other plugins' actions: %s (allow it on the plugin's page)\n",
 		delFmt: "  - runs other plugins' actions: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpandsWhenGrantedOn,
 	},
+	// Collections: another plugin's are grants; the plugin's own (those it
+	// introduces under provides.collections) are not — the app passes a
+	// plugin reaching its own data without consulting any grant, and gives
+	// it no switch — so they are their own axis, told and never asked.
 	{
 		name:  "collection_reads",
 		block: "consumes",
@@ -414,7 +495,7 @@ var consentAxes = []consentAxis{
 			if m.Consumes == nil {
 				return nil
 			}
-			return namedRefs(m.Consumes.Collections)
+			return othersCollections(m, namedRefs(m.Consumes.Collections))
 		},
 		display: plainDisplay,
 		summary: func(v []string) string {
@@ -422,7 +503,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + reads collection: %s (allow it on the plugin's page)\n",
 		delFmt: "  - reads collection: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpandsWhenGrantedOn,
 	},
 	{
 		name:  "collection_writes",
@@ -432,7 +514,7 @@ var consentAxes = []consentAxis{
 			if m.Consumes == nil {
 				return nil
 			}
-			return sortedUnique(m.Consumes.Writes)
+			return othersCollections(m, sortedUnique(m.Consumes.Writes))
 		},
 		display: plainDisplay,
 		summary: func(v []string) string {
@@ -440,7 +522,22 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + writes collection: %s (allow it on the plugin's page)\n",
 		delFmt: "  - writes collection: %s\n",
-		grant:  true,
+		kind:   kindGrant,
+		update: updateExpandsWhenGrantedOn,
+	},
+	{
+		name:    "own_collections",
+		block:   "provides",
+		field:   "collections",
+		extract: ownCollectionsUsed,
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Uses its own collections: %s (its own data; no switch)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + uses its own collection: %s\n",
+		delFmt: "  - no longer uses its own collection: %s\n",
+		kind:   kindNote,
+		update: updateInformational,
 	},
 	// The PROVIDER's side of a blob, which the design says is disclosed at
 	// install "like every other declaration" and which nothing showed
@@ -459,9 +556,13 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + offers shared data: %s\n",
 		delFmt: "  - offers shared data: %s\n",
+		kind:   kindScope,
+		update: updateExpands,
 	},
 	{
 		name:    "runtimes",
+		block:   "requires",
+		field:   "runtimes",
 		extract: func(m PluginManifest) []string { return m.Requires.Runtimes },
 		display: plainDisplay,
 		summary: func(v []string) string {
@@ -469,6 +570,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + runtime: %s (read+exec of the managed runtime)\n",
 		delFmt: "  - runtime: %s\n",
+		kind:   kindScope,
+		update: updateExpands,
 	},
 	// Platform operations the plugin cannot start without. Only `required`:
 	// one added by an update can stop the plugin starting on this computer,
@@ -476,7 +579,9 @@ var consentAxes = []consentAxis{
 	// grants nothing (privileges do), so it is not a new consent question;
 	// the app's install panel names the ones this computer lacks.
 	{
-		name: "capabilities",
+		name:  "capabilities",
+		block: "requires",
+		field: "capabilities",
 		extract: func(m PluginManifest) []string {
 			if m.Requires.Capabilities == nil {
 				return nil
@@ -489,6 +594,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + cannot start without: %s\n",
 		delFmt: "  - no longer requires: %s\n",
+		kind:   kindScope,
+		update: updateExpands,
 	},
 	// Pipeline stages: each a separate program BranchKit starts in a
 	// sandbox of its own. What it does there does not pass through the
@@ -507,6 +614,8 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + pipeline stage: %s (a program of its own that BranchKit starts)\n",
 		delFmt: "  - pipeline stage: %s\n",
+		kind:   kindScope,
+		update: updateExpands,
 	},
 	// A browser extension paired with the plugin: the platform registers
 	// these extension ids with each browser's native-messaging host, so
@@ -522,6 +631,44 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + pairs with browser extension: %s\n",
 		delFmt: "  - pairs with browser extension: %s\n",
+		kind:   kindScope,
+		update: updateExpands,
+	},
+	// What its stages download when first needed (model weights, a
+	// dictionary): the size and where from. Provisioning one opens no
+	// access — the files land in a folder only the plugin's own stages
+	// read — but a gigabyte from a host the person never named is worth
+	// saying before it happens.
+	{
+		name:    "artifacts",
+		block:   "provides",
+		field:   "artifacts",
+		extract: artifactsSet,
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Downloads when first needed: %s\n", strings.Join(v, "; "))
+		},
+		addFmt: "  + downloads when first needed: %s\n",
+		delFmt: "  - no longer downloads: %s\n",
+		kind:   kindNote,
+		update: updateInformational,
+	},
+	// The author's reason for each request, shown under that request on the
+	// plugin's page too. A reason asks for nothing, so a reworded one is
+	// told at update, never asked about.
+	{
+		name:    "reasons",
+		block:   "requires",
+		field:   "reasons",
+		extract: reasonsSet,
+		display: reasonDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Why it asks: %s\n", strings.Join(v, "; "))
+		},
+		addFmt: "  + reason: %s\n",
+		delFmt: "  - reason withdrawn: %s\n",
+		kind:   kindNote,
+		update: updateInformational,
 	},
 }
 
@@ -539,12 +686,141 @@ var disclosedOutsideAxes = map[string]string{
 // an axis, nor disclosed outside the axes, nor here — so a new property is
 // shown at install unless someone writes down why it need not be.
 var notConsentFields = map[string]string{
-	"requires.reasons":       "the author's explanation of each request, shown under that request on the plugin's page; it asks for nothing itself",
-	"provides.artifacts":     "data files the plugin's own stages load inside their own sandboxes (model weights, dictionaries); provisioning one opens no access",
-	"provides.collections":   "data the plugin introduces and owns; another plugin reading or writing it needs that plugin's own grant, disclosed on that plugin",
 	"provides.context_names": "friendly names for tag sets, read by the context engine; no access",
 	"provides.effects":       "names the plugin defines for coordination; asserting one is the consent unit (consumes.effects), defining one grants nothing",
 	"provides.events":        "event types the plugin emits; receiving them is the subscriber's grant (consumes.events), emitting is not a request",
+}
+
+// ownCollections is the set of collections the plugin introduces itself.
+func ownCollections(m PluginManifest) map[string]bool {
+	out := map[string]bool{}
+	if m.Provides != nil {
+		for name := range m.Provides.Collections {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+// othersCollections drops the plugin's own collections from names.
+func othersCollections(m PluginManifest, names []string) []string {
+	own := ownCollections(m)
+	var out []string
+	for _, n := range names {
+		if !own[n] {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// ownCollectionsUsed is each of its own collections the plugin declares it
+// reads or writes.
+func ownCollectionsUsed(m PluginManifest) []string {
+	if m.Consumes == nil {
+		return nil
+	}
+	own := ownCollections(m)
+	var out []string
+	for _, n := range append(namedRefs(m.Consumes.Collections), m.Consumes.Writes...) {
+		if own[n] {
+			out = append(out, n)
+		}
+	}
+	return sortedUnique(out)
+}
+
+// artifactsSet is each artifact the plugin's stages can download, with its
+// size and where from: "whisper (466 MB, from huggingface.co/openai/whisper-small)".
+// The platforms it is for are named when it is not for every one, since
+// only those computers fetch it.
+func artifactsSet(m PluginManifest) []string {
+	if m.Provides == nil {
+		return nil
+	}
+	out := make([]string, 0, len(m.Provides.Artifacts))
+	for name, a := range m.Provides.Artifacts {
+		var from []string
+		for _, p := range a.Parts {
+			if src := artifactPartSource(p); src != "" {
+				from = append(from, src)
+			}
+		}
+		desc := humanBytes(a.SizeBytes)
+		if from = sortedUnique(from); len(from) > 0 {
+			desc += ", from " + strings.Join(from, ", ")
+		}
+		if a.Platform != nil {
+			var oses []string
+			for _, p := range *a.Platform {
+				if name, ok := osNames[p]; ok {
+					p = name
+				}
+				oses = append(oses, p)
+			}
+			desc += ", " + strings.Join(oses, "/") + " only"
+		}
+		out = append(out, fmt.Sprintf("%s (%s)", name, desc))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// osNames spells a manifest's platform names for a person.
+var osNames = map[string]string{"macos": "macOS", "linux": "Linux", "windows": "Windows"}
+
+// artifactPartSource names where one part is fetched from: a Hugging Face
+// repository, or the host of a URL.
+func artifactPartSource(p ArtifactPart) string {
+	if p.Repo != "" {
+		return "huggingface.co/" + p.Repo
+	}
+	if p.URL != "" {
+		if u, err := url.Parse(p.URL); err == nil && u.Host != "" {
+			return u.Host
+		}
+		return p.URL
+	}
+	return ""
+}
+
+// reasonsSet is the author's reasons as `<kind>:<what>` + "\x00" + reason,
+// sorted by request, so a reworded reason is a changed member.
+func reasonsSet(m PluginManifest) []string {
+	out := make([]string, 0, len(m.Requires.Reasons))
+	for key, why := range m.Requires.Reasons {
+		out = append(out, key+"\x00"+strings.Join(strings.Fields(why), " "))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// reasonKinds words each request kind a reason may be keyed by.
+var reasonKinds = map[string]string{
+	"privilege":          "privilege",
+	"dispatch":           "runs actions of",
+	"collection_read":    "reads collection",
+	"collection_write":   "writes collection",
+	"event_subscription": "receives events",
+	"effect_assert":      "effect",
+	"network_host":       "network",
+	"device":             "device",
+	"app_preference":     "app settings",
+	"wmi_class":          "WMI",
+	"dbus_method":        "D-Bus",
+	"blob_read":          "reads shared data",
+}
+
+// reasonDisplay renders one reasonsSet member: the request, then the
+// author's sentence in quotes.
+func reasonDisplay(member string) string {
+	key, why, _ := strings.Cut(member, "\x00")
+	if kind, what, ok := strings.Cut(key, ":"); ok {
+		if words, known := reasonKinds[kind]; known {
+			key = words + " " + what
+		}
+	}
+	return fmt.Sprintf("%s: “%s”", key, why)
 }
 
 // subscriptionKey is a subscription's consent identity, in the form the app
@@ -706,19 +982,23 @@ type consentDiff struct {
 }
 
 // expands reports whether the update asks for anything the installed version
-// did not — the condition that requires fresh consent.
-func (d consentDiff) expands() bool {
-	for _, ad := range d.Axes {
-		if len(ad.Added) > 0 {
+// did not — the condition that requires fresh consent. grantsOn is whether
+// the plugin's new grants would arrive switched on (grantsArriveOn): a new
+// grant that arrives off widens nothing until the person allows it.
+func (d consentDiff) expands(grantsOn bool) bool {
+	for _, ax := range consentAxes {
+		if len(d.Axes[ax.name].Added) > 0 && ax.addExpands(grantsOn) {
 			return true
 		}
 	}
 	return len(d.AddedEffects) > 0 || d.RunChanged
 }
 
+// contracts reports whether the update drops anything whose grant the app
+// will revoke. A note axis (a reason, a download) revokes nothing.
 func (d consentDiff) contracts() bool {
-	for _, ad := range d.Axes {
-		if len(ad.Removed) > 0 {
+	for _, ax := range consentAxes {
+		if len(d.Axes[ax.name].Removed) > 0 && ax.update != updateInformational {
 			return true
 		}
 	}
@@ -815,13 +1095,21 @@ func diffConsent(oldM, newM PluginManifest) consentDiff {
 // scripted update must not widen a plugin's reach because nobody was there
 // to say no. Contractions always print, because the actuator will revoke
 // those grants on reload and the user should know why.
-func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty bool) error {
+//
+// grantsOn is whether the plugin's new grants arrive switched on
+// (grantsArriveOn). When they do not, a new grant on an
+// updateExpandsWhenGrantedOn axis is printed as arriving off and asks
+// nothing here: the plugin's page asks.
+func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, grantsOn bool) error {
 	d := diffConsent(oldM, newM)
 	fmt.Printf("\nUpdating %s v%s → v%s\n", newM.Name, oldM.Version, newM.Version)
 
 	if d.contracts() {
 		fmt.Println("No longer requests (grants will be revoked):")
 		for _, ax := range consentAxes {
+			if ax.update == updateInformational {
+				continue
+			}
 			for _, m := range d.axis(ax.name).Removed {
 				fmt.Printf(ax.delFmt, ax.display(m))
 			}
@@ -831,13 +1119,47 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty bool)
 		}
 	}
 
-	if !d.expands() {
+	// Told, not asked: what changed on the note axes, and new grants that
+	// arrive off.
+	var arriveOff, notes []string
+	for _, ax := range consentAxes {
+		ad := d.axis(ax.name)
+		if ax.update == updateInformational {
+			for _, m := range ad.Added {
+				notes = append(notes, fmt.Sprintf(ax.addFmt, ax.display(m)))
+			}
+			for _, m := range ad.Removed {
+				notes = append(notes, fmt.Sprintf(ax.delFmt, ax.display(m)))
+			}
+		} else if !ax.addExpands(grantsOn) {
+			for _, m := range ad.Added {
+				arriveOff = append(arriveOff, fmt.Sprintf(ax.addFmt, ax.display(m)))
+			}
+		}
+	}
+	if len(arriveOff) > 0 {
+		fmt.Println("New requests, each off until you allow it on the plugin's page:")
+		for _, line := range arriveOff {
+			fmt.Print(line)
+		}
+	}
+	if len(notes) > 0 {
+		fmt.Println("Also changed (asks for nothing):")
+		for _, line := range notes {
+			fmt.Print(line)
+		}
+	}
+
+	if !d.expands(grantsOn) {
 		fmt.Println("No new privileges, effects, or sandbox scope.")
 		return nil
 	}
 
 	fmt.Println("This update NEWLY requests:")
 	for _, ax := range consentAxes {
+		if !ax.addExpands(grantsOn) {
+			continue
+		}
 		for _, m := range d.axis(ax.name).Added {
 			fmt.Printf(ax.addFmt, ax.display(m))
 		}

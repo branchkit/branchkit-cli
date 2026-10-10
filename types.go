@@ -81,6 +81,10 @@ type RequiresCfg struct {
 	// without. The app compares them with what this computer can do and
 	// says so at install, before anything runs.
 	Capabilities *capabilitiesDecl `json:"capabilities,omitempty"`
+	// Why the plugin asks for each thing it requests, keyed
+	// `<kind>:<what>` (`privilege:dispatch`), one plain sentence each.
+	// Shown at install beside the requests; asks for nothing itself.
+	Reasons map[string]string `json:"reasons,omitempty"`
 }
 
 // DevicesCfg mirrors the actuator's `requires.devices`: HID products as

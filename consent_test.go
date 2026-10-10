@@ -18,7 +18,7 @@ func TestDiffConsentSandboxAxis(t *testing.T) {
 		Requires: RequiresCfg{Network: []byte(`{"hosts":["collect.example","api.example"]}`)},
 	}
 	d := diffConsent(old, newM)
-	if !d.expands() {
+	if !d.expands(true) {
 		t.Fatal("added network hosts must read as an expansion")
 	}
 	if len(d.axis("network").Added) != 2 {
@@ -32,7 +32,7 @@ func TestDiffConsentSandboxAxis(t *testing.T) {
 		Requires: RequiresCfg{Network: []byte(`{"hosts":["api.example","collect.example"]}`)},
 	}
 	d = diffConsent(newM, reordered)
-	if d.expands() || d.contracts() {
+	if d.expands(true) || d.contracts() {
 		t.Fatalf("reordering the host set is not a consent change: %+v", d)
 	}
 
@@ -42,7 +42,7 @@ func TestDiffConsentSandboxAxis(t *testing.T) {
 		PluginManifest{ID: "p", Requires: RequiresCfg{Network: []byte(`"localhost"`)}},
 		PluginManifest{ID: "p", Requires: RequiresCfg{Network: []byte(`"outbound"`)}},
 	)
-	if !d.expands() {
+	if !d.expands(true) {
 		t.Fatal("localhost → outbound must expand")
 	}
 
@@ -51,13 +51,13 @@ func TestDiffConsentSandboxAxis(t *testing.T) {
 		PluginManifest{ID: "p", Run: "./p"},
 		PluginManifest{ID: "p", Run: "./other"},
 	)
-	if !d.expands() || !d.RunChanged {
+	if !d.expands(true) || !d.RunChanged {
 		t.Fatal("a changed run command must require fresh consent")
 	}
 
 	// Dropping the network is a contraction, not an expansion.
 	d = diffConsent(newM, old)
-	if d.expands() {
+	if d.expands(true) {
 		t.Fatalf("narrowing must not prompt as expansion: %+v", d)
 	}
 	if !d.contracts() {
@@ -154,12 +154,12 @@ func TestDiffConsent(t *testing.T) {
 	if len(d.RemovedEffects) != 1 || d.RemovedEffects[0] != "Capture" {
 		t.Fatalf("removed effects: %v", d.RemovedEffects)
 	}
-	if !d.expands() || !d.contracts() {
-		t.Fatalf("expands=%v contracts=%v", d.expands(), d.contracts())
+	if !d.expands(true) || !d.contracts() {
+		t.Fatalf("expands=%v contracts=%v", d.expands(true), d.contracts())
 	}
 
 	same := diffConsent(oldM, oldM)
-	if same.expands() || same.contracts() {
+	if same.expands(true) || same.contracts() {
 		t.Fatalf("identical manifests must diff empty: %+v", same)
 	}
 }
@@ -175,30 +175,30 @@ func TestConfirmUpdate(t *testing.T) {
 
 	// No expansion: proceeds without reading stdin, TTY or not.
 	for _, tty := range []bool{true, false} {
-		if err := confirmUpdate(sameM, oldM, strings.NewReader(""), false, tty); err != nil {
+		if err := confirmUpdate(sameM, oldM, strings.NewReader(""), false, tty, true); err != nil {
 			t.Fatalf("no-expansion update must not prompt (tty=%v): %v", tty, err)
 		}
-		if err := confirmUpdate(lessM, oldM, strings.NewReader(""), false, tty); err != nil {
+		if err := confirmUpdate(lessM, oldM, strings.NewReader(""), false, tty, true); err != nil {
 			t.Fatalf("contraction-only update must not prompt (tty=%v): %v", tty, err)
 		}
 	}
 
 	// Expansion, TTY: the answer decides.
-	if err := confirmUpdate(moreM, oldM, strings.NewReader("y\n"), false, true); err != nil {
+	if err := confirmUpdate(moreM, oldM, strings.NewReader("y\n"), false, true, true); err != nil {
 		t.Fatalf("yes must accept: %v", err)
 	}
-	if err := confirmUpdate(moreM, oldM, strings.NewReader("n\n"), false, true); err == nil {
+	if err := confirmUpdate(moreM, oldM, strings.NewReader("n\n"), false, true, true); err == nil {
 		t.Fatal("no must decline")
 	}
 
 	// Expansion, no TTY, no --yes: blocked.
-	if err := confirmUpdate(moreM, oldM, strings.NewReader("y\n"), false, false); err == nil {
+	if err := confirmUpdate(moreM, oldM, strings.NewReader("y\n"), false, false, true); err == nil {
 		t.Fatal("a scripted expanding update must block")
 	}
 
 	// --yes skips the question in either mode.
 	for _, tty := range []bool{true, false} {
-		if err := confirmUpdate(moreM, oldM, strings.NewReader(""), true, tty); err != nil {
+		if err := confirmUpdate(moreM, oldM, strings.NewReader(""), true, tty, true); err != nil {
 			t.Fatalf("--yes must proceed (tty=%v): %v", tty, err)
 		}
 	}
@@ -238,8 +238,8 @@ func TestConsentAxesCoverEveryRequiresField(t *testing.T) {
 	}
 	covered := map[string]bool{}
 	for _, ax := range consentAxes {
-		if ax.block == "" {
-			covered[ax.name] = true
+		if ax.block == "requires" {
+			covered[ax.field] = true
 		}
 	}
 	for field := range declared {
@@ -248,27 +248,15 @@ func TestConsentAxesCoverEveryRequiresField(t *testing.T) {
 		}
 	}
 
-	// And no axis may be stale. An axis need not come from the request
-	// block — `blobs` asks for another plugin's data rather than a platform
-	// capability, and lives in `consumes` — but it must name a real
-	// manifest field somewhere, derived from the types rather than from a
-	// list someone remembers to update.
-	elsewhere := tags(ConsumesCfg{})
-	for axis := range covered {
-		if !declared[axis] && !elsewhere[axis] {
-			t.Errorf("consent axis %q is a field of neither RequiresCfg nor ConsumesCfg — stale", axis)
-		}
-	}
-	// Axes that name their block explicitly are checked against it.
+	// And no axis may be stale: each names a real field of the block it
+	// says it reads, derived from the types rather than from a list
+	// someone remembers to update.
 	blocks := map[string]map[string]bool{
-		"consumes": elsewhere,
+		"consumes": tags(ConsumesCfg{}),
 		"provides": tags(ProvidesCfg{}),
 		"requires": declared,
 	}
 	for _, ax := range consentAxes {
-		if ax.block == "" {
-			continue
-		}
 		fields, ok := blocks[ax.block]
 		if !ok || !fields[ax.field] {
 			t.Errorf("consent axis %q names %s.%s, which is not a manifest field — stale", ax.name, ax.block, ax.field)
@@ -289,7 +277,7 @@ func TestProvidedBlobsAreDisclosedAndACeilingRaiseExpands(t *testing.T) {
 		t.Fatalf("disclosure: %v", got)
 	}
 	d := diffConsent(mk(64<<20, ""), mk(1<<30, ""))
-	if !d.expands() {
+	if !d.expands(true) {
 		t.Fatalf("raising max_bytes must require fresh consent: %+v", d)
 	}
 }
@@ -306,7 +294,7 @@ func TestRequestableHostsAreDisclosedAndGainingThemExpands(t *testing.T) {
 	if len(set) != 1 || networkDisplay(set[0]) == set[0] {
 		t.Fatalf("requestable not disclosed: %v", set)
 	}
-	if !diffConsent(mk(`{"hosts":["a.test"]}`), mk(`{"hosts":["a.test"],"requestable":true}`)).expands() {
+	if !diffConsent(mk(`{"hosts":["a.test"]}`), mk(`{"hosts":["a.test"],"requestable":true}`)).expands(true) {
 		t.Fatal("becoming requestable must require fresh consent")
 	}
 }
@@ -327,7 +315,7 @@ func TestPreferenceWriteIsItsOwnGrant(t *testing.T) {
 	if r := d.axis("preferences"); len(r.Added) != 0 || len(r.Removed) != 0 {
 		t.Fatalf("reading should be unchanged: %+v", r)
 	}
-	if !d.expands() {
+	if !d.expands(true) {
 		t.Fatal("a new change grant must require fresh consent")
 	}
 	for _, ax := range consentAxes {

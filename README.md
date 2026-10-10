@@ -62,8 +62,12 @@ any command for its flags.
 
 Install flags: `--force` skips the blocklist check; `--yes` (`-y`) answers the
 consent prompt. On a terminal, install shows what the plugin asks for (its
-privileges, filesystem, network hosts) and asks before anything is written; an
-update shows what changed.
+privileges, filesystem, network hosts, why it asks, and what it downloads) and
+asks before anything is written; an update shows what changed. An update that
+widens what the plugin can do needs a fresh yes, and without a terminal or
+`--yes` it stops. A new grant that arrives switched off on the plugin's page
+(any plugin that does not ship with BranchKit asking for another plugin's
+events, actions or collections) is shown and does not stop it.
 
 ### Authoring
 

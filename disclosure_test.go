@@ -61,18 +61,10 @@ func TestEverySchemaConsentFieldIsDisclosedOrExempt(t *testing.T) {
 		}
 	}
 
-	// What the axis registry covers, as <block>.<field>. An axis without
-	// an explicit block reads `requires.<name>`, or `consumes.<name>`
-	// where the request block has no such field (blobs).
+	// What the axis registry covers, as <block>.<field>.
 	byAxis := map[string]string{}
 	for _, ax := range consentAxes {
 		key := ax.block + "." + ax.field
-		if ax.block == "" {
-			key = "requires." + ax.name
-			if !inSchema[key] {
-				key = "consumes." + ax.name
-			}
-		}
 		if !inSchema[key] {
 			t.Errorf("consent axis %q reads %s, which the manifest schema does not have — stale", ax.name, key)
 		}
@@ -171,21 +163,21 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 			t.Errorf("an update adding %s does not show it as new", axis)
 		}
 	}
-	if !d.expands() {
+	if !d.expands(true) {
 		t.Fatal("an update adding stages, extensions and consumption must require fresh consent")
 	}
 
 	// Pointing a stage at a different program is a change of member.
 	moved := parseManifest(t, `{"id": "x", "provides": {"stages": {"ocr": {"binary": "other"}}}}`)
 	same := parseManifest(t, `{"id": "x", "provides": {"stages": {"ocr": {}}}}`)
-	if !diffConsent(same, moved).expands() {
+	if !diffConsent(same, moved).expands(true) {
 		t.Error("a stage that runs a different program must require fresh consent")
 	}
 	// Narrowing a dispatch to fewer action types is not a new grant: the
 	// grant is per prefix.
 	wide := parseManifest(t, `{"id": "x", "consumes": {"dispatch": ["tiling"]}}`)
 	narrow := parseManifest(t, `{"id": "x", "consumes": {"dispatch": [{"prefix": "tiling", "actions": ["tiling.snap"]}]}}`)
-	if d := diffConsent(wide, narrow); d.expands() || d.contracts() {
+	if d := diffConsent(wide, narrow); d.expands(true) || d.contracts() {
 		t.Errorf("narrowing a dispatch's actions is not a consent change: %+v", d)
 	}
 }
@@ -196,7 +188,7 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 func TestPreviewDiffCarriesTheTerminalCopy(t *testing.T) {
 	oldM := parseManifest(t, `{"id": "x", "version": "1.0.0", "requires": {"privileges": ["shell"], "network": {"hosts": ["old.example"]}}}`)
 	newM := parseManifest(t, `{"id": "x", "version": "2.0.0", "requires": {"network": {"hosts": ["new.example"]}, "runtimes": ["python"]}, "consumes": {"events": [{"pattern": "tempo.**"}]}}`)
-	up := previewDiff(oldM, newM)
+	up := previewDiff(oldM, newM, true)
 	if !up.Expands || up.InstalledVersion != "1.0.0" {
 		t.Fatalf("diff: %+v", up)
 	}
@@ -204,13 +196,13 @@ func TestPreviewDiffCarriesTheTerminalCopy(t *testing.T) {
 	for _, c := range up.Added {
 		added[c.Axis] = c
 	}
-	if c := added["network"]; c.Text != "network: new.example (allow it on the plugin's page)" || !c.Grant {
+	if c := added["network"]; c.Text != "network: new.example (allow it on the plugin's page)" || c.Kind != kindGrant {
 		t.Errorf("network row: %+v", c)
 	}
-	if c := added["runtimes"]; c.Grant || !strings.Contains(c.Text, "runtime: python") {
+	if c := added["runtimes"]; c.Kind == kindGrant || !strings.Contains(c.Text, "runtime: python") {
 		t.Errorf("runtimes row: %+v", c)
 	}
-	if c := added["events"]; !c.Grant || c.Item != "tempo.**" {
+	if c := added["events"]; c.Kind != kindGrant || c.Item != "tempo.**" {
 		t.Errorf("events row: %+v", c)
 	}
 	removed := map[string]string{}
@@ -231,10 +223,10 @@ func TestPreviewDiffCarriesTheTerminalCopy(t *testing.T) {
 	if !reflect.DeepEqual(axes, []string{"privileges", "sockets", "run"}) {
 		t.Errorf("disclosure order: %v", axes)
 	}
-	if disc[1].Text != "Listen sockets: 1 loopback listener(s)" || disc[1].Grant {
+	if disc[1].Text != "Listen sockets: 1 loopback listener(s)" || disc[1].Kind == kindGrant {
 		t.Errorf("sockets line: %+v", disc[1])
 	}
-	if !disc[0].Grant || disc[0].Items[0] != "shell" {
+	if disc[0].Kind != kindGrant || disc[0].Items[0] != "shell" {
 		t.Errorf("privileges entry: %+v", disc[0])
 	}
 }

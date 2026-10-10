@@ -104,7 +104,9 @@ func installFromLocal(source string) error {
 	// other update.
 	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
 	if old, rerr := readManifest(filepath.Join(targetDir, "plugin.json")); rerr == nil {
-		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY()); err != nil {
+		// A copy from a local folder is never first-party to the app
+		// (grantsArriveOn), so its new grants arrive off.
+		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(manifest.ID, "")); err != nil {
 			return err
 		}
 	} else if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
@@ -211,7 +213,7 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 	// (the old plugin.json is sitting right at the swap target) — nothing
 	// new means no question, an expansion needs a fresh yes.
 	if old, rerr := readManifest(filepath.Join(userPluginsDir(), manifest.ID, "plugin.json")); rerr == nil {
-		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY()); err != nil {
+		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(manifest.ID, parsed.Owner+"/"+parsed.Repo)); err != nil {
 			os.RemoveAll(tempDir)
 			return err
 		}
@@ -380,7 +382,7 @@ func installFromSource(source string) error {
 	// the disclosure, let alone asking.
 	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
 	if old, rerr := readManifest(filepath.Join(targetDir, "plugin.json")); rerr == nil {
-		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY()); err != nil {
+		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(manifest.ID, parsed.Owner+"/"+parsed.Repo)); err != nil {
 			os.RemoveAll(tempDir)
 			return err
 		}

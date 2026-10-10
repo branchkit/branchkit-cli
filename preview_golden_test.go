@@ -46,9 +46,18 @@ const goldenNewManifest = `{
 		"preferences": {"read": ["defaults:com.example.reader"], "write": ["defaults:com.example.writer"]},
 		"devices": {"hid": ["046d:c52b"], "ble": ["fff0"]},
 		"runtimes": ["python"],
-		"capabilities": {"uses": ["speech.say", "native.dbus_call"], "required": ["speech.say"]}
+		"capabilities": {"uses": ["speech.say", "native.dbus_call"], "required": ["speech.say"]},
+		"reasons": {
+			"privilege:shell": "To run the converter you pointed it at.",
+			"dispatch:tiling": "So a button can move the window you named."
+		}
 	},
 	"provides": {
+		"artifacts": {
+			"ocr-model": {"size_bytes": 52428800, "parts": [{"kind": "hf_files", "repo": "example/ocr", "revision": "0123456789abcdef0123456789abcdef01234567", "files": ["model.onnx"]}]},
+			"dictionary": {"size_bytes": 2097152, "platform": "macos", "parts": [{"kind": "http_file", "url": "https://dl.example.com/dict.bin", "sha256": "00"}]}
+		},
+		"collections": {"golden_notes": {}},
 		"blobs": {"frames": {"max_bytes": 1048576, "on_full": "evict_oldest"}},
 		"stages": {"ocr": {}, "stt": {"binary": "bin/stt-engine"}},
 		"native_messaging": {
@@ -66,8 +75,8 @@ const goldenNewManifest = `{
 			{"pattern": "voice.*", "source": "voice"}
 		],
 		"dispatch": ["tiling"],
-		"collections": [{"name": "apps", "fields": ["name"]}],
-		"writes": ["snippets"],
+		"collections": [{"name": "apps", "fields": ["name"]}, "golden_notes"],
+		"writes": ["snippets", "golden_notes"],
 		"effects": [{
 			"asserts": ["suppress_notifications"],
 			"user_visible_name": "Focus",
@@ -79,7 +88,7 @@ const goldenNewManifest = `{
 func TestPreviewGolden(t *testing.T) {
 	oldM := parseManifest(t, goldenOldManifest)
 	newM := parseManifest(t, goldenNewManifest)
-	up := previewDiff(oldM, newM)
+	up := previewDiff(oldM, newM, false)
 	result := previewResult{
 		PreviewFormat: previewFormat,
 		ID:            newM.ID,

@@ -126,6 +126,43 @@ func findCatalogEntryBySource(source string) *catalogEntry {
 	return nil
 }
 
+// grantsArriveOn reports whether the app will switch on the grants this
+// plugin's manifest declares, without asking — true only for a plugin that
+// ships with BranchKit, which the app recognises as a first-party catalog
+// entry, in the branchkit organisation, installed from the repository the
+// catalog names. Every other plugin's grants arrive off on its page and wait
+// for the person there. repo is the `owner/repo` being installed; "" for a
+// local folder, which the app never treats as first-party.
+//
+// An unreachable catalog answers true: the answer decides whether an update
+// may proceed without a fresh yes, and an unknown answer must not be the
+// one that skips the question.
+func grantsArriveOn(pluginID, repo string) bool {
+	if repo == "" {
+		return false
+	}
+	cat, err := fetchCatalog()
+	if err != nil {
+		return true
+	}
+	return catalogGrantsOn(cat, pluginID, repo)
+}
+
+// catalogGrantsOn is grantsArriveOn's rule against a fetched catalog.
+func catalogGrantsOn(cat catalog, pluginID, repo string) bool {
+	for _, e := range cat.Plugins {
+		if e.ID != pluginID {
+			continue
+		}
+		listed := strings.TrimPrefix(e.Source, "github:")
+		owner, _, _ := strings.Cut(listed, "/")
+		return e.Tier == "first-party" &&
+			strings.EqualFold(owner, "branchkit") &&
+			strings.EqualFold(listed, strings.TrimPrefix(repo, "github:"))
+	}
+	return false
+}
+
 func resolveShortName(name string) (string, error) {
 	entry, err := resolveShortNameEntry(name)
 	if err != nil {

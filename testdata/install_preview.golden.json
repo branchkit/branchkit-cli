@@ -1,5 +1,5 @@
 {
-  "preview_format": 2,
+  "preview_format": 3,
   "id": "golden",
   "name": "Golden",
   "version": "2.0.0",
@@ -13,7 +13,7 @@
         "shell"
       ],
       "text": "Privileges: windows, shell",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "optional_privileges",
@@ -21,7 +21,7 @@
         "clipboard"
       ],
       "text": "Optional privileges: clipboard",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "network",
@@ -30,7 +30,7 @@
         "more hosts it asks for while running (each off until you allow it)"
       ],
       "text": "Network: api.example, more hosts it asks for while running (each off until you allow it) (allow each host on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "sockets",
@@ -38,7 +38,7 @@
         "{\"id\":\"extension\"}"
       ],
       "text": "Listen sockets: 1 loopback listener(s)",
-      "grant": false
+      "kind": "scope"
     },
     {
       "axis": "dbus",
@@ -46,7 +46,7 @@
         "session:org.example.App/org.example.App.Ping"
       ],
       "text": "D-Bus: calls session:org.example.App/org.example.App.Ping (allow each method on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "wmi",
@@ -54,7 +54,7 @@
         "root/cimv2/Win32_Battery"
       ],
       "text": "WMI: reads root/cimv2/Win32_Battery (allow each class on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "preferences",
@@ -63,7 +63,7 @@
         "defaults:com.example.writer"
       ],
       "text": "App settings: defaults:com.example.reader, defaults:com.example.writer (allow each on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "preference_writes",
@@ -71,7 +71,7 @@
         "defaults:com.example.writer"
       ],
       "text": "Changes app settings: defaults:com.example.writer — Changing an app's settings can change what programs it runs (allow each on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "devices",
@@ -80,7 +80,7 @@
         "Bluetooth service fff0"
       ],
       "text": "Devices: HID 046d:c52b, Bluetooth service fff0 (allow each on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "blobs",
@@ -88,7 +88,7 @@
         "camera/frames"
       ],
       "text": "Shared data: reads camera/frames (allow each on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "events",
@@ -97,7 +97,7 @@
         "voice.* (from voice)"
       ],
       "text": "Events: receives tempo.**, voice.* (from voice) (allow each on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "always_events",
@@ -106,7 +106,7 @@
         "golden.*"
       ],
       "text": "Events always delivered: _platform.window.**, golden.* (platform events and its own; no switch)",
-      "grant": false
+      "kind": "scope"
     },
     {
       "axis": "dispatch",
@@ -114,7 +114,7 @@
         "tiling"
       ],
       "text": "Runs other plugins' actions: tiling (allow each on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "collection_reads",
@@ -122,7 +122,7 @@
         "apps"
       ],
       "text": "Reads collections: apps (allow each on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
     },
     {
       "axis": "collection_writes",
@@ -130,7 +130,15 @@
         "snippets"
       ],
       "text": "Writes collections: snippets (allow each on the plugin's page after install)",
-      "grant": true
+      "kind": "grant"
+    },
+    {
+      "axis": "own_collections",
+      "items": [
+        "golden_notes"
+      ],
+      "text": "Uses its own collections: golden_notes (its own data; no switch)",
+      "kind": "note"
     },
     {
       "axis": "provided_blobs",
@@ -138,7 +146,7 @@
         "frames (up to 1 MB on disk, drops the oldest data when full, cleared when the plugin stops, checked by BranchKit)"
       ],
       "text": "Offers shared data: frames (up to 1 MB on disk, drops the oldest data when full, cleared when the plugin stops, checked by BranchKit)",
-      "grant": false
+      "kind": "scope"
     },
     {
       "axis": "runtimes",
@@ -146,7 +154,7 @@
         "python"
       ],
       "text": "Managed runtimes: python",
-      "grant": false
+      "kind": "scope"
     },
     {
       "axis": "capabilities",
@@ -154,7 +162,7 @@
         "speech.say"
       ],
       "text": "Cannot start without: speech.say",
-      "grant": false
+      "kind": "scope"
     },
     {
       "axis": "stages",
@@ -163,7 +171,7 @@
         "stt (bin/stt-engine)"
       ],
       "text": "Pipeline stages: ocr, stt (bin/stt-engine) (programs of its own that BranchKit starts)",
-      "grant": false
+      "kind": "scope"
     },
     {
       "axis": "native_messaging",
@@ -172,7 +180,25 @@
         "Firefox extension golden@example.com"
       ],
       "text": "Browser extensions it pairs with: Chrome extension abcdefghijklmnopabcdefghijklmnop, Firefox extension golden@example.com (registered with each browser)",
-      "grant": false
+      "kind": "scope"
+    },
+    {
+      "axis": "artifacts",
+      "items": [
+        "dictionary (2 MB, from dl.example.com, macOS only)",
+        "ocr-model (50 MB, from huggingface.co/example/ocr)"
+      ],
+      "text": "Downloads when first needed: dictionary (2 MB, from dl.example.com, macOS only); ocr-model (50 MB, from huggingface.co/example/ocr)",
+      "kind": "note"
+    },
+    {
+      "axis": "reasons",
+      "items": [
+        "runs actions of tiling: “So a button can move the window you named.”",
+        "privilege shell: “To run the converter you pointed it at.”"
+      ],
+      "text": "Why it asks: runs actions of tiling: “So a button can move the window you named.”; privilege shell: “To run the converter you pointed it at.”",
+      "kind": "note"
     },
     {
       "axis": "run",
@@ -180,7 +206,7 @@
         "./golden-plugin --v2"
       ],
       "text": "Runs: ./golden-plugin --v2 (in the plugin's sandbox)",
-      "grant": false
+      "kind": "scope"
     }
   ],
   "capabilities": {
@@ -213,169 +239,232 @@
         "axis": "privileges",
         "item": "shell",
         "text": "shell",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "privileges",
         "item": "windows",
         "text": "windows",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "optional_privileges",
         "item": "clipboard",
         "text": "clipboard (optional — granted only if you approve a later request)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "network",
         "item": "api.example",
         "text": "network: api.example (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "network",
         "item": "more hosts it asks for while running (each off until you allow it)",
         "text": "network: more hosts it asks for while running (each off until you allow it) (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "sockets",
         "item": "{\"id\":\"extension\"}",
         "text": "listen socket: {\"id\":\"extension\"}",
-        "grant": false
+        "kind": "scope",
+        "expands": true
       },
       {
         "axis": "dbus",
         "item": "session:org.example.App/org.example.App.Ping",
         "text": "D-Bus: session:org.example.App/org.example.App.Ping (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "wmi",
         "item": "root/cimv2/Win32_Battery",
         "text": "WMI: root/cimv2/Win32_Battery (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "preferences",
         "item": "defaults:com.example.reader",
         "text": "App settings: defaults:com.example.reader (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "preferences",
         "item": "defaults:com.example.writer",
         "text": "App settings: defaults:com.example.writer (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "preference_writes",
         "item": "defaults:com.example.writer",
         "text": "Changes app settings: defaults:com.example.writer (can change what programs the app runs; allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "devices",
         "item": "Bluetooth service fff0",
         "text": "Device: Bluetooth service fff0 (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "devices",
         "item": "HID 046d:c52b",
         "text": "Device: HID 046d:c52b (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "blobs",
         "item": "camera/frames",
         "text": "reads shared data: camera/frames (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": true
       },
       {
         "axis": "events",
         "item": "tempo.**",
         "text": "receives events: tempo.** (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": false
       },
       {
         "axis": "events",
         "item": "voice.* (from voice)",
         "text": "receives events: voice.* (from voice) (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": false
       },
       {
         "axis": "always_events",
         "item": "_platform.window.**",
         "text": "always receives events: _platform.window.** (platform events and its own; no switch)",
-        "grant": false
+        "kind": "scope",
+        "expands": true
       },
       {
         "axis": "always_events",
         "item": "golden.*",
         "text": "always receives events: golden.* (platform events and its own; no switch)",
-        "grant": false
+        "kind": "scope",
+        "expands": true
       },
       {
         "axis": "dispatch",
         "item": "tiling",
         "text": "runs other plugins' actions: tiling (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": false
       },
       {
         "axis": "collection_reads",
         "item": "apps",
         "text": "reads collection: apps (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": false
       },
       {
         "axis": "collection_writes",
         "item": "snippets",
         "text": "writes collection: snippets (allow it on the plugin's page)",
-        "grant": true
+        "kind": "grant",
+        "expands": false
+      },
+      {
+        "axis": "own_collections",
+        "item": "golden_notes",
+        "text": "uses its own collection: golden_notes",
+        "kind": "note",
+        "expands": false
       },
       {
         "axis": "provided_blobs",
         "item": "frames (up to 1 MB on disk, drops the oldest data when full, cleared when the plugin stops, checked by BranchKit)",
         "text": "offers shared data: frames (up to 1 MB on disk, drops the oldest data when full, cleared when the plugin stops, checked by BranchKit)",
-        "grant": false
+        "kind": "scope",
+        "expands": true
       },
       {
         "axis": "runtimes",
         "item": "python",
         "text": "runtime: python (read+exec of the managed runtime)",
-        "grant": false
+        "kind": "scope",
+        "expands": true
       },
       {
         "axis": "capabilities",
         "item": "speech.say",
         "text": "cannot start without: speech.say",
-        "grant": false
+        "kind": "scope",
+        "expands": true
       },
       {
         "axis": "stages",
         "item": "ocr",
         "text": "pipeline stage: ocr (a program of its own that BranchKit starts)",
-        "grant": false
+        "kind": "scope",
+        "expands": true
       },
       {
         "axis": "stages",
         "item": "stt (bin/stt-engine)",
         "text": "pipeline stage: stt (bin/stt-engine) (a program of its own that BranchKit starts)",
-        "grant": false
+        "kind": "scope",
+        "expands": true
       },
       {
         "axis": "native_messaging",
         "item": "Chrome extension abcdefghijklmnopabcdefghijklmnop",
         "text": "pairs with browser extension: Chrome extension abcdefghijklmnopabcdefghijklmnop",
-        "grant": false
+        "kind": "scope",
+        "expands": true
       },
       {
         "axis": "native_messaging",
         "item": "Firefox extension golden@example.com",
         "text": "pairs with browser extension: Firefox extension golden@example.com",
-        "grant": false
+        "kind": "scope",
+        "expands": true
+      },
+      {
+        "axis": "artifacts",
+        "item": "dictionary (2 MB, from dl.example.com, macOS only)",
+        "text": "downloads when first needed: dictionary (2 MB, from dl.example.com, macOS only)",
+        "kind": "note",
+        "expands": false
+      },
+      {
+        "axis": "artifacts",
+        "item": "ocr-model (50 MB, from huggingface.co/example/ocr)",
+        "text": "downloads when first needed: ocr-model (50 MB, from huggingface.co/example/ocr)",
+        "kind": "note",
+        "expands": false
+      },
+      {
+        "axis": "reasons",
+        "item": "runs actions of tiling: “So a button can move the window you named.”",
+        "text": "reason: runs actions of tiling: “So a button can move the window you named.”",
+        "kind": "note",
+        "expands": false
+      },
+      {
+        "axis": "reasons",
+        "item": "privilege shell: “To run the converter you pointed it at.”",
+        "text": "reason: privilege shell: “To run the converter you pointed it at.”",
+        "kind": "note",
+        "expands": false
       }
     ],
     "removed": [
@@ -383,25 +472,25 @@
         "axis": "privileges",
         "item": "screenshot",
         "text": "screenshot",
-        "grant": true
+        "kind": "grant"
       },
       {
         "axis": "network",
         "item": "old.example",
         "text": "network: old.example",
-        "grant": true
+        "kind": "grant"
       },
       {
         "axis": "events",
         "item": "tempo.** (from metronome)",
         "text": "receives events: tempo.** (from metronome)",
-        "grant": true
+        "kind": "grant"
       },
       {
         "axis": "collection_writes",
         "item": "notes",
         "text": "writes collection: notes",
-        "grant": true
+        "kind": "grant"
       }
     ],
     "added_effects": [
@@ -415,6 +504,7 @@
     ],
     "removed_effects": [],
     "run_changed": true,
-    "expands": true
+    "expands": true,
+    "grants_arrive_on": false
   }
 }

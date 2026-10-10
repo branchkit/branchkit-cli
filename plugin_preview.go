@@ -17,8 +17,10 @@ import (
 // would show no privileges and still offer Install. Raise it whenever a field
 // the panel reads is renamed, removed or changes meaning (adding a field
 // does not need it). 1 was the shape before `disclosures`, which carried no
-// number.
-const previewFormat = 2
+// number; 2 marked grants with a `grant` flag and counted every added
+// member as an expansion; 3 carries each member's `kind` (grant, scope or
+// note) and each added member's own `expands`.
+const previewFormat = 3
 
 type previewResult struct {
 	// PreviewFormat is previewFormat, so a reader can tell which shape it got.
@@ -58,9 +60,10 @@ type previewDisclosure struct {
 	Items []string `json:"items"`
 	// Text is the terminal's install line for the axis, unindented.
 	Text string `json:"text"`
-	// Grant: each item is a switch on the plugin's page after install.
-	// Otherwise it is enforced from the manifest with no later prompt.
-	Grant bool `json:"grant"`
+	// Kind is the axis's axisKind: "grant" (each item a switch on the
+	// plugin's page after install), "scope" (enforced from the manifest
+	// with no later prompt) or "note" (told; asks for nothing).
+	Kind axisKind `json:"kind"`
 }
 
 // previewChange is one member an update adds or removes.
@@ -69,8 +72,12 @@ type previewChange struct {
 	Item string `json:"item"`
 	// Text is the terminal's update line for the member, without its
 	// "+"/"-" marker.
-	Text  string `json:"text"`
-	Grant bool   `json:"grant"`
+	Text string   `json:"text"`
+	Kind axisKind `json:"kind"`
+	// Expands, on an added member only: it needs a fresh yes. False for a
+	// note, and for a new grant that arrives off (GrantsArriveOn false on
+	// an axis whose additions ask only when grants arrive on).
+	Expands *bool `json:"expands,omitempty"`
 }
 
 // previewUpdate mirrors consentDiff for the settings panel, plus the
@@ -83,6 +90,10 @@ type previewUpdate struct {
 	RemovedEffects   []string        `json:"removed_effects"`
 	RunChanged       bool            `json:"run_changed"`
 	Expands          bool            `json:"expands"`
+	// GrantsArriveOn: the app switches this plugin's new grants on without
+	// asking (a plugin that ships with BranchKit). Otherwise each arrives
+	// off on the plugin's page.
+	GrantsArriveOn bool `json:"grants_arrive_on"`
 }
 
 // previewEffect is one consent unit of effects, carrying the author-written
@@ -110,7 +121,7 @@ func previewDisclosures(m PluginManifest) []previewDisclosure {
 			Axis:  ax.name,
 			Items: display,
 			Text:  disclosureText(ax.summary(display)),
-			Grant: ax.grant,
+			Kind:  ax.kind,
 		})
 	}
 	if line := runSummary(m); line != "" {
@@ -118,6 +129,7 @@ func previewDisclosures(m PluginManifest) []previewDisclosure {
 			Axis:  "run",
 			Items: []string{m.Run},
 			Text:  disclosureText(line),
+			Kind:  kindScope,
 		})
 	}
 	return out
@@ -136,8 +148,8 @@ func previewEffects(effects []EffectDeclaration) []previewEffect {
 }
 
 // previewDiff is the update consent diff as data, from the same diff and
-// the same copy as confirmUpdate.
-func previewDiff(oldM, newM PluginManifest) previewUpdate {
+// the same copy as confirmUpdate. grantsOn as for confirmUpdate.
+func previewDiff(oldM, newM PluginManifest, grantsOn bool) previewUpdate {
 	d := diffConsent(oldM, newM)
 	up := previewUpdate{
 		InstalledVersion: oldM.Version,
@@ -146,23 +158,25 @@ func previewDiff(oldM, newM PluginManifest) previewUpdate {
 		AddedEffects:     previewEffects(d.AddedEffects),
 		RemovedEffects:   emptyNotNil(d.RemovedEffects),
 		RunChanged:       d.RunChanged,
-		Expands:          d.expands(),
+		Expands:          d.expands(grantsOn),
+		GrantsArriveOn:   grantsOn,
 	}
 	for _, ax := range consentAxes {
 		for _, m := range d.axis(ax.name).Added {
 			up.Added = append(up.Added, previewChange{
-				Axis:  ax.name,
-				Item:  ax.display(m),
-				Text:  disclosureText(fmt.Sprintf(ax.addFmt, ax.display(m))),
-				Grant: ax.grant,
+				Axis:    ax.name,
+				Item:    ax.display(m),
+				Text:    disclosureText(fmt.Sprintf(ax.addFmt, ax.display(m))),
+				Kind:    ax.kind,
+				Expands: boolPtr(ax.addExpands(grantsOn)),
 			})
 		}
 		for _, m := range d.axis(ax.name).Removed {
 			up.Removed = append(up.Removed, previewChange{
-				Axis:  ax.name,
-				Item:  ax.display(m),
-				Text:  disclosureText(fmt.Sprintf(ax.delFmt, ax.display(m))),
-				Grant: ax.grant,
+				Axis: ax.name,
+				Item: ax.display(m),
+				Text: disclosureText(fmt.Sprintf(ax.delFmt, ax.display(m))),
+				Kind: ax.kind,
 			})
 		}
 	}
@@ -242,13 +256,15 @@ func cmdPreview(source string) {
 	// Already installed → attach the consent diff, same basis as the
 	// install path's confirmUpdate: the manifest at the swap target.
 	if old, err := readManifest(filepath.Join(userPluginsDir(), manifest.ID, "plugin.json")); err == nil {
-		up := previewDiff(old, manifest)
+		up := previewDiff(old, manifest, grantsArriveOn(manifest.ID, parsed.Owner+"/"+parsed.Repo))
 		result.Update = &up
 	}
 
 	data, _ := json.Marshal(result)
 	fmt.Println(string(data))
 }
+
+func boolPtr(b bool) *bool { return &b }
 
 func emptyNotNil(s []string) []string {
 	if s == nil {

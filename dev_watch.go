@@ -383,7 +383,9 @@ func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 		return false, err
 	}
 	if oldM, err := readManifest(filepath.Join(dst, "plugin.json")); err == nil {
-		if diffConsent(oldM, newM).expands() {
+		// Counted as if its grants arrive on: the stricter answer, and a
+		// rebuild is no moment to fetch the catalog.
+		if diffConsent(oldM, newM).expands(true) {
 			return false, fmt.Errorf("plugin.json now requests more than the installed copy — run `branchkit-cli plugin install .` to review the change, then save again")
 		}
 	}

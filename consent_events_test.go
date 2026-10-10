@@ -18,7 +18,7 @@ func TestEventSourceIsPartOfTheGrant(t *testing.T) {
 	if len(ev.Added) != 1 || ev.Added[0] != "tempo.**" || len(ev.Removed) != 1 || ev.Removed[0] != "tempo.**:metronome" {
 		t.Fatalf("widening the source is not a grant change: %+v", ev)
 	}
-	if !d.expands() {
+	if !d.expands(true) {
 		t.Fatal("widening a subscription to every sender must require fresh consent")
 	}
 	if got := subscriptionDisplay(ev.Removed[0]); got != "tempo.** (from metronome)" {
@@ -29,7 +29,7 @@ func TestEventSourceIsPartOfTheGrant(t *testing.T) {
 	if got := subscriptionKeys(two, true); len(got) != 2 {
 		t.Fatalf("same pattern, different sources collapsed: %v", got)
 	}
-	if !diffConsent(old, two).expands() {
+	if !diffConsent(old, two).expands(true) {
 		t.Fatal("a second sender for the same pattern must require fresh consent")
 	}
 }
@@ -75,7 +75,7 @@ func TestOnlySwitchedSubscriptionsAreGrants(t *testing.T) {
 		t.Fatalf("always-delivered members: %v", got)
 	}
 	for _, ax := range consentAxes {
-		if ax.name == "always_events" && ax.grant {
+		if ax.name == "always_events" && ax.kind == kindGrant {
 			t.Fatal("always-delivered events must not be disclosed as switches")
 		}
 	}
