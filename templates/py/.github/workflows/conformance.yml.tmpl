@@ -7,6 +7,9 @@ on:
 
 jobs:
   conformance:
+    # GitHub names a check run after its job, not its workflow, and
+    # branchkit-cli finds the conformance result by this name: keep it.
+    name: BranchKit Conformance
     runs-on: ubuntu-latest
 
     steps:

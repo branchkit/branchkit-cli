@@ -7,7 +7,14 @@ import (
 	"time"
 )
 
-const conformanceCheckName = "BranchKit Conformance"
+// GitHub names an Actions check run after its JOB, never after the workflow.
+// The scaffold templates give the conformance job this name. Workflows
+// scaffolded before they did leave the job unnamed, so its check run carries
+// the job id instead; both are accepted, the named run first.
+const (
+	conformanceCheckName       = "BranchKit Conformance"
+	legacyConformanceCheckName = "conformance"
+)
 
 type conformanceStatus struct {
 	Status string // "passed", "failed", "pending", "unknown" — derived from
@@ -51,21 +58,27 @@ func fetchConformanceStatus(source ResolvedSource, tag string) conformanceStatus
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return conformanceStatus{Status: "unknown", Tag: tag}
 	}
+	return conformanceFromCheckRuns(result.CheckRuns, tag)
+}
 
-	for _, run := range result.CheckRuns {
-		if run.Name != conformanceCheckName {
-			continue
-		}
-		switch {
-		case run.Status != "completed":
-			return conformanceStatus{Status: "pending", Tag: tag}
-		case run.Conclusion == "success":
-			return conformanceStatus{Status: "passed", Tag: tag}
-		default:
-			return conformanceStatus{Status: "failed", Tag: tag}
+// conformanceFromCheckRuns reads the conformance result out of a commit's
+// check runs.
+func conformanceFromCheckRuns(runs []ghCheckRun, tag string) conformanceStatus {
+	for _, name := range []string{conformanceCheckName, legacyConformanceCheckName} {
+		for _, run := range runs {
+			if run.Name != name {
+				continue
+			}
+			switch {
+			case run.Status != "completed":
+				return conformanceStatus{Status: "pending", Tag: tag}
+			case run.Conclusion == "success":
+				return conformanceStatus{Status: "passed", Tag: tag}
+			default:
+				return conformanceStatus{Status: "failed", Tag: tag}
+			}
 		}
 	}
-
 	return conformanceStatus{Status: "unknown", Tag: tag}
 }
 
