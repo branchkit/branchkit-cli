@@ -254,6 +254,18 @@ func (ax consentAxis) addExpands(grantsOn bool) bool {
 
 func plainDisplay(s string) string { return s }
 
+// protectedReadDisplay names a protected kind of window in the person's
+// words; an unknown name (a newer app's) is shown as spelled.
+func protectedReadDisplay(s string) string {
+	switch s {
+	case "password_managers":
+		return "what password managers show"
+	case "branchkit_windows":
+		return "what BranchKit's own windows show"
+	}
+	return s
+}
+
 // axisReaders is how this CLI reads and words each axis the app publishes:
 // the extractor and the copy. Which axes exist, the manifest property each
 // reads, what a member is (kind) and when an update adding one asks again
@@ -340,6 +352,20 @@ var axisReaders = []consentAxis{
 		},
 		addFmt: "  + WMI: %s (allow it on the plugin's page)\n",
 		delFmt: "  - WMI: %s\n",
+	},
+	// Protected windows: reading what a password manager's windows show,
+	// or BranchKit's own (its permission prompt among them). Off for every
+	// plugin, bundled or not, until the person turns it on on the plugin's
+	// page, where turning it on is confirmed in BranchKit's own window.
+	{
+		name:    "protected_reads",
+		extract: func(m PluginManifest) []string { return m.Requires.ProtectedReads },
+		display: protectedReadDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Protected windows: reads %s (off until you turn each on on the plugin's page)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + reads protected windows: %s (off until you turn it on on the plugin's page)\n",
+		delFmt: "  - reads protected windows: %s\n",
 	},
 	// Other apps' settings (macOS defaults, GSettings, the user's
 	// registry): reading each declared domain is one grant, and changing

@@ -43,6 +43,7 @@ const goldenNewManifest = `{
 		"sockets": {"listen": [{"id": "extension"}]},
 		"dbus": {"methods": ["session:org.example.App/org.example.App.Ping"]},
 		"wmi": {"classes": ["root/cimv2/Win32_Battery"]},
+		"protected_reads": ["password_managers"],
 		"preferences": {"read": ["defaults:com.example.reader"], "write": ["defaults:com.example.writer"]},
 		"devices": {"hid": ["046d:c52b"], "ble": ["fff0"]},
 		"runtimes": ["python"],

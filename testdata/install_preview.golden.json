@@ -57,6 +57,14 @@
       "kind": "grant"
     },
     {
+      "axis": "protected_reads",
+      "items": [
+        "what password managers show"
+      ],
+      "text": "Protected windows: reads what password managers show (off until you turn each on on the plugin's page)",
+      "kind": "grant"
+    },
+    {
       "axis": "preferences",
       "items": [
         "defaults:com.example.reader",
@@ -289,6 +297,13 @@
         "axis": "wmi",
         "item": "root/cimv2/Win32_Battery",
         "text": "WMI: root/cimv2/Win32_Battery (allow it on the plugin's page)",
+        "kind": "grant",
+        "expands": true
+      },
+      {
+        "axis": "protected_reads",
+        "item": "what password managers show",
+        "text": "reads protected windows: what password managers show (off until you turn it on on the plugin's page)",
         "kind": "grant",
         "expands": true
       },

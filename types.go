@@ -71,6 +71,10 @@ type RequiresCfg struct {
 	// WMI classes the plugin reads (Windows), one grant each on the
 	// plugin's page.
 	Wmi *WmiCfg `json:"wmi,omitempty"`
+	// The protected kinds of window the plugin asks to read
+	// (`password_managers`, `branchkit_windows`), one grant each on the
+	// plugin's page, off for every plugin until the person turns it on.
+	ProtectedReads []string `json:"protected_reads,omitempty"`
 	// Other apps' settings domains the plugin reads or changes, one grant
 	// each on the plugin's page.
 	Preferences *PreferencesCfg `json:"preferences,omitempty"`

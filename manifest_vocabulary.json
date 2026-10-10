@@ -110,6 +110,7 @@
       "optional_privileges",
       "preferences",
       "privileges",
+      "protected_reads",
       "reasons",
       "runtimes",
       "sockets",
@@ -175,6 +176,13 @@
       "field": "wmi",
       "kind": "grant",
       "name": "wmi",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "protected_reads",
+      "kind": "grant",
+      "name": "protected_reads",
       "update": "expands"
     },
     {
