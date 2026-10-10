@@ -10,12 +10,24 @@ import (
 	"time"
 )
 
+// previewFormat is the shape of the install preview below. The app renders
+// its consent panel from this JSON and may find this CLI on PATH rather than
+// in its own bundle, so it checks the number and refuses to render a preview
+// whose shape it does not know: a panel built from fields it cannot find
+// would show no privileges and still offer Install. Raise it whenever a field
+// the panel reads is renamed, removed or changes meaning (adding a field
+// does not need it). 1 was the shape before `disclosures`, which carried no
+// number.
+const previewFormat = 2
+
 type previewResult struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Description string `json:"description"`
-	Author      string `json:"author"`
+	// PreviewFormat is previewFormat, so a reader can tell which shape it got.
+	PreviewFormat int    `json:"preview_format"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Version       string `json:"version"`
+	Description   string `json:"description"`
+	Author        string `json:"author"`
 	// Disclosures is what the plugin asks for and declares, one entry per
 	// consent axis it declares anything on, in registry order, then its
 	// run command. Generated from consentAxes, so an axis added there
@@ -210,20 +222,21 @@ func cmdPreview(source string) {
 	tier := lookupCatalogTier(manifest.ID)
 
 	result := previewResult{
-		ID:           manifest.ID,
-		Name:         manifest.Name,
-		Version:      manifest.Version,
-		Description:  manifest.Description,
-		Author:       manifest.Author,
-		Disclosures:  previewDisclosures(manifest),
-		Effects:      previewEffects(manifestEffects(manifest)),
-		Conformance:  cs.Status,
-		Tier:         tier,
-		Blocklisted:  blocklisted,
-		BlockReason:  blockReason,
-		Source:       source,
-		Tag:          tag,
-		Capabilities: manifest.Requires.Capabilities,
+		PreviewFormat: previewFormat,
+		ID:            manifest.ID,
+		Name:          manifest.Name,
+		Version:       manifest.Version,
+		Description:   manifest.Description,
+		Author:        manifest.Author,
+		Disclosures:   previewDisclosures(manifest),
+		Effects:       previewEffects(manifestEffects(manifest)),
+		Conformance:   cs.Status,
+		Tier:          tier,
+		Blocklisted:   blocklisted,
+		BlockReason:   blockReason,
+		Source:        source,
+		Tag:           tag,
+		Capabilities:  manifest.Requires.Capabilities,
 	}
 
 	// Already installed → attach the consent diff, same basis as the

@@ -81,19 +81,20 @@ func TestPreviewGolden(t *testing.T) {
 	newM := parseManifest(t, goldenNewManifest)
 	up := previewDiff(oldM, newM)
 	result := previewResult{
-		ID:           newM.ID,
-		Name:         newM.Name,
-		Version:      newM.Version,
-		Description:  newM.Description,
-		Author:       newM.Author,
-		Disclosures:  previewDisclosures(newM),
-		Capabilities: newM.Requires.Capabilities,
-		Effects:      previewEffects(manifestEffects(newM)),
-		Conformance:  "passed",
-		Tier:         "community",
-		Source:       "github.com/example/golden",
-		Tag:          "v2.0.0",
-		Update:       &up,
+		PreviewFormat: previewFormat,
+		ID:            newM.ID,
+		Name:          newM.Name,
+		Version:       newM.Version,
+		Description:   newM.Description,
+		Author:        newM.Author,
+		Disclosures:   previewDisclosures(newM),
+		Capabilities:  newM.Requires.Capabilities,
+		Effects:       previewEffects(manifestEffects(newM)),
+		Conformance:   "passed",
+		Tier:          "community",
+		Source:        "github.com/example/golden",
+		Tag:           "v2.0.0",
+		Update:        &up,
 	}
 
 	// The fixture must exercise every axis, or an axis added later could
