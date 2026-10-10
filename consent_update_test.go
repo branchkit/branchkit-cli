@@ -206,3 +206,49 @@ func TestCatalogGrantsOn(t *testing.T) {
 		t.Error("a local folder's grants never arrive on")
 	}
 }
+
+// The axes are the app's: every one its registry publishes has a reader
+// here, in its order, carrying its kind and update rule; no reader is left
+// for an axis the app no longer publishes; and a registry naming an axis
+// this CLI cannot read stops the CLI rather than leaving it unshown.
+func TestConsentAxesAreTheAppsRegistry(t *testing.T) {
+	published := vocabulary.ConsentAxes
+	if len(published) == 0 {
+		t.Fatal("the embedded vocabulary publishes no consent axes")
+	}
+	if len(consentAxes) != len(published) {
+		t.Fatalf("%d axes joined from %d published", len(consentAxes), len(published))
+	}
+	for i, p := range published {
+		ax := consentAxes[i]
+		if ax.name != p.Name || ax.block != p.Block || ax.field != p.Field || ax.kind != p.Kind || ax.update != p.Update {
+			t.Errorf("axis %d: joined %+v from %+v", i, ax, p)
+		}
+		switch p.Kind {
+		case kindGrant, kindScope, kindNote:
+		default:
+			t.Errorf("axis %s: kind %q is not one this CLI renders", p.Name, p.Kind)
+		}
+		switch p.Update {
+		case updateExpands, updateExpandsWhenGrantedOn, updateInformational:
+		default:
+			t.Errorf("axis %s: update rule %q is not one this CLI applies", p.Name, p.Update)
+		}
+	}
+	names := map[string]bool{}
+	for _, p := range published {
+		names[p.Name] = true
+	}
+	for _, r := range axisReaders {
+		if !names[r.name] {
+			t.Errorf("axisReaders reads %q, which the app no longer publishes — stale", r.name)
+		}
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Error("an axis with no reader must stop the CLI")
+		}
+	}()
+	joinAxes(append(append([]publishedAxis{}, published...), publishedAxis{Name: "from_the_future"}), axisReaders)
+}

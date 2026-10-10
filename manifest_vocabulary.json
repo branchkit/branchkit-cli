@@ -1,5 +1,5 @@
 {
-  "_generated": "Derived from contracts/symbols.json and contracts/manifest-schema.json by scripts/derive-cli-vocabulary.py \u2014 do not edit. Regenerate: just contracts",
+  "_generated": "Derived from contracts/symbols.json, contracts/manifest-schema.json and contracts/consent-axes.json by scripts/derive-cli-vocabulary.py \u2014 do not edit. Regenerate: just contracts",
   "api_version": "0.2.0",
   "privileges": [
     "accessibility",
@@ -133,5 +133,176 @@
       "events",
       "writes"
     ]
+  },
+  "consent_axes": [
+    {
+      "block": "requires",
+      "field": "privileges",
+      "kind": "grant",
+      "name": "privileges",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "optional_privileges",
+      "kind": "grant",
+      "name": "optional_privileges",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "network",
+      "kind": "grant",
+      "name": "network",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "sockets",
+      "kind": "scope",
+      "name": "sockets",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "dbus",
+      "kind": "grant",
+      "name": "dbus",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "wmi",
+      "kind": "grant",
+      "name": "wmi",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "preferences",
+      "kind": "grant",
+      "name": "preferences",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "preferences",
+      "kind": "grant",
+      "name": "preference_writes",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "devices",
+      "kind": "grant",
+      "name": "devices",
+      "update": "expands"
+    },
+    {
+      "block": "consumes",
+      "field": "blobs",
+      "kind": "grant",
+      "name": "blobs",
+      "update": "expands"
+    },
+    {
+      "block": "consumes",
+      "field": "events",
+      "kind": "grant",
+      "name": "events",
+      "update": "expands_when_granted_on"
+    },
+    {
+      "block": "consumes",
+      "field": "events",
+      "kind": "scope",
+      "name": "always_events",
+      "update": "expands"
+    },
+    {
+      "block": "consumes",
+      "field": "dispatch",
+      "kind": "grant",
+      "name": "dispatch",
+      "update": "expands_when_granted_on"
+    },
+    {
+      "block": "consumes",
+      "field": "collections",
+      "kind": "grant",
+      "name": "collection_reads",
+      "update": "expands_when_granted_on"
+    },
+    {
+      "block": "consumes",
+      "field": "writes",
+      "kind": "grant",
+      "name": "collection_writes",
+      "update": "expands_when_granted_on"
+    },
+    {
+      "block": "provides",
+      "field": "collections",
+      "kind": "note",
+      "name": "own_collections",
+      "update": "informational"
+    },
+    {
+      "block": "provides",
+      "field": "blobs",
+      "kind": "scope",
+      "name": "provided_blobs",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "runtimes",
+      "kind": "scope",
+      "name": "runtimes",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "capabilities",
+      "kind": "scope",
+      "name": "capabilities",
+      "update": "expands"
+    },
+    {
+      "block": "provides",
+      "field": "stages",
+      "kind": "scope",
+      "name": "stages",
+      "update": "expands"
+    },
+    {
+      "block": "provides",
+      "field": "native_messaging",
+      "kind": "scope",
+      "name": "native_messaging",
+      "update": "expands"
+    },
+    {
+      "block": "provides",
+      "field": "artifacts",
+      "kind": "note",
+      "name": "artifacts",
+      "update": "informational"
+    },
+    {
+      "block": "requires",
+      "field": "reasons",
+      "kind": "note",
+      "name": "reasons",
+      "update": "informational"
+    }
+  ],
+  "disclosed_outside_axes": {
+    "consumes.effects": "declaration objects carrying the author's own copy; every surface renders them beside the axes (the CLI's install summary, the preview's effects, the update diff's effect lines) and the plugin's page has a switch for each"
+  },
+  "not_consent_fields": {
+    "provides.context_names": "friendly names for tag sets, read by the context engine; no access",
+    "provides.effects": "names the plugin defines for coordination; asserting one is the consent unit (consumes.effects), defining one grants nothing",
+    "provides.events": "event types the plugin emits; receiving them is the subscriber's grant (consumes.events), emitting is not a request"
   }
 }

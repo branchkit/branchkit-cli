@@ -30,6 +30,24 @@ type manifestVocabulary struct {
 	// the actuator adds is disclosed or exempted with a reason, never
 	// enforced while unshown.
 	ManifestConsentBlocks map[string][]string `json:"manifest_consent_blocks"`
+	// The app's consent-axis registry: every axis disclosed at install and
+	// diffed at update, in order, with the property it reads, what a
+	// member is and when adding one asks again. This CLI holds only how to
+	// read and word each one (axisReaders).
+	ConsentAxes []publishedAxis `json:"consent_axes"`
+	// Properties shown by a path of their own, and those that ask for
+	// nothing, each `<block>.<field>` with where or why.
+	DisclosedOutsideAxes map[string]string `json:"disclosed_outside_axes"`
+	NotConsentFields     map[string]string `json:"not_consent_fields"`
+}
+
+// publishedAxis is one consent axis as the app's registry describes it.
+type publishedAxis struct {
+	Name   string     `json:"name"`
+	Block  string     `json:"block"`
+	Field  string     `json:"field"`
+	Kind   axisKind   `json:"kind"`
+	Update axisUpdate `json:"update"`
 }
 
 var vocabulary = loadVocabulary()
