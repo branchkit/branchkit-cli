@@ -1,5 +1,5 @@
 {
-  "_generated": "Derived from contracts/symbols.json by scripts/derive-cli-vocabulary.py \u2014 do not edit. Regenerate: just contracts",
+  "_generated": "Derived from contracts/symbols.json and contracts/manifest-schema.json by scripts/derive-cli-vocabulary.py \u2014 do not edit. Regenerate: just contracts",
   "api_version": "0.2.0",
   "privileges": [
     "accessibility",
@@ -100,5 +100,38 @@
   "non_method_implements_keys": [
     "settings_tabs",
     "setup_steps"
-  ]
+  ],
+  "manifest_consent_blocks": {
+    "requires": [
+      "capabilities",
+      "dbus",
+      "devices",
+      "network",
+      "optional_privileges",
+      "preferences",
+      "privileges",
+      "reasons",
+      "runtimes",
+      "sockets",
+      "wmi"
+    ],
+    "provides": [
+      "artifacts",
+      "blobs",
+      "collections",
+      "context_names",
+      "effects",
+      "events",
+      "native_messaging",
+      "stages"
+    ],
+    "consumes": [
+      "blobs",
+      "collections",
+      "dispatch",
+      "effects",
+      "events",
+      "writes"
+    ]
+  }
 }

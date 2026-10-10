@@ -185,6 +185,13 @@ type consentAxis struct {
 	summary func([]string) string
 	addFmt  string // one "+" line per added member (display applied)
 	delFmt  string // one "-" line per removed member
+	// grant: each member becomes a grant record with a switch on the
+	// plugin's page (off there until allowed, for a plugin that is not
+	// bundled). Otherwise the member is enforced from the manifest as
+	// written, with no later moment to say no, and the install or update
+	// screen is the only place a person sees it. The app's panel groups
+	// the two apart.
+	grant bool
 }
 
 func plainDisplay(s string) string { return s }
@@ -199,6 +206,7 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + %s\n",
 		delFmt: "  - %s\n",
+		grant:  true,
 	},
 	{
 		name:    "optional_privileges",
@@ -209,6 +217,7 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + %s (optional — granted only if you approve a later request)\n",
 		delFmt: "  - %s (optional)\n",
+		grant:  true,
 	},
 	// The sandbox axes. Network HOSTS are grant records since 2026-09-18:
 	// like every other grant a non-bundled plugin asks for, each is allowed
@@ -227,6 +236,7 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + network: %s (allow it on the plugin's page)\n",
 		delFmt: "  - network: %s\n",
+		grant:  true,
 	},
 	{
 		name:    "sockets",
@@ -255,6 +265,7 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + D-Bus: %s (allow it on the plugin's page)\n",
 		delFmt: "  - D-Bus: %s\n",
+		grant:  true,
 	},
 	// WMI classes (Windows): the same, one grant per class read.
 	{
@@ -271,6 +282,7 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + WMI: %s (allow it on the plugin's page)\n",
 		delFmt: "  - WMI: %s\n",
+		grant:  true,
 	},
 	// Other apps' settings (macOS defaults, GSettings, the user's
 	// registry): reading each declared domain is one grant, and changing
@@ -286,6 +298,7 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + App settings: %s (allow it on the plugin's page)\n",
 		delFmt: "  - App settings: %s\n",
+		grant:  true,
 	},
 	{
 		name:    "preference_writes",
@@ -298,6 +311,7 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + Changes app settings: %s (can change what programs the app runs; allow it on the plugin's page)\n",
 		delFmt: "  - Changes app settings: %s\n",
+		grant:  true,
 	},
 	// Devices: HID products and Bluetooth LE services. A HID product is one
 	// grant; a Bluetooth service is allowed per device on the plugin's page
@@ -312,6 +326,7 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + Device: %s (allow it on the plugin's page)\n",
 		delFmt: "  - Device: %s\n",
+		grant:  true,
 	},
 	// Not part of the request block: a blob read is a consent axis that
 	// lives in `consumes`, because what is being asked for is another
@@ -332,6 +347,88 @@ var consentAxes = []consentAxis{
 		},
 		addFmt: "  + reads shared data: %s (allow it on the plugin's page)\n",
 		delFmt: "  - reads shared data: %s\n",
+		grant:  true,
+	},
+	// What the plugin consumes from other plugins and the platform: each a
+	// grant record on the plugin's page, the same as a blob read. Until
+	// these were axes the only place a person saw them was the card, after
+	// install, and an update that started dispatching to a new plugin read
+	// as "nothing new".
+	{
+		name:  "events",
+		block: "consumes",
+		field: "events",
+		extract: func(m PluginManifest) []string {
+			if m.Consumes == nil {
+				return nil
+			}
+			out := make([]string, 0, len(m.Consumes.Events))
+			for _, e := range m.Consumes.Events {
+				out = append(out, e.Pattern)
+			}
+			return sortedUnique(out)
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Events: receives %s (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + receives events: %s (allow it on the plugin's page)\n",
+		delFmt: "  - receives events: %s\n",
+		grant:  true,
+	},
+	{
+		name:  "dispatch",
+		block: "consumes",
+		field: "dispatch",
+		extract: func(m PluginManifest) []string {
+			if m.Consumes == nil {
+				return nil
+			}
+			return namedRefs(m.Consumes.Dispatch)
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Runs other plugins' actions: %s (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + runs other plugins' actions: %s (allow it on the plugin's page)\n",
+		delFmt: "  - runs other plugins' actions: %s\n",
+		grant:  true,
+	},
+	{
+		name:  "collection_reads",
+		block: "consumes",
+		field: "collections",
+		extract: func(m PluginManifest) []string {
+			if m.Consumes == nil {
+				return nil
+			}
+			return namedRefs(m.Consumes.Collections)
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Reads collections: %s (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + reads collection: %s (allow it on the plugin's page)\n",
+		delFmt: "  - reads collection: %s\n",
+		grant:  true,
+	},
+	{
+		name:  "collection_writes",
+		block: "consumes",
+		field: "writes",
+		extract: func(m PluginManifest) []string {
+			if m.Consumes == nil {
+				return nil
+			}
+			return sortedUnique(m.Consumes.Writes)
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Writes collections: %s (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + writes collection: %s (allow it on the plugin's page)\n",
+		delFmt: "  - writes collection: %s\n",
+		grant:  true,
 	},
 	// The PROVIDER's side of a blob, which the design says is disclosed at
 	// install "like every other declaration" and which nothing showed
@@ -381,6 +478,141 @@ var consentAxes = []consentAxis{
 		addFmt: "  + cannot start without: %s\n",
 		delFmt: "  - no longer requires: %s\n",
 	},
+	// Pipeline stages: each a separate program BranchKit starts in a
+	// sandbox of its own. What it does there does not pass through the
+	// plugin's calls to the platform, which is why the app treats a plugin
+	// that ships one as able to act on its own. A member is the stage and
+	// the program it runs, so pointing a stage at a different program is
+	// a new member, as a changed run command is.
+	{
+		name:    "stages",
+		block:   "provides",
+		field:   "stages",
+		extract: stagesSet,
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Pipeline stages: %s (programs of its own that BranchKit starts)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + pipeline stage: %s (a program of its own that BranchKit starts)\n",
+		delFmt: "  - pipeline stage: %s\n",
+	},
+	// A browser extension paired with the plugin: the platform registers
+	// these extension ids with each browser's native-messaging host, so
+	// the extension can reach the plugin's listen socket.
+	{
+		name:    "native_messaging",
+		block:   "provides",
+		field:   "native_messaging",
+		extract: nativeMessagingSet,
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Browser extensions it pairs with: %s (registered with each browser)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + pairs with browser extension: %s\n",
+		delFmt: "  - pairs with browser extension: %s\n",
+	},
+}
+
+// disclosedOutsideAxes are manifest properties every disclosure surface
+// shows by a path of their own rather than through consentAxes, keyed
+// `<block>.<field>`, with where.
+var disclosedOutsideAxes = map[string]string{
+	"consumes.effects": "declaration objects carrying the author's own copy; every surface renders them beside the axes (printConsentSummary, the preview's effects, the effect lines of confirmUpdate)",
+}
+
+// notConsentFields are the properties of `requires`, `provides` and
+// `consumes` that ask for nothing and so are not disclosed, keyed
+// `<block>.<field>`, each with the reason. The schema-driven ratchet
+// (consent_test.go) fails on any property of those blocks that is neither
+// an axis, nor disclosed outside the axes, nor here — so a new property is
+// shown at install unless someone writes down why it need not be.
+var notConsentFields = map[string]string{
+	"requires.reasons":       "the author's explanation of each request, shown under that request on the plugin's page; it asks for nothing itself",
+	"provides.artifacts":     "data files the plugin's own stages load inside their own sandboxes (model weights, dictionaries); provisioning one opens no access",
+	"provides.collections":   "data the plugin introduces and owns; another plugin reading or writing it needs that plugin's own grant, disclosed on that plugin",
+	"provides.context_names": "friendly names for tag sets, read by the context engine; no access",
+	"provides.effects":       "names the plugin defines for coordination; asserting one is the consent unit (consumes.effects), defining one grants nothing",
+	"provides.events":        "event types the plugin emits; receiving them is the subscriber's grant (consumes.events), emitting is not a request",
+}
+
+// sortedUnique returns the set of v, sorted, nil when empty.
+func sortedUnique(v []string) []string {
+	if len(v) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(v))
+	for _, s := range v {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func namedRefs(refs []NamedRef) []string {
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, string(r))
+	}
+	return sortedUnique(out)
+}
+
+// stagesSet is each shipped stage with the program it runs ("ocr" when the
+// binary is the stage's name, the actuator's default; "ocr (bin/ocr-engine)"
+// otherwise).
+func stagesSet(m PluginManifest) []string {
+	if m.Provides == nil {
+		return nil
+	}
+	out := make([]string, 0, len(m.Provides.Stages))
+	for name, s := range m.Provides.Stages {
+		if s.Binary == "" || s.Binary == name {
+			out = append(out, name)
+		} else {
+			out = append(out, fmt.Sprintf("%s (%s)", name, s.Binary))
+		}
+	}
+	return sortedUnique(out)
+}
+
+// nativeMessagingSet is each extension id the platform would register for
+// the plugin, naming its browser.
+func nativeMessagingSet(m PluginManifest) []string {
+	if m.Provides == nil || m.Provides.NativeMessaging == nil {
+		return nil
+	}
+	nm := m.Provides.NativeMessaging
+	out := make([]string, 0, len(nm.ChromeExtensionIDs)+len(nm.FirefoxExtensionIDs))
+	for _, id := range nm.ChromeExtensionIDs {
+		out = append(out, "Chrome extension "+id)
+	}
+	for _, id := range nm.FirefoxExtensionIDs {
+		out = append(out, "Firefox extension "+id)
+	}
+	return sortedUnique(out)
+}
+
+// runSummary is the install line for the run command: the program the
+// plugin's process is. Outside the axis table (see consentAxis) because it
+// is one scalar, and a changed one is always an expansion.
+func runSummary(m PluginManifest) string {
+	if m.Run == "" {
+		return ""
+	}
+	return fmt.Sprintf("  Runs: %s (in the plugin's sandbox)\n", m.Run)
+}
+
+// disclosureText turns one line of the terminal copy into the line the
+// app's panel shows: the indent, any "+"/"-" marker and the line breaks
+// gone, the words the same. One copy, so the terminal and the panel
+// cannot say different things about the same member.
+func disclosureText(line string) string {
+	s := strings.Join(strings.Fields(line), " ")
+	s = strings.TrimPrefix(s, "+ ")
+	return strings.TrimPrefix(s, "- ")
 }
 
 // axisDiff is one axis's added/removed members, canonical form.

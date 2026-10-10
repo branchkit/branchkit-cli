@@ -11,29 +11,20 @@ import (
 )
 
 type previewResult struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	Version            string   `json:"version"`
-	Description        string   `json:"description"`
-	Author             string   `json:"author"`
-	Privileges         []string `json:"privileges"`
-	OptionalPrivileges []string `json:"optional_privileges"`
-	// Sandbox scope, display-ready. Sockets and runtimes are enforced from
-	// the manifest with no later grant moment, so the panel is the only
-	// place a user sees them; network hosts become grants with a switch on
-	// the plugin's card, allowed there after install (2026-09-18).
-	Network     []string `json:"network"`
-	Dbus        []string `json:"dbus"`
-	Wmi         []string `json:"wmi"`
-	Preferences []string `json:"preferences"`
-	// Domains declared for changing: a grant of their own, shown with the
-	// high-risk privileges.
-	PreferenceWrites []string `json:"preference_writes"`
-	Devices          []string `json:"devices"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	Author      string `json:"author"`
+	// Disclosures is what the plugin asks for and declares, one entry per
+	// consent axis it declares anything on, in registry order, then its
+	// run command. Generated from consentAxes, so an axis added there
+	// reaches the app's install panel without either side naming it: the
+	// panel renders the axes it groups specially (privileges by risk) and
+	// every other entry as the line it carries.
+	Disclosures []previewDisclosure `json:"disclosures"`
 	// Carried for the app, which alone knows what this computer refuses.
 	Capabilities *capabilitiesDecl `json:"capabilities,omitempty"`
-	Sockets      int               `json:"sockets"`
-	Runtimes     []string          `json:"runtimes"`
 	Effects      []previewEffect   `json:"effects"`
 	Conformance  string            `json:"conformance"`
 	Tier         string            `json:"tier"`
@@ -43,39 +34,43 @@ type previewResult struct {
 	Tag          string            `json:"tag"`
 	// Update is present when this plugin is already installed: the consent
 	// DIFF against the manifest the install would replace. The settings
-	// panel renders this instead of the full summary — standing consent
-	// covers everything unchanged.
+	// panel renders this above the full summary — standing consent covers
+	// everything unchanged.
 	Update *previewUpdate `json:"update,omitempty"`
+}
+
+// previewDisclosure is one consent axis as the install panel shows it.
+type previewDisclosure struct {
+	Axis string `json:"axis"`
+	// Items are the members, display-ready (a privilege's bare name).
+	Items []string `json:"items"`
+	// Text is the terminal's install line for the axis, unindented.
+	Text string `json:"text"`
+	// Grant: each item is a switch on the plugin's page after install.
+	// Otherwise it is enforced from the manifest with no later prompt.
+	Grant bool `json:"grant"`
+}
+
+// previewChange is one member an update adds or removes.
+type previewChange struct {
+	Axis string `json:"axis"`
+	Item string `json:"item"`
+	// Text is the terminal's update line for the member, without its
+	// "+"/"-" marker.
+	Text  string `json:"text"`
+	Grant bool   `json:"grant"`
 }
 
 // previewUpdate mirrors consentDiff for the settings panel, plus the
 // installed version for the "v1 → v2" line.
 type previewUpdate struct {
-	InstalledVersion   string          `json:"installed_version"`
-	AddedPrivileges    []string        `json:"added_privileges"`
-	AddedOptional      []string        `json:"added_optional_privileges"`
-	AddedEffects       []previewEffect `json:"added_effects"`
-	RemovedPrivileges  []string        `json:"removed_privileges"`
-	RemovedOptional    []string        `json:"removed_optional_privileges"`
-	RemovedEffects     []string        `json:"removed_effects"`
-	AddedNetwork       []string        `json:"added_network"`
-	RemovedNetwork     []string        `json:"removed_network"`
-	AddedDbus          []string        `json:"added_dbus"`
-	RemovedDbus        []string        `json:"removed_dbus"`
-	AddedWmi           []string        `json:"added_wmi"`
-	RemovedWmi         []string        `json:"removed_wmi"`
-	AddedPreferences   []string        `json:"added_preferences"`
-	RemovedPreferences []string        `json:"removed_preferences"`
-	AddedPrefWrites    []string        `json:"added_preference_writes"`
-	RemovedPrefWrites  []string        `json:"removed_preference_writes"`
-	AddedDevices       []string        `json:"added_devices"`
-	RemovedDevices     []string        `json:"removed_devices"`
-	AddedSockets       []string        `json:"added_sockets"`
-	RemovedSockets     []string        `json:"removed_sockets"`
-	AddedRuntimes      []string        `json:"added_runtimes"`
-	RemovedRuntimes    []string        `json:"removed_runtimes"`
-	RunChanged         bool            `json:"run_changed"`
-	Expands            bool            `json:"expands"`
+	InstalledVersion string          `json:"installed_version"`
+	Added            []previewChange `json:"added"`
+	Removed          []previewChange `json:"removed"`
+	AddedEffects     []previewEffect `json:"added_effects"`
+	RemovedEffects   []string        `json:"removed_effects"`
+	RunChanged       bool            `json:"run_changed"`
+	Expands          bool            `json:"expands"`
 }
 
 // previewEffect is one consent unit of effects, carrying the author-written
@@ -84,6 +79,82 @@ type previewEffect struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Asserts     []string `json:"asserts"`
+}
+
+// previewDisclosures is the install disclosure as data: the same loop, the
+// same copy, as printConsentSummary.
+func previewDisclosures(m PluginManifest) []previewDisclosure {
+	out := []previewDisclosure{}
+	for _, ax := range consentAxes {
+		values := ax.extract(m)
+		if len(values) == 0 {
+			continue
+		}
+		display := make([]string, len(values))
+		for i, v := range values {
+			display[i] = ax.display(v)
+		}
+		out = append(out, previewDisclosure{
+			Axis:  ax.name,
+			Items: display,
+			Text:  disclosureText(ax.summary(display)),
+			Grant: ax.grant,
+		})
+	}
+	if line := runSummary(m); line != "" {
+		out = append(out, previewDisclosure{
+			Axis:  "run",
+			Items: []string{m.Run},
+			Text:  disclosureText(line),
+		})
+	}
+	return out
+}
+
+func previewEffects(effects []EffectDeclaration) []previewEffect {
+	out := []previewEffect{}
+	for _, e := range effects {
+		out = append(out, previewEffect{
+			Name:        e.UserVisibleName,
+			Description: e.UserVisibleDescription,
+			Asserts:     e.AssertNames(),
+		})
+	}
+	return out
+}
+
+// previewDiff is the update consent diff as data, from the same diff and
+// the same copy as confirmUpdate.
+func previewDiff(oldM, newM PluginManifest) previewUpdate {
+	d := diffConsent(oldM, newM)
+	up := previewUpdate{
+		InstalledVersion: oldM.Version,
+		Added:            []previewChange{},
+		Removed:          []previewChange{},
+		AddedEffects:     previewEffects(d.AddedEffects),
+		RemovedEffects:   emptyNotNil(d.RemovedEffects),
+		RunChanged:       d.RunChanged,
+		Expands:          d.expands(),
+	}
+	for _, ax := range consentAxes {
+		for _, m := range d.axis(ax.name).Added {
+			up.Added = append(up.Added, previewChange{
+				Axis:  ax.name,
+				Item:  ax.display(m),
+				Text:  disclosureText(fmt.Sprintf(ax.addFmt, ax.display(m))),
+				Grant: ax.grant,
+			})
+		}
+		for _, m := range d.axis(ax.name).Removed {
+			up.Removed = append(up.Removed, previewChange{
+				Axis:  ax.name,
+				Item:  ax.display(m),
+				Text:  disclosureText(fmt.Sprintf(ax.delFmt, ax.display(m))),
+				Grant: ax.grant,
+			})
+		}
+	}
+	return up
 }
 
 func cmdPreview(source string) {
@@ -138,98 +209,27 @@ func cmdPreview(source string) {
 	// Check catalog tier
 	tier := lookupCatalogTier(manifest.ID)
 
-	effects := []previewEffect{}
-	if manifest.Consumes != nil {
-		for _, e := range manifest.Consumes.Effects {
-			effects = append(effects, previewEffect{
-				Name:        e.UserVisibleName,
-				Description: e.UserVisibleDescription,
-				Asserts:     e.AssertNames(),
-			})
-		}
-	}
 	result := previewResult{
-		ID:                 manifest.ID,
-		Name:               manifest.Name,
-		Version:            manifest.Version,
-		Description:        manifest.Description,
-		Author:             manifest.Author,
-		Privileges:         manifest.Requires.Privileges,
-		OptionalPrivileges: manifest.Requires.OptionalPrivileges,
-		Effects:            effects,
-		Conformance:        cs.Status,
-		Tier:               tier,
-		Blocklisted:        blocklisted,
-		BlockReason:        blockReason,
-		Source:             source,
-		Tag:                tag,
-		Capabilities:       manifest.Requires.Capabilities,
+		ID:           manifest.ID,
+		Name:         manifest.Name,
+		Version:      manifest.Version,
+		Description:  manifest.Description,
+		Author:       manifest.Author,
+		Disclosures:  previewDisclosures(manifest),
+		Effects:      previewEffects(manifestEffects(manifest)),
+		Conformance:  cs.Status,
+		Tier:         tier,
+		Blocklisted:  blocklisted,
+		BlockReason:  blockReason,
+		Source:       source,
+		Tag:          tag,
+		Capabilities: manifest.Requires.Capabilities,
 	}
-	if result.Privileges == nil {
-		result.Privileges = []string{}
-	}
-	if result.OptionalPrivileges == nil {
-		result.OptionalPrivileges = []string{}
-	}
-	netDisplay := []string{}
-	for _, n := range networkSet(manifest) {
-		netDisplay = append(netDisplay, networkDisplay(n))
-	}
-	result.Network = netDisplay
-	result.Dbus = []string{}
-	if manifest.Requires.Dbus != nil {
-		result.Dbus = emptyNotNil(manifest.Requires.Dbus.Methods)
-	}
-	result.Wmi = []string{}
-	if manifest.Requires.Wmi != nil {
-		result.Wmi = emptyNotNil(manifest.Requires.Wmi.Classes)
-	}
-	result.Preferences = emptyNotNil(preferenceReads(manifest))
-	result.PreferenceWrites = emptyNotNil(preferenceWrites(manifest))
-	result.Devices = emptyNotNil(deviceGrants(manifest))
-	result.Sockets = len(socketsSet(manifest))
-	result.Runtimes = emptyNotNil(manifest.Requires.Runtimes)
 
 	// Already installed → attach the consent diff, same basis as the
 	// install path's confirmUpdate: the manifest at the swap target.
 	if old, err := readManifest(filepath.Join(userPluginsDir(), manifest.ID, "plugin.json")); err == nil {
-		d := diffConsent(old, manifest)
-		// The wire field names are a fixed contract with the settings
-		// panel; the VALUES come from the axis registry's diff.
-		up := previewUpdate{
-			InstalledVersion:   old.Version,
-			AddedPrivileges:    emptyNotNil(d.axis("privileges").Added),
-			AddedOptional:      emptyNotNil(d.axis("optional_privileges").Added),
-			AddedEffects:       []previewEffect{},
-			RemovedPrivileges:  emptyNotNil(d.axis("privileges").Removed),
-			RemovedOptional:    emptyNotNil(d.axis("optional_privileges").Removed),
-			RemovedEffects:     emptyNotNil(d.RemovedEffects),
-			AddedNetwork:       displayNetworkList(d.axis("network").Added),
-			RemovedNetwork:     displayNetworkList(d.axis("network").Removed),
-			AddedDbus:          emptyNotNil(d.axis("dbus").Added),
-			RemovedDbus:        emptyNotNil(d.axis("dbus").Removed),
-			AddedWmi:           emptyNotNil(d.axis("wmi").Added),
-			RemovedWmi:         emptyNotNil(d.axis("wmi").Removed),
-			AddedPreferences:   emptyNotNil(d.axis("preferences").Added),
-			RemovedPreferences: emptyNotNil(d.axis("preferences").Removed),
-			AddedPrefWrites:    emptyNotNil(d.axis("preference_writes").Added),
-			RemovedPrefWrites:  emptyNotNil(d.axis("preference_writes").Removed),
-			AddedDevices:       emptyNotNil(d.axis("devices").Added),
-			RemovedDevices:     emptyNotNil(d.axis("devices").Removed),
-			AddedSockets:       emptyNotNil(d.axis("sockets").Added),
-			RemovedSockets:     emptyNotNil(d.axis("sockets").Removed),
-			AddedRuntimes:      emptyNotNil(d.axis("runtimes").Added),
-			RemovedRuntimes:    emptyNotNil(d.axis("runtimes").Removed),
-			RunChanged:         d.RunChanged,
-			Expands:            d.expands(),
-		}
-		for _, e := range d.AddedEffects {
-			up.AddedEffects = append(up.AddedEffects, previewEffect{
-				Name:        e.UserVisibleName,
-				Description: e.UserVisibleDescription,
-				Asserts:     e.AssertNames(),
-			})
-		}
+		up := previewDiff(old, manifest)
 		result.Update = &up
 	}
 

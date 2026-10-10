@@ -162,6 +162,50 @@ type ConsumesCfg struct {
 	// A consent axis: the platform never reads the bytes, but it decides
 	// who may (one grant per <provider>/<name>).
 	Blobs []string `json:"blobs,omitempty"`
+	// Event patterns it subscribes to. Receiving each is a grant on the
+	// plugin's page, so the patterns are disclosed at install.
+	Events []SubscriptionDecl `json:"events,omitempty"`
+	// Action prefixes it dispatches to: a bare prefix or
+	// {"prefix": ..., "actions": [...]}. The grant is per prefix.
+	Dispatch []NamedRef `json:"dispatch,omitempty"`
+	// Collections it reads: a bare name or {"name": ..., "fields": [...]}.
+	// The grant is per collection.
+	Collections []NamedRef `json:"collections,omitempty"`
+	// Collections it writes but does not introduce, one grant each.
+	Writes []string `json:"writes,omitempty"`
+}
+
+// SubscriptionDecl is the part of a `consumes.events` entry a person is
+// shown: the pattern of event types it receives.
+type SubscriptionDecl struct {
+	Pattern string `json:"pattern"`
+}
+
+// NamedRef is a manifest entry written either as a bare string or as an
+// object naming it under `name` or `prefix` (consumes.collections,
+// consumes.dispatch). Only the name is consent identity: the other fields
+// narrow the declaration, never the grant.
+type NamedRef string
+
+func (r *NamedRef) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		*r = NamedRef(s)
+		return nil
+	}
+	var obj struct {
+		Name   string `json:"name"`
+		Prefix string `json:"prefix"`
+	}
+	if err := json.Unmarshal(b, &obj); err != nil {
+		return err
+	}
+	if obj.Name != "" {
+		*r = NamedRef(obj.Name)
+	} else {
+		*r = NamedRef(obj.Prefix)
+	}
+	return nil
 }
 
 // EffectDeclaration is one consent unit of effects the plugin will assert:
@@ -209,7 +253,22 @@ type ProvidesCfg struct {
 	Blobs map[string]BlobDecl `json:"blobs,omitempty"`
 	// Pipeline stages this plugin ships. Read here for their binaries:
 	// packaging marks each one executable and refuses a release without it.
+	//
+	// Also disclosed at install: each stage is a program of its own that
+	// BranchKit starts, acting outside the plugin's calls to the platform.
 	Stages map[string]StageDecl `json:"stages,omitempty"`
+	// A browser extension that pairs with one of this plugin's listen
+	// sockets through the browser's native-messaging channel. Disclosed at
+	// install: the platform registers these extension ids with each
+	// browser on the plugin's behalf.
+	NativeMessaging *NativeMessagingDecl `json:"native_messaging,omitempty"`
+}
+
+// NativeMessagingDecl mirrors the actuator's `provides.native_messaging`.
+type NativeMessagingDecl struct {
+	HostName            string   `json:"host_name"`
+	ChromeExtensionIDs  []string `json:"chrome_extension_ids,omitempty"`
+	FirefoxExtensionIDs []string `json:"firefox_extension_ids,omitempty"`
 }
 
 // StageDecl is the part of a `provides.stages` entry the CLI needs.

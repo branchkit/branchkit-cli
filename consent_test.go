@@ -261,6 +261,7 @@ func TestConsentAxesCoverEveryRequiresField(t *testing.T) {
 	}
 	// Axes that name their block explicitly are checked against it.
 	blocks := map[string]map[string]bool{
+		"consumes": elsewhere,
 		"provides": tags(ProvidesCfg{}),
 		"requires": declared,
 	}

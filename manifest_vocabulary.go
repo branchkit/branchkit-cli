@@ -24,6 +24,12 @@ type manifestVocabulary struct {
 	PluginMethods           []string `json:"plugin_methods"`
 	PlatformCollections     []string `json:"platform_collections"`
 	NonMethodImplementsKeys []string `json:"non_method_implements_keys"`
+	// Every property of the manifest's `requires`, `provides` and
+	// `consumes` blocks, from the actuator's manifest schema. The install
+	// disclosure is checked against it (consent_test.go), so a property
+	// the actuator adds is disclosed or exempted with a reason, never
+	// enforced while unshown.
+	ManifestConsentBlocks map[string][]string `json:"manifest_consent_blocks"`
 }
 
 var vocabulary = loadVocabulary()

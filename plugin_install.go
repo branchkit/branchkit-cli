@@ -484,6 +484,7 @@ func printConsentSummary(manifest PluginManifest) {
 		}
 		fmt.Print(ax.summary(display))
 	}
+	fmt.Print(runSummary(manifest))
 	if manifest.Consumes == nil {
 		return
 	}
