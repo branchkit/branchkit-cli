@@ -125,7 +125,7 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 			}
 		},
 		"consumes": {
-			"events": [{"pattern": "_platform.window.**"}],
+			"events": [{"pattern": "_platform.window.**"}, {"pattern": "tempo.**", "source": "metronome"}],
 			"dispatch": ["tiling", {"prefix": "browser", "actions": ["browser.open"]}],
 			"collections": ["alphabet", {"name": "apps", "fields": ["name"]}],
 			"writes": ["snippets"]
@@ -142,7 +142,8 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 	want := map[string][]string{
 		"stages":            {"ocr", "stt (bin/stt-engine)"},
 		"native_messaging":  {"Chrome extension abcdefghijklmnopabcdefghijklmnop", "Firefox extension pair@example.com"},
-		"events":            {"_platform.window.**"},
+		"events":            {"tempo.** (from metronome)"},
+		"always_events":     {"_platform.window.**"},
 		"dispatch":          {"browser", "tiling"},
 		"collection_reads":  {"alphabet", "apps"},
 		"collection_writes": {"snippets"},
@@ -156,7 +157,7 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 
 	// The terminal summary carries the same.
 	out := captureStdout(t, func() { printConsentSummary(m) })
-	for _, s := range []string{"Pipeline stages: ocr", "pair@example.com", "_platform.window.**", "tiling", "alphabet", "snippets", "Runs: ./x-plugin"} {
+	for _, s := range []string{"Pipeline stages: ocr", "pair@example.com", "_platform.window.**", "tempo.** (from metronome)", "tiling", "alphabet", "snippets", "Runs: ./x-plugin"} {
 		if !strings.Contains(out, s) {
 			t.Errorf("install summary omits %q:\n%s", s, out)
 		}
@@ -165,7 +166,7 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 	// Each one gained by an update needs fresh consent.
 	base := parseManifest(t, `{"id": "x", "name": "X", "version": "0.9.0", "run": "./x-plugin"}`)
 	d := diffConsent(base, m)
-	for _, axis := range []string{"stages", "native_messaging", "events", "dispatch", "collection_reads", "collection_writes"} {
+	for _, axis := range []string{"stages", "native_messaging", "events", "always_events", "dispatch", "collection_reads", "collection_writes"} {
 		if len(d.axis(axis).Added) == 0 {
 			t.Errorf("an update adding %s does not show it as new", axis)
 		}

@@ -176,9 +176,14 @@ type ConsumesCfg struct {
 }
 
 // SubscriptionDecl is the part of a `consumes.events` entry a person is
-// shown: the pattern of event types it receives.
+// shown: the pattern of event types it receives and, when it names one, the
+// plugin (or stage) it receives them from. Both are the grant's identity in
+// the app, so dropping the source would turn a subscription widened from
+// one sender to every sender into "no change". A pointer, as the app reads
+// it: an absent source and an empty one are different keys there.
 type SubscriptionDecl struct {
-	Pattern string `json:"pattern"`
+	Pattern string  `json:"pattern"`
+	Source  *string `json:"source,omitempty"`
 }
 
 // NamedRef is a manifest entry written either as a bare string or as an

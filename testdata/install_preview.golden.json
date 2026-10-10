@@ -92,10 +92,20 @@
     {
       "axis": "events",
       "items": [
-        "_platform.window.**"
+        "tempo.**",
+        "voice.* (from voice)"
       ],
-      "text": "Events: receives _platform.window.** (allow each on the plugin's page after install)",
+      "text": "Events: receives tempo.**, voice.* (from voice) (allow each on the plugin's page after install)",
       "grant": true
+    },
+    {
+      "axis": "always_events",
+      "items": [
+        "_platform.window.**",
+        "golden.*"
+      ],
+      "text": "Events always delivered: _platform.window.**, golden.* (platform events and its own; no switch)",
+      "grant": false
     },
     {
       "axis": "dispatch",
@@ -284,9 +294,27 @@
       },
       {
         "axis": "events",
-        "item": "_platform.window.**",
-        "text": "receives events: _platform.window.** (allow it on the plugin's page)",
+        "item": "tempo.**",
+        "text": "receives events: tempo.** (allow it on the plugin's page)",
         "grant": true
+      },
+      {
+        "axis": "events",
+        "item": "voice.* (from voice)",
+        "text": "receives events: voice.* (from voice) (allow it on the plugin's page)",
+        "grant": true
+      },
+      {
+        "axis": "always_events",
+        "item": "_platform.window.**",
+        "text": "always receives events: _platform.window.** (platform events and its own; no switch)",
+        "grant": false
+      },
+      {
+        "axis": "always_events",
+        "item": "golden.*",
+        "text": "always receives events: golden.* (platform events and its own; no switch)",
+        "grant": false
       },
       {
         "axis": "dispatch",
@@ -360,6 +388,12 @@
         "axis": "network",
         "item": "old.example",
         "text": "network: old.example",
+        "grant": true
+      },
+      {
+        "axis": "events",
+        "item": "tempo.** (from metronome)",
+        "text": "receives events: tempo.** (from metronome)",
         "grant": true
       },
       {

@@ -354,27 +354,39 @@ var consentAxes = []consentAxis{
 	// these were axes the only place a person saw them was the card, after
 	// install, and an update that started dispatching to a new plugin read
 	// as "nothing new".
+	//
+	// Event subscriptions split in two, by the app's own rule for which
+	// carry a switch (subscriptionIsGrant): platform events and those only
+	// the plugin itself can send are always delivered, so they are shown
+	// with the scope rather than as switches that switch nothing.
 	{
 		name:  "events",
 		block: "consumes",
 		field: "events",
 		extract: func(m PluginManifest) []string {
-			if m.Consumes == nil {
-				return nil
-			}
-			out := make([]string, 0, len(m.Consumes.Events))
-			for _, e := range m.Consumes.Events {
-				out = append(out, e.Pattern)
-			}
-			return sortedUnique(out)
+			return subscriptionKeys(m, true)
 		},
-		display: plainDisplay,
+		display: subscriptionDisplay,
 		summary: func(v []string) string {
 			return fmt.Sprintf("  Events: receives %s (allow each on the plugin's page after install)\n", strings.Join(v, ", "))
 		},
 		addFmt: "  + receives events: %s (allow it on the plugin's page)\n",
 		delFmt: "  - receives events: %s\n",
 		grant:  true,
+	},
+	{
+		name:  "always_events",
+		block: "consumes",
+		field: "events",
+		extract: func(m PluginManifest) []string {
+			return subscriptionKeys(m, false)
+		},
+		display: subscriptionDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  Events always delivered: %s (platform events and its own; no switch)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + always receives events: %s (platform events and its own; no switch)\n",
+		delFmt: "  - always receives events: %s\n",
 	},
 	{
 		name:  "dispatch",
@@ -533,6 +545,60 @@ var notConsentFields = map[string]string{
 	"provides.context_names": "friendly names for tag sets, read by the context engine; no access",
 	"provides.effects":       "names the plugin defines for coordination; asserting one is the consent unit (consumes.effects), defining one grants nothing",
 	"provides.events":        "event types the plugin emits; receiving them is the subscriber's grant (consumes.events), emitting is not a request",
+}
+
+// subscriptionKey is a subscription's consent identity, in the form the app
+// keys its grant record: the pattern, then ":" and the source when it names
+// one. Two subscriptions to one pattern from different sources are two
+// grants, and narrowing or widening the source is a different grant.
+func subscriptionKey(e SubscriptionDecl) string {
+	if e.Source != nil {
+		return e.Pattern + ":" + *e.Source
+	}
+	return e.Pattern
+}
+
+// subscriptionDisplay renders a subscriptionKey for a person: the source,
+// when there is one, named rather than joined by a colon.
+func subscriptionDisplay(key string) string {
+	if pattern, source, ok := strings.Cut(key, ":"); ok {
+		return fmt.Sprintf("%s (from %s)", pattern, source)
+	}
+	return key
+}
+
+// subscriptionIsGrant reports whether the app gives a subscription a switch
+// on the plugin's page, by the app's rules: never for a platform event
+// (`_platform.*`, always delivered), and never for one only the plugin
+// itself can satisfy — its source is the plugin or one of its stages
+// (`<id>.<stage>`), or, with no source, the pattern's first segment is the
+// plugin's id, the only namespace it may emit under.
+func subscriptionIsGrant(e SubscriptionDecl, owner string) bool {
+	if strings.HasPrefix(e.Pattern, "_platform.") {
+		return false
+	}
+	if e.Source != nil {
+		src := *e.Source
+		stageOwner, _, isStage := strings.Cut(src, ".")
+		return src != owner && !(isStage && stageOwner == owner)
+	}
+	first, _, _ := strings.Cut(e.Pattern, ".")
+	return first != owner
+}
+
+// subscriptionKeys is the manifest's subscriptions that do (grants true) or
+// do not carry a switch, as sorted subscriptionKeys.
+func subscriptionKeys(m PluginManifest, grants bool) []string {
+	if m.Consumes == nil {
+		return nil
+	}
+	out := make([]string, 0, len(m.Consumes.Events))
+	for _, e := range m.Consumes.Events {
+		if subscriptionIsGrant(e, m.ID) == grants {
+			out = append(out, subscriptionKey(e))
+		}
+	}
+	return sortedUnique(out)
 }
 
 // sortedUnique returns the set of v, sorted, nil when empty.

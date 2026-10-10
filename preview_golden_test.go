@@ -25,7 +25,10 @@ const goldenOldManifest = `{
 		"privileges": ["screenshot"],
 		"network": {"hosts": ["old.example"]}
 	},
-	"consumes": {"writes": ["notes"]}
+	"consumes": {
+		"writes": ["notes"],
+		"events": [{"pattern": "tempo.**", "source": "metronome"}]
+	}
 }`
 
 const goldenNewManifest = `{
@@ -56,7 +59,12 @@ const goldenNewManifest = `{
 	},
 	"consumes": {
 		"blobs": ["camera/frames"],
-		"events": [{"pattern": "_platform.window.**"}],
+		"events": [
+			{"pattern": "_platform.window.**"},
+			{"pattern": "golden.*"},
+			{"pattern": "tempo.**"},
+			{"pattern": "voice.*", "source": "voice"}
+		],
 		"dispatch": ["tiling"],
 		"collections": [{"name": "apps", "fields": ["name"]}],
 		"writes": ["snippets"],
