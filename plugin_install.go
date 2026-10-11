@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +16,8 @@ import (
 
 func cmdInstall(source string, build bool, force bool) {
 	// Carries the catalog entry (with its registry counter-signature) when
-	// installing by short name, so the install path can confirm the canonical
-	// listing. nil for direct github:owner/repo or local installs.
+	// installing by short name. nil for a github:owner/repo source, which
+	// installFromGitHub looks up in the catalog itself, and for local installs.
 	var entry *catalogEntry
 	// A path is a path before it is anything else. `.` — what every
 	// scaffold's README says to type — used to be read as a catalog short
@@ -139,11 +140,17 @@ func installFromLocal(source string) error {
 
 // --- GitHub install ---
 
+// installFromGitHub installs a release of source. catalog is the entry the
+// caller already resolved (a short name), or nil: then the entry is looked up
+// here by the repository being installed, so the registry counter-signature
+// is checked whatever form the argument took — a `github:owner/repo@tag`
+// from Settings' "Review & install", a `plugin update`, or a short name.
 func installFromGitHub(source string, catalog *catalogEntry) error {
 	parsed, err := parseGitHubSource(source)
 	if err != nil {
 		return err
 	}
+	catalog = catalogEntryForInstall(parsed, catalog)
 	pluginName := pluginNameFromRepo(parsed.Repo)
 
 	// Unpredictable per-invocation directory, not a fixed name in shared
@@ -232,14 +239,12 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 	// check on an update must not destroy the version already on disk (the
 	// post-copy ordering this replaced did exactly that).
 	registrySigned := false
-	if catalog != nil && attestation != nil && attestation.Verified {
-		manifestBytes, rerr := os.ReadFile(manifestPath)
-		pub, kerr := registryPublicKey()
-		if rerr == nil && kerr == nil {
-			ok, verr := verifyCatalogCounterSig(pub, *catalog, manifestBytes)
+	if manifestBytes, rerr := os.ReadFile(manifestPath); rerr == nil {
+		if pub, kerr := registryPublicKey(); kerr == nil {
+			ok, verr := installCounterSig(pub, catalog, attestation, manifestBytes)
 			if verr != nil {
 				os.RemoveAll(tempDir)
-				return fmt.Errorf("registry counter-signature check failed: %w", verr)
+				return verr
 			}
 			registrySigned = ok
 			if ok {
@@ -713,4 +718,32 @@ func setExecutableFor(dir, runCmd, suffix string) bool {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// catalogEntryForInstall is the catalog entry an install of parsed checks its
+// registry counter-signature against: the one the caller resolved, else the
+// entry naming the same repository (case-insensitive; any `@tag` dropped).
+// nil when the repository is not catalogued or the catalog is unreachable,
+// which leaves the install not registry-signed, never refused.
+func catalogEntryForInstall(parsed ResolvedSource, given *catalogEntry) *catalogEntry {
+	if given != nil {
+		return given
+	}
+	return findCatalogEntryBySource(parsed.Owner + "/" + parsed.Repo)
+}
+
+// installCounterSig decides an install's registry_signed record. Only atop a
+// verified author attestation, and only for a catalogued repository: a valid
+// counter-signature is true, an absent one false (not registry-signed), and a
+// present-but-invalid one — a tampered listing or a swapped manifest — an
+// error that refuses the install.
+func installCounterSig(pub ed25519.PublicKey, catalog *catalogEntry, attestation *AuthorAttestation, manifestBytes []byte) (bool, error) {
+	if catalog == nil || attestation == nil || !attestation.Verified {
+		return false, nil
+	}
+	ok, err := verifyCatalogCounterSig(pub, *catalog, manifestBytes)
+	if err != nil {
+		return false, fmt.Errorf("registry counter-signature check failed: %w", err)
+	}
+	return ok, nil
 }
