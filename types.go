@@ -278,6 +278,7 @@ type NativeMessagingDecl struct {
 	HostName            string   `json:"host_name"`
 	ChromeExtensionIDs  []string `json:"chrome_extension_ids,omitempty"`
 	FirefoxExtensionIDs []string `json:"firefox_extension_ids,omitempty"`
+	SafariExtensionIDs  []string `json:"safari_extension_ids,omitempty"`
 }
 
 // StageDecl is the part of a `provides.stages` entry the CLI needs.

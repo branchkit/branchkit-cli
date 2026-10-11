@@ -113,7 +113,8 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 			"native_messaging": {
 				"host_name": "com.example.pair",
 				"chrome_extension_ids": ["abcdefghijklmnopabcdefghijklmnop"],
-				"firefox_extension_ids": ["pair@example.com"]
+				"firefox_extension_ids": ["pair@example.com"],
+				"safari_extension_ids": ["com.example.app.safari"]
 			}
 		},
 		"consumes": {
@@ -133,7 +134,7 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 	}
 	want := map[string][]string{
 		"stages":            {"ocr", "stt (bin/stt-engine)"},
-		"native_messaging":  {"Chrome extension abcdefghijklmnopabcdefghijklmnop", "Firefox extension pair@example.com"},
+		"native_messaging":  {"Chrome extension abcdefghijklmnopabcdefghijklmnop", "Firefox extension pair@example.com", "Safari extension com.example.app.safari"},
 		"events":            {"tempo.** (from metronome)"},
 		"always_events":     {"_platform.window.**"},
 		"dispatch":          {"browser", "tiling"},

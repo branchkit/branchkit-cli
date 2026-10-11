@@ -909,12 +909,15 @@ func nativeMessagingSet(m PluginManifest) []string {
 		return nil
 	}
 	nm := m.Provides.NativeMessaging
-	out := make([]string, 0, len(nm.ChromeExtensionIDs)+len(nm.FirefoxExtensionIDs))
+	out := make([]string, 0, len(nm.ChromeExtensionIDs)+len(nm.FirefoxExtensionIDs)+len(nm.SafariExtensionIDs))
 	for _, id := range nm.ChromeExtensionIDs {
 		out = append(out, "Chrome extension "+id)
 	}
 	for _, id := range nm.FirefoxExtensionIDs {
 		out = append(out, "Firefox extension "+id)
+	}
+	for _, id := range nm.SafariExtensionIDs {
+		out = append(out, "Safari extension "+id)
 	}
 	return sortedUnique(out)
 }
