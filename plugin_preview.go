@@ -232,8 +232,9 @@ func cmdPreview(source string) {
 	// Check conformance
 	cs := fetchConformanceStatus(parsed, tag)
 
-	// Check catalog tier
-	tier := lookupCatalogTier(manifest.ID)
+	// Check catalog tier: this repo's entry, never another repo's that
+	// shares the manifest's id.
+	tier := lookupCatalogTier(manifest.ID, parsed.Owner+"/"+parsed.Repo)
 
 	result := previewResult{
 		PreviewFormat: previewFormat,

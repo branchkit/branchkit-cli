@@ -210,6 +210,36 @@ func TestCatalogGrantsOn(t *testing.T) {
 	}
 }
 
+// The tier shown at install and preview is the entry for THIS repo: a
+// lookalike repo whose plugin.json declares a catalogued id gets no tier,
+// never the real plugin's First-party.
+func TestCatalogTierMatchesSourceAndID(t *testing.T) {
+	cat := catalog{Plugins: []catalogEntry{
+		{ID: "voice", Source: "github:branchkit/branchkit-plugin-voice", Tier: "first-party"},
+		{ID: "snip", Source: "github:someone/branchkit-plugin-snip", Tier: "community"},
+		{ID: "pinned", Source: "github:branchkit/branchkit-plugin-pinned@v1.2.0", Tier: "approved"},
+	}}
+	cases := []struct {
+		id, repo, want string
+	}{
+		{"voice", "branchkit/branchkit-plugin-voice", "First-party"},
+		{"voice", "BranchKit/Branchkit-Plugin-Voice", "First-party"},
+		{"voice", "github:branchkit/branchkit-plugin-voice", "First-party"},
+		{"voice", "evil/branchkit-plugin-x", ""},
+		{"voice", "evil/branchkit-plugin-voice", ""},
+		{"voice", "", ""},
+		{"x", "branchkit/branchkit-plugin-voice", ""},
+		{"snip", "someone/branchkit-plugin-snip", "Community"},
+		{"pinned", "branchkit/branchkit-plugin-pinned", "Approved"},
+		{"unlisted", "someone/branchkit-plugin-unlisted", ""},
+	}
+	for _, c := range cases {
+		if got := catalogTier(cat, c.id, c.repo); got != c.want {
+			t.Errorf("%s from %q: %q, want %q", c.id, c.repo, got, c.want)
+		}
+	}
+}
+
 // TestMain keeps every test off this computer's catalog, its installed
 // plugins and the network: each test that needs a catalog or a claimant
 // stands one in.

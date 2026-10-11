@@ -454,7 +454,7 @@ func readManifest(path string) (PluginManifest, error) {
 
 func printInstallInfo(manifest PluginManifest, source ResolvedSource, tag string) {
 	// Catalog tier
-	tier := lookupCatalogTier(manifest.ID)
+	tier := lookupCatalogTier(manifest.ID, source.Owner+"/"+source.Repo)
 	if tier != "" {
 		fmt.Printf("  Catalog: %s\n", tier)
 	}
@@ -507,23 +507,40 @@ func printConsentSummary(manifest PluginManifest) {
 	}
 }
 
-func lookupCatalogTier(pluginID string) string {
+// lookupCatalogTier names the catalog tier of the plugin being installed from
+// repo (`owner/repo`), or "" when the catalog does not list it.
+func lookupCatalogTier(pluginID, repo string) string {
 	cat, err := fetchCatalog()
 	if err != nil {
 		return ""
 	}
+	return catalogTier(cat, pluginID, repo)
+}
+
+// catalogTier is lookupCatalogTier's rule against a fetched catalog. An entry
+// counts only when BOTH its id and its source match: the id is whatever the
+// fetched plugin.json says, so a repo anyone can create declaring
+// `"id": "voice"` would otherwise be labelled First-party at the moment the
+// person decides whether to install it. A different repo with a catalogued
+// id gets no tier at all.
+func catalogTier(cat catalog, pluginID, repo string) string {
+	if repo == "" {
+		return ""
+	}
+	want := normalizeSource(repo)
 	for _, entry := range cat.Plugins {
-		if entry.ID == pluginID {
-			switch entry.Tier {
-			case "first-party":
-				return "First-party"
-			case "approved":
-				return "Approved"
-			case "community":
-				return "Community"
-			default:
-				return entry.Tier
-			}
+		if entry.ID != pluginID || normalizeSource(entry.Source) != want {
+			continue
+		}
+		switch entry.Tier {
+		case "first-party":
+			return "First-party"
+		case "approved":
+			return "Approved"
+		case "community":
+			return "Community"
+		default:
+			return entry.Tier
 		}
 	}
 	return ""
