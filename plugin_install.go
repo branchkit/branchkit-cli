@@ -733,10 +733,11 @@ func catalogEntryForInstall(parsed ResolvedSource, given *catalogEntry) *catalog
 }
 
 // installCounterSig decides an install's registry_signed record. Only atop a
-// verified author attestation, and only for a catalogued repository: a valid
-// counter-signature is true, an absent one false (not registry-signed), and a
-// present-but-invalid one — a tampered listing or a swapped manifest — an
-// error that refuses the install.
+// verified author attestation, and only for a catalogued repository: the
+// release the registry signed, with a valid counter-signature, is true; an
+// absent counter-signature, or another release than the one signed, is false
+// (not registry-signed); a forged listing — a signature that does not verify
+// over the hash the entry records — is an error that refuses the install.
 func installCounterSig(pub ed25519.PublicKey, catalog *catalogEntry, attestation *AuthorAttestation, manifestBytes []byte) (bool, error) {
 	if catalog == nil || attestation == nil || !attestation.Verified {
 		return false, nil

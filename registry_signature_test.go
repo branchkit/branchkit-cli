@@ -108,14 +108,37 @@ func TestVerifyCatalogCounterSig(t *testing.T) {
 		t.Errorf("absent counter-sig should be (false, nil), got ok=%v err=%v", ok, err)
 	}
 
-	// A swapped manifest (different bytes than were signed) → hard error.
-	if _, err := verifyCatalogCounterSig(pub, signed, []byte(`{"id":"evil"}`)); err == nil {
-		t.Error("swapped manifest must be a hard error")
+	// A different manifest than the one signed (another release of the
+	// repository: the entry records no tag to tell it from a swap) → not
+	// registry-signed, NOT an error: a genuine older release still installs.
+	ok, err = verifyCatalogCounterSig(pub, signed, []byte(`{"id":"demo","version":"0.9.0"}`))
+	if err != nil || ok {
+		t.Errorf("another release should be (false, nil), got ok=%v err=%v", ok, err)
 	}
-	// A signature from a different (clone's) key → hard error.
+	// A signature from a different (clone's) key → hard error, whichever
+	// release is being installed.
 	otherPub, _ := testKeypair(t)
 	if _, err := verifyCatalogCounterSig(otherPub, signed, manifest); err == nil {
 		t.Error("signature under a foreign key must be rejected")
+	}
+	if _, err := verifyCatalogCounterSig(otherPub, signed, []byte(`{"id":"demo","version":"0.9.0"}`)); err == nil {
+		t.Error("a forged listing must be rejected for another release too")
+	}
+	// A recorded hash the signature does not cover (the listing retargeted
+	// at another manifest) → hard error.
+	retargeted := signed
+	retargeted.ManifestSHA256 = sha256HexBytes([]byte(`{"id":"evil"}`))
+	if _, err := verifyCatalogCounterSig(pub, retargeted, []byte(`{"id":"evil"}`)); err == nil {
+		t.Error("a hash the signature does not cover must be rejected")
+	}
+	// No recorded hash: the signature is checked over the download, and a
+	// miss is not registry-signed, never refused.
+	bare := catalogEntry{ID: "demo", RegistrySignature: signed.RegistrySignature}
+	if ok, err := verifyCatalogCounterSig(pub, bare, manifest); err != nil || !ok {
+		t.Errorf("unrecorded hash, signed manifest: ok=%v err=%v", ok, err)
+	}
+	if ok, err := verifyCatalogCounterSig(pub, bare, []byte(`{"id":"demo","version":"0.9.0"}`)); err != nil || ok {
+		t.Errorf("unrecorded hash, other manifest: ok=%v err=%v, want (false, nil)", ok, err)
 	}
 }
 

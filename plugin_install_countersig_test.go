@@ -83,16 +83,20 @@ func TestInstallCounterSigEveryArgumentForm(t *testing.T) {
 	}
 }
 
-// A swapped manifest under a valid listing is refused too, and nothing is
-// registry-signed without a verified author attestation or a catalog entry.
+// The registry signs one manifest per entry, and the lookup drops the tag, so
+// installing another genuine release (a pinned older tag, a release cut before
+// the entry is re-signed) installs as not registry-signed — it is not treated
+// as forged. Nothing is registry-signed without a verified author attestation
+// or a catalog entry.
 func TestInstallCounterSigPreconditions(t *testing.T) {
 	pub, priv := testKeypair(t)
-	manifest := []byte(`{"id":"demo"}`)
+	manifest := []byte(`{"id":"demo","version":"1.0.0"}`)
 	hash := sha256HexBytes(manifest)
 	entry := &catalogEntry{ID: "demo", ManifestSHA256: hash, RegistrySignature: signRegistryCounterSig(priv, hash)}
 
-	if _, err := installCounterSig(pub, entry, &AuthorAttestation{Verified: true}, []byte(`{"id":"evil"}`)); err == nil {
-		t.Error("a manifest other than the one counter-signed must refuse the install")
+	older := []byte(`{"id":"demo","version":"0.9.0"}`)
+	if ok, err := installCounterSig(pub, entry, &AuthorAttestation{Verified: true}, older); ok || err != nil {
+		t.Errorf("older release: ok=%v err=%v, want installs not registry-signed", ok, err)
 	}
 	for name, att := range map[string]*AuthorAttestation{"nil": nil, "unverified": {Verified: false}} {
 		if ok, err := installCounterSig(pub, entry, att, manifest); ok || err != nil {

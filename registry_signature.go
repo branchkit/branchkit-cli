@@ -98,29 +98,39 @@ func sha256HexBytes(b []byte) string {
 // install time, recomputing the manifest hash from the plugin.json actually
 // downloaded.
 //
-// Returns (true, nil) when a valid counter-signature is present — the listing
-// is the canonical registry one (RegistrySigned). (false, nil) when the entry
-// carries no counter-signature: during rollout most entries won't, and a
-// sideloaded/community plugin never will — that's not a failure, just "not
-// registry-signed". (false, err) when a counter-signature is PRESENT but the
-// downloaded manifest doesn't match what was signed or the signature is
-// invalid — a forged canonical listing, which the caller treats as a hard
-// install failure.
+// The registry signs ONE manifest per catalog entry (the release it admitted,
+// recorded as manifest_sha256), while an install may fetch any release of the
+// repository: a pinned older tag, or a release cut before the entry was
+// re-signed. The entry records no version or tag, so a downloaded manifest
+// that differs from the signed one cannot be told apart from a swapped one;
+// it installs as not registry-signed rather than being treated as forged.
+//
+// Returns:
+//   - (true, nil) when the downloaded manifest is the one the registry signed
+//     and the signature over it is valid (RegistrySigned).
+//   - (false, nil) when the entry carries no counter-signature (rollout,
+//     community), or when the download is a different manifest than the one
+//     signed (another release; not registry-signed).
+//   - (false, err) when the listing itself is forged: the signature does not
+//     verify over the hash the entry records. The caller refuses the install.
 func verifyCatalogCounterSig(pub ed25519.PublicKey, entry catalogEntry, manifestBytes []byte) (bool, error) {
 	if strings.TrimSpace(entry.RegistrySignature) == "" {
 		return false, nil
 	}
 	manifestHash := sha256HexBytes(manifestBytes)
-
-	// If the entry declares the hash it signed, the download must match it —
-	// a clear error if the manifest was swapped after admission.
-	if entry.ManifestSHA256 != "" && !strings.EqualFold(entry.ManifestSHA256, manifestHash) {
-		return false, fmt.Errorf("manifest hash mismatch: downloaded %s, catalog counter-signed %s", manifestHash, entry.ManifestSHA256)
+	signedHash := strings.TrimSpace(entry.ManifestSHA256)
+	if signedHash == "" {
+		// Nothing says which manifest was signed, so a signature that does
+		// not hold over this one may be over another release: not
+		// registry-signed, never refused (`registry sign` always records the
+		// hash, so only a hand-written entry lands here).
+		return verifyRegistryCounterSig(pub, manifestHash, entry.RegistrySignature) == nil, nil
 	}
-	if err := verifyRegistryCounterSig(pub, manifestHash, entry.RegistrySignature); err != nil {
+	// The listing must be genuine whichever release is being installed.
+	if err := verifyRegistryCounterSig(pub, signedHash, entry.RegistrySignature); err != nil {
 		return false, err
 	}
-	return true, nil
+	return strings.EqualFold(signedHash, manifestHash), nil
 }
 
 // parseRegistryPublicKey decodes a base64 Ed25519 public key (the form the
