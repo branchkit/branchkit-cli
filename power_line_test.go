@@ -60,9 +60,11 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","requires":{"dbus":{"methods":["org.freedesktop.login1.Manager.PowerOff"]}}}`,
 		`{"id":"x","consumes":{"dispatch":["tiling"]}}`,
 		`{"id":"x","consumes":{"writes":["snippets"]}}`,
-		`{"id":"x","provides":{"native_messaging":{"host_name":"com.x"}}}`,
+		`{"id":"x","provides":{"native_messaging":{"host_name":"com.x","chrome_extension_ids":["abcdefghijklmnopabcdefghijklmnop"]}}}`,
 		`{"id":"x","requires":{"wmi":{"classes":["Win32_Process"]},"network":"outbound"}}`,
 		`{"id":"x","requires":{"devices":{"hid":["046d:c52b"]},"network":{"hosts":[],"requestable":true}}}`,
+		`{"id":"x","consumes":{"collections":["snippets"]},"requires":{"network":{"hosts":["collect.example.com"]}}}`,
+		`{"id":"x","consumes":{"events":[{"pattern":"tiling.**"}]},"requires":{"network":"outbound"}}`,
 		`{"id":"x","consumes":{"blobs":["voice/audio"]},"requires":{"network":{"hosts":["e.example"]}}}`,
 	}
 	for _, js := range over {
@@ -79,6 +81,26 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 	for _, js := range under {
 		if got, reasons := crossesPowerLine(parse(js)); got {
 			t.Errorf("should not cross: %s (%v)", js, reasons)
+		}
+	}
+}
+
+// Every consent axis in the app's registry has a place on the line, and
+// every place names a real axis: an axis added later fails here until it is
+// placed, rather than staying under the line unread.
+func TestEveryConsentAxisIsOnThePowerLine(t *testing.T) {
+	names := map[string]bool{}
+	for _, ax := range consentAxes {
+		names[ax.name] = true
+		switch powerLineAxes[ax.name] {
+		case "privilege", "acts", "reads", "network", "neither":
+		default:
+			t.Errorf("consent axis %q has no place on the power line", ax.name)
+		}
+	}
+	for name := range powerLineAxes {
+		if !names[name] {
+			t.Errorf("powerLineAxes names %q, which is not a consent axis", name)
 		}
 	}
 }

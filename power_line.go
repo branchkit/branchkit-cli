@@ -4,29 +4,54 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 )
 
+// powerLineAxes places every consent axis (consentAxes, the app's registry)
+// on the registry's review line. The line is computed by iterating
+// consentAxes, never a hand list, and TestEveryConsentAxisIsOnThePowerLine
+// fails when an axis is added without a place here, so a new grant cannot
+// slip under the line unnoticed. Erring wide is the point: a plugin wrongly
+// put over the line costs a person a look, one wrongly left under it
+// reaches users unread.
+//
+//	"privilege" — each member's side comes from the privilege registry
+//	              (privilege_reach): acts, reads or neither.
+//	"acts"      — harm past the sandbox with no network at all.
+//	"reads"     — reads something another app, plugin or device holds:
+//	              over the line together with network access.
+//	"network"   — the way out that turns a read into a leak.
+//	"neither"   — inside the sandbox, provided rather than taken, or told
+//	              rather than granted.
+var powerLineAxes = map[string]string{
+	"privileges":          "privilege",
+	"optional_privileges": "privilege", // granted at run time, held all the same
+	"network":             "network",
+	"sockets":             "neither", // listens on this computer only
+	"dbus":                "acts",    // any D-Bus method, other services included
+	"wmi":                 "reads",
+	"preferences":         "reads", // other apps' settings
+	"preference_writes":   "acts",  // changing them
+	"devices":             "reads",
+	"blobs":               "reads", // other plugins' byte channels
+	"events":              "reads", // other plugins' and the platform's events
+	"always_events":       "neither",
+	"dispatch":            "acts", // runs other plugins' actions
+	"collection_reads":    "reads",
+	"collection_writes":   "acts", // writes another plugin's data
+	"own_collections":     "neither",
+	"provided_blobs":      "neither",
+	"runtimes":            "neither", // managed runtimes inside the sandbox
+	"capabilities":        "neither", // operations, each gated by a privilege
+	"stages":              "neither", // a stage's own reach is its stage.* privilege
+	"native_messaging":    "acts",    // a bridge to a browser extension
+	"artifacts":           "neither",
+	"reasons":             "neither",
+}
+
 // crossesPowerLine reports whether a plugin's first listing, or an update
-// that newly crosses it, waits for a person at BranchKit, and why.
-//
-// The line: anything that ACTS past the plugin's sandbox, or anything that
-// READS something sensitive together with somewhere to send it (network
-// beyond localhost). It reads every grant the manifest can be given, not
-// only `requires.privileges`:
-//
-//   - privileges, required AND optional: an optional privilege is granted at
-//     run time, so the plugin can hold it all the same; each one's side of
-//     the line comes from the app's privilege registry (privilege_reach);
-//   - acts: changing another app's settings (preferences.write), calling
-//     D-Bus methods, running other plugins' actions (consumes.dispatch),
-//     writing another plugin's collections (consumes.writes), and bridging
-//     to a browser extension (provides.native_messaging);
-//   - reads: WMI classes, HID and Bluetooth devices, and other plugins'
-//     byte channels (consumes.blobs).
-//
-// Erring wide is the point: a plugin wrongly put over the line costs a
-// person a look, one wrongly left under it reaches users unread.
+// that newly crosses it, waits for a person at BranchKit, and why: anything
+// that acts past its sandbox, or anything that reads what is not its own
+// together with network access beyond localhost.
 func crossesPowerLine(m PluginManifest) (bool, []string) {
 	networked := false
 	for _, member := range networkSet(m) {
@@ -37,60 +62,46 @@ func crossesPowerLine(m PluginManifest) (bool, []string) {
 		}
 	}
 	reasons := []string{}
-	acts := func(what string) { reasons = append(reasons, what+": acts past its sandbox") }
-	reads := func(what string) {
-		if networked {
-			reasons = append(reasons, what+": reads something sensitive, with network access")
+	add := func(why string) {
+		for _, r := range reasons {
+			if r == why {
+				return
+			}
 		}
+		reasons = append(reasons, why)
 	}
-
-	privs := append(append([]string(nil), m.Requires.Privileges...), m.Requires.OptionalPrivileges...)
-	sort.Strings(privs)
-	seen := map[string]bool{}
-	for _, p := range privs {
-		if seen[p] {
+	for _, ax := range consentAxes {
+		members := ax.extract(m)
+		if len(members) == 0 {
 			continue
 		}
-		seen[p] = true
-		switch vocabulary.PrivilegeReach[p] {
+		switch role := powerLineAxes[ax.name]; role {
+		case "privilege":
+			for _, p := range members {
+				switch vocabulary.PrivilegeReach[p] {
+				case "acts":
+					add("privilege " + p + ": acts past its sandbox")
+				case "reads":
+					if networked {
+						add("privilege " + p + ": reads something sensitive, with network access")
+					}
+				case "neither":
+				default:
+					// Not in the registry: a person looks rather than the
+					// line letting an unknown name through.
+					add("privilege " + p + ": not a privilege this CLI knows")
+				}
+			}
 		case "acts":
-			acts("privilege " + p)
+			add(ax.name + ": acts past its sandbox")
 		case "reads":
-			reads("privilege " + p)
-		case "neither":
+			if networked {
+				add(ax.name + ": reads what is not its own, with network access")
+			}
+		case "network", "neither":
 		default:
-			// Not in the registry: a person looks rather than the line
-			// letting an unknown name through.
-			reasons = append(reasons, "privilege "+p+": not a privilege this CLI knows")
+			add(ax.name + ": a grant this CLI has not placed on the line")
 		}
-	}
-
-	r := m.Requires
-	if r.Preferences != nil && len(r.Preferences.Write) > 0 {
-		acts("changes other apps' settings")
-	}
-	if r.Dbus != nil && len(r.Dbus.Methods) > 0 {
-		acts("calls D-Bus methods")
-	}
-	if m.Provides != nil && m.Provides.NativeMessaging != nil {
-		acts("bridges to a browser extension")
-	}
-	if c := m.Consumes; c != nil {
-		if len(c.Dispatch) > 0 {
-			acts("runs other plugins' actions")
-		}
-		if len(c.Writes) > 0 {
-			acts("writes other plugins' collections")
-		}
-		if len(c.Blobs) > 0 {
-			reads("reads other plugins' byte channels")
-		}
-	}
-	if r.Wmi != nil && len(r.Wmi.Classes) > 0 {
-		reads("reads WMI classes")
-	}
-	if r.Devices != nil && len(r.Devices.Hid)+len(r.Devices.Ble) > 0 {
-		reads("reads devices")
 	}
 	return len(reasons) > 0, reasons
 }
