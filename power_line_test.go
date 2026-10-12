@@ -23,11 +23,13 @@ func TestThePowerLine(t *testing.T) {
 	}{
 		{[]string{"input"}, "", true},
 		{[]string{"clipboard"}, "", false},
-		{[]string{"clipboard"}, `"localhost"`, false},
+		{[]string{"clipboard"}, `"localhost"`, true}, // localhost can relay
 		{[]string{"clipboard"}, `{"hosts":["sync.example.com"]}`, true},
 		{[]string{"screenshot"}, `{"hosts":[],"requestable":true}`, true},
 		{[]string{"clipboard"}, `"outbound"`, true},
-		{[]string{"windows", "audio"}, `{"hosts":["api.weather.gov"],"requestable":true}`, false},
+		{[]string{"audio", "locale"}, `{"hosts":["api.weather.gov"],"requestable":true}`, false},
+		{[]string{"windows"}, "", true}, // closes and captures any window
+		{[]string{"menu"}, "", true},    // clicks any app's menus
 		{nil, `{"hosts":["api.weather.gov"]}`, false},
 		{[]string{"no.such.privilege"}, "", true},
 	}
@@ -72,7 +74,10 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		// Personal data below "dangerous" still reads.
 		`{"id":"x","requires":{"privileges":["contacts","calendar"],"network":"outbound"}}`,
 		`{"id":"x","requires":{"privileges":["events.output"],"network":{"hosts":["e.example"]}}}`,
-		// Another program's local service, with a way out.
+		// A reader with only localhost can relay to a plugin that listens.
+		`{"id":"x","requires":{"privileges":["clipboard"],"network":"localhost"}}`,
+		// Another program's local service.
+		`{"id":"x","requires":{"network":{"hosts":["localhost:8765"]}}}`,
 		`{"id":"x","requires":{"network":{"hosts":["localhost:8765","collect.example"]}}}`,
 		`{"id":"x","consumes":{"events":[{"pattern":"tiling.**"}]},"requires":{"network":"outbound"}}`,
 		`{"id":"x","consumes":{"blobs":["voice/audio"]},"requires":{"network":{"hosts":["e.example"]}}}`,
@@ -86,9 +91,8 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","requires":{"optional_privileges":["clipboard"]}}`,
 		`{"id":"x","requires":{"preferences":{"read":["defaults:com.apple.dock"]}}}`,
 		`{"id":"x","requires":{"wmi":{"classes":["Win32_Battery"]}}}`,
-		`{"id":"x","requires":{"devices":{"hid":["046d:c52b"]},"network":"localhost"}}`,
-		// Talking to a local service with no way out leaks nothing.
-		`{"id":"x","requires":{"network":{"hosts":["localhost:8765"]}}}`,
+		// A device read with no network and no listener goes nowhere.
+		`{"id":"x","requires":{"devices":{"hid":["046d:c52b"]}}}`,
 		// A listen socket with nothing sensitive to serve.
 		`{"id":"x","requires":{"sockets":{"listen":[{"id":"s","port":0}]}}}`,
 	}

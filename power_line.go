@@ -21,9 +21,10 @@ import (
 //	"acts"      — harm past the sandbox with no network at all.
 //	"reads"     — reads something another app, plugin or device holds:
 //	              over the line together with network access.
-//	"network"   — each member is a way out (a host off this computer, or any
-//	              host it may request) or a read (a port on this
-//	              computer: another program's local service).
+//	"network"   — every member is a way out, localhost included: a port on
+//	              this computer can be another plugin that relays what it
+//	              is sent. A port on this computer is also a read (another
+//	              program's service), so loopback access crosses the line.
 //	"way out"   — a way out on its own: a listen socket answers any local
 //	              process or web page that connects.
 //	"neither"   — inside the sandbox, provided rather than taken, or told
@@ -78,11 +79,7 @@ func crossesPowerLine(m PluginManifest) (bool, []string) {
 		case "way out":
 			networked = networked || len(members) > 0
 		case "network":
-			for _, h := range networkSet(m) {
-				if !isLoopbackMember(h) {
-					networked = true
-				}
-			}
+			networked = networked || len(networkSet(m)) > 0
 		}
 	}
 	for _, ax := range consentAxes {
@@ -98,7 +95,7 @@ func crossesPowerLine(m PluginManifest) (bool, []string) {
 					add("privilege " + p + ": acts past its sandbox")
 				case "reads":
 					if networked {
-						add("privilege " + p + ": reads something sensitive, with network access")
+						add("privilege " + p + ": reads something sensitive, with a way out (network or a listen socket)")
 					}
 				case "neither":
 				default:
@@ -111,13 +108,14 @@ func crossesPowerLine(m PluginManifest) (bool, []string) {
 			add(ax.name + ": acts past its sandbox")
 		case "reads":
 			if networked {
-				add(ax.name + ": reads what is not its own, with network access")
+				add(ax.name + ": reads what is not its own, with a way out (network or a listen socket)")
 			}
 		case "network":
-			// A port on this computer is another program's service: a read.
+			// A port on this computer is another program's service: a read,
+			// and the network access itself is the way out.
 			for _, h := range networkSet(m) {
-				if isLoopbackMember(h) && networked {
-					add("network " + h + ": reaches services on this computer, with a way out")
+				if isLoopbackMember(h) {
+					add("network " + h + ": reaches services on this computer")
 					break
 				}
 			}
