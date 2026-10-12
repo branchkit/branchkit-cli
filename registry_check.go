@@ -73,6 +73,12 @@ type releaseCheck struct {
 	Detail string `json:"detail,omitempty"`
 }
 
+// powerLineResult is crossesPowerLine's answer as the report carries it.
+type powerLineResult struct {
+	Crosses bool     `json:"crosses"`
+	Reasons []string `json:"reasons"`
+}
+
 type releaseReport struct {
 	Source    string   `json:"source"`
 	Tag       string   `json:"tag"`
@@ -80,13 +86,10 @@ type releaseReport struct {
 	Platforms []string `json:"platforms"`
 	// ManifestSHA256 is over the manifest's canonical JSON (canonicalJSON),
 	// the same on every platform whatever its line endings.
-	ManifestSHA256 string `json:"manifest_sha256,omitempty"`
-	ConsentDigest  string `json:"consent_digest,omitempty"`
-	PowerLine      struct {
-		Crosses bool     `json:"crosses"`
-		Reasons []string `json:"reasons"`
-	} `json:"power_line"`
-	Checks []releaseCheck `json:"checks"`
+	ManifestSHA256 string          `json:"manifest_sha256,omitempty"`
+	ConsentDigest  string          `json:"consent_digest,omitempty"`
+	PowerLine      powerLineResult `json:"power_line"`
+	Checks         []releaseCheck  `json:"checks"`
 }
 
 func (r *releaseReport) check(name string, ok bool, detail string) {
@@ -124,7 +127,7 @@ func cmdRegistryCheck(args []string) {
 
 func checkRelease(sourceArg string) releaseReport {
 	report := releaseReport{Source: sourceArg, OK: true, Platforms: []string{}, Checks: []releaseCheck{}}
-	report.PowerLine.Reasons = []string{}
+	report.PowerLine = powerLineResult{Reasons: []string{}}
 	source, err := parseGitHubSource(sourceArg)
 	if err != nil || source.Version == "" {
 		report.check("source", false, "need github:owner/repo@tag")
@@ -353,8 +356,7 @@ func assessRelease(r *releaseReport, name, tag string, artifacts []checkedArtifa
 	r.check("no hidden characters", len(hidden) == 0, strings.Join(firstN(hidden, 10), "; "))
 
 	crosses, reasons := crossesPowerLine(m)
-	r.PowerLine.Crosses = crosses
-	r.PowerLine.Reasons = reasons
+	r.PowerLine = powerLineResult{Crosses: crosses, Reasons: reasons}
 }
 
 // canonicalJSON re-encodes a JSON document with sorted keys and no
