@@ -27,7 +27,8 @@ func TestThePowerLine(t *testing.T) {
 		{[]string{"clipboard"}, `{"hosts":["sync.example.com"]}`, true},
 		{[]string{"screenshot"}, `{"hosts":[],"requestable":true}`, true},
 		{[]string{"clipboard"}, `"outbound"`, true},
-		{[]string{"audio", "locale"}, `{"hosts":["api.weather.gov"],"requestable":true}`, false},
+		{[]string{"locale", "appearance"}, `{"hosts":["api.weather.gov"],"requestable":true}`, false},
+		{[]string{"audio"}, "", true},   // repoints the microphone a voice user depends on
 		{[]string{"windows"}, "", true}, // closes and captures any window
 		{[]string{"menu"}, "", true},    // clicks any app's menus
 		{nil, `{"hosts":["api.weather.gov"]}`, false},
