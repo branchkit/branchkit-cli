@@ -320,7 +320,7 @@
     "apps.control": "acts",
     "audio": "acts",
     "calendar": "reads",
-    "clipboard": "reads",
+    "clipboard": "acts",
     "contacts": "reads",
     "dispatch": "acts",
     "display": "reads",

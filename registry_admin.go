@@ -188,4 +188,7 @@ func printRegistryUsage() {
 	fmt.Println("        Counter-sign a plugin's catalog listing (needs the private key)")
 	fmt.Println("  power-line <plugin.json>")
 	fmt.Println("        Whether a manifest needs a person's review before listing, and why (JSON)")
+	fmt.Println("  check github:owner/repo@tag")
+	fmt.Println("        The registry's checks on one release: every platform's tarball, checksum,")
+	fmt.Println("        author signature, one manifest, scans and the power line (JSON; exit 1 on a failure)")
 }

@@ -22,11 +22,12 @@ func TestThePowerLine(t *testing.T) {
 		want    bool
 	}{
 		{[]string{"input"}, "", true},
-		{[]string{"clipboard"}, "", false},
-		{[]string{"clipboard"}, `"localhost"`, true}, // localhost can relay
-		{[]string{"clipboard"}, `{"hosts":["sync.example.com"]}`, true},
+		{[]string{"screenshot"}, "", false},
+		{[]string{"clipboard"}, "", true},             // replaces what you copied: a pasted command or address
+		{[]string{"screenshot"}, `"localhost"`, true}, // localhost can relay
+		{[]string{"screenshot"}, `{"hosts":["sync.example.com"]}`, true},
 		{[]string{"screenshot"}, `{"hosts":[],"requestable":true}`, true},
-		{[]string{"clipboard"}, `"outbound"`, true},
+		{[]string{"screenshot"}, `"outbound"`, true},
 		{[]string{"locale", "appearance"}, `{"hosts":["api.weather.gov"],"requestable":true}`, false},
 		{[]string{"audio"}, "", true},   // repoints the microphone a voice user depends on
 		{[]string{"windows"}, "", true}, // closes and captures any window
@@ -69,14 +70,14 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","consumes":{"collections":["snippets"]},"requires":{"network":{"hosts":["collect.example.com"]}}}`,
 		`{"id":"x","requires":{"protected_reads":["password_managers"],"network":{"hosts":["e.example"]}}}`,
 		// A read served on a listen socket: anything local can take it.
-		`{"id":"x","requires":{"privileges":["clipboard"],"network":"localhost","sockets":{"listen":[{"id":"s","port":8765}]}}}`,
+		`{"id":"x","requires":{"privileges":["screenshot"],"network":"localhost","sockets":{"listen":[{"id":"s","port":8765}]}}}`,
 		// A name that only looks like loopback is a way out.
-		`{"id":"x","requires":{"privileges":["clipboard"],"network":{"hosts":["127.attacker.com"]}}}`,
+		`{"id":"x","requires":{"privileges":["screenshot"],"network":{"hosts":["127.attacker.com"]}}}`,
 		// Personal data below "dangerous" still reads.
 		`{"id":"x","requires":{"privileges":["contacts","calendar"],"network":"outbound"}}`,
 		`{"id":"x","requires":{"privileges":["events.output"],"network":{"hosts":["e.example"]}}}`,
 		// A reader with only localhost can relay to a plugin that listens.
-		`{"id":"x","requires":{"privileges":["clipboard"],"network":"localhost"}}`,
+		`{"id":"x","requires":{"privileges":["screenshot"],"network":"localhost"}}`,
 		// A device grant writes to the hardware too.
 		`{"id":"x","requires":{"devices":{"ble":["fff0"]}}}`,
 		// Every spelling the proxy treats as this computer.
@@ -96,7 +97,7 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		}
 	}
 	under := []string{
-		`{"id":"x","requires":{"optional_privileges":["clipboard"]}}`,
+		`{"id":"x","requires":{"optional_privileges":["screenshot"]}}`,
 		`{"id":"x","requires":{"preferences":{"read":["defaults:com.apple.dock"]}}}`,
 		`{"id":"x","requires":{"wmi":{"classes":["Win32_Battery"]}}}`,
 		// A listen socket with nothing sensitive to serve.
