@@ -75,7 +75,35 @@ func fetchCatalog() (catalog, error) {
 	if err := yaml.Unmarshal(data, &cat); err != nil {
 		return catalog{}, fmt.Errorf("failed to parse catalog: %w", err)
 	}
+	maybeCacheCatalog(catalogURL(), data, cat)
 	return cat, nil
+}
+
+// maybeCacheCatalog keeps the last catalog fetched from the registry where
+// the app reads it first (<app support>/catalog.yaml), so the app lists what
+// the registry lists now rather than the copy it shipped with. Only the
+// default registry is kept: a BRANCHKIT_CATALOG_URL override (a test, a
+// fork) must never replace the file the app reads. An empty or unparsable
+// catalog is never kept, and the write is atomic, so the app never reads a
+// half-written file. Best-effort: a failure leaves the previous copy.
+func maybeCacheCatalog(url string, data []byte, cat catalog) {
+	if url != defaultCatalogURL || len(cat.Plugins) == 0 {
+		return
+	}
+	dir := appSupportDir()
+	tmp, err := os.CreateTemp(dir, ".catalog-*.yaml")
+	if err != nil {
+		return
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		return
+	}
+	_ = os.Rename(tmp.Name(), filepath.Join(dir, "catalog.yaml"))
 }
 
 // resolveShortNameEntry returns the full catalog entry for a short name —

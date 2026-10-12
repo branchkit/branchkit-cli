@@ -56,6 +56,10 @@ func checkUpdatesForPlugins() []UpdateInfo {
 }
 
 func cmdCheckUpdates() {
+	// The app runs this on its update check, so this is also when its copy
+	// of the catalog is refreshed (fetchCatalog keeps it): Get plugins then
+	// lists what the registry lists now. A failure only leaves the old copy.
+	_, _ = fetchCatalog()
 	updates := checkUpdatesForPlugins()
 	if updates == nil {
 		updates = []UpdateInfo{}
