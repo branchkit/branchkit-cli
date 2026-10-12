@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,6 +82,9 @@ func TestAReleaseFailsWhatItShould(t *testing.T) {
 		{"a shipped secret", "v1.2.0", func(t *testing.T) []checkedArtifact {
 			return []checkedArtifact{artifactFor(t, "darwin-arm64", goodManifest, map[string]string{"config.js": "const k = 'AKIAABCDEFGHIJKLMNOP'"})}
 		}, "no secrets"},
+		{"a hidden character behind an invalid byte", "v1.2.0", func(t *testing.T) []checkedArtifact {
+			return []checkedArtifact{artifactFor(t, "darwin-arm64", goodManifest, map[string]string{"main.js": "// \xff\nif (ok \u202e) {}"})}
+		}, "no hidden characters"},
 		{"a hidden character", "v1.2.0", func(t *testing.T) []checkedArtifact {
 			return []checkedArtifact{artifactFor(t, "darwin-arm64", goodManifest, map[string]string{"main.js": "if (ok ‮) {}"})}
 		}, "no hidden characters"},
@@ -101,5 +106,28 @@ func TestThePowerLineIsReportedNotFailed(t *testing.T) {
 	assessRelease(&r, "weather", "v1.2.0", []checkedArtifact{artifactFor(t, "darwin-arm64", m, nil)})
 	if !r.OK || !r.PowerLine.Crosses {
 		t.Fatalf("want ok and crossing, got %+v", r)
+	}
+}
+
+// The extracted size is read from the tarball's headers, and a tarball that
+// would extract past the limit is caught before anything is written.
+func TestTarballExtractedSizeStopsAtTheLimit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.tar.gz")
+	f, _ := os.Create(path)
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	for _, name := range []string{"a", "b"} {
+		body := strings.Repeat("x", 1000)
+		_ = tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(body))})
+		_, _ = tw.Write([]byte(body))
+	}
+	tw.Close()
+	gz.Close()
+	f.Close()
+	if n, err := tarballExtractedSize(path, 1<<20); err != nil || n != 2000 {
+		t.Fatalf("got %d, %v", n, err)
+	}
+	if n, _ := tarballExtractedSize(path, 1500); n <= 1500 {
+		t.Fatalf("limit not reported: %d", n)
 	}
 }

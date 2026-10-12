@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -30,6 +32,40 @@ var releaseArtifactRE = regexp.MustCompile(`^branchkit-plugin-(.+)-(darwin|linux
 // maxArtifactBytes bounds one download: a plugin tarball larger than this is
 // refused rather than read into memory.
 const maxArtifactBytes = 256 << 20
+
+// maxExtractedBytes bounds what one tarball may extract to, checked from its
+// headers before anything is written, so a compressed bomb cannot fill the
+// runner's disk. Every extracted file is scanned in full (scanTree).
+const maxExtractedBytes = 1 << 30
+
+// tarballExtractedSize sums the sizes a gzipped tarball declares, stopping
+// as soon as the sum passes limit.
+func tarballExtractedSize(path string, limit int64) (int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return 0, err
+	}
+	tr := tar.NewReader(gz)
+	var total int64
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return total, nil
+		}
+		if err != nil {
+			return 0, err
+		}
+		total += hdr.Size
+		if total > limit {
+			return total, nil
+		}
+	}
+}
 
 type releaseCheck struct {
 	Name   string `json:"name"`
@@ -228,6 +264,11 @@ func checkArtifact(client *http.Client, assets []ghAsset, asset ghAsset, wantRep
 	if err := os.WriteFile(tarball, body, 0o644); err != nil {
 		return checkedArtifact{}, err
 	}
+	if n, err := tarballExtractedSize(tarball, maxExtractedBytes); err != nil {
+		return checkedArtifact{}, fmt.Errorf("unreadable tarball: %w", err)
+	} else if n > maxExtractedBytes {
+		return checkedArtifact{}, fmt.Errorf("extracts to more than %d MB", maxExtractedBytes>>20)
+	}
 	extracted := filepath.Join(dir, "x")
 	if err := extractTarball(tarball, extracted); err != nil {
 		return checkedArtifact{}, fmt.Errorf("extract: %w", err)
@@ -242,6 +283,12 @@ func checkArtifact(client *http.Client, assets []ghAsset, asset ghAsset, wantRep
 	}
 	m, err := readManifest(manifestPath)
 	if err != nil {
+		return checkedArtifact{}, err
+	}
+	// The same claim check install makes: a release whose manifest names a
+	// publisher its signature disproves would list and then fail every
+	// install.
+	if err := checkPublisherClaim(m.Publisher, att); err != nil {
 		return checkedArtifact{}, err
 	}
 	return checkedArtifact{manifestBytes: mb, manifest: m, dir: extracted}, nil
@@ -379,7 +426,7 @@ func scanTree(root string) (secrets, hidden []string) {
 			secrets = append(secrets, "unreadable: "+path)
 			return nil
 		}
-		if info.IsDir() || info.Size() > maxArtifactBytes {
+		if info.IsDir() {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -393,12 +440,17 @@ func scanTree(root string) (secrets, hidden []string) {
 				secrets = append(secrets, p.name+" in "+rel)
 			}
 		}
-		if textExts[strings.ToLower(filepath.Ext(path))] && utf8.Valid(data) {
-			for i, r := range string(data) {
+		// Every source file, valid UTF-8 or not: a runtime that replaces a
+		// bad byte still runs the rest, so one stray byte must not exempt a
+		// file from the scan.
+		if textExts[strings.ToLower(filepath.Ext(path))] {
+			for i := 0; i < len(data); {
+				r, n := utf8.DecodeRune(data[i:])
 				if isHiddenRune(r) && !(r == 0xFEFF && i == 0) {
 					hidden = append(hidden, fmt.Sprintf("U+%04X in %s", r, rel))
 					break
 				}
+				i += n
 			}
 		}
 		return nil
