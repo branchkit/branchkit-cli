@@ -186,4 +186,6 @@ func printRegistryUsage() {
 	fmt.Println("  keygen                Generate the registry signing keypair (run once, locally)")
 	fmt.Println("  sign --manifest plugin.json [--key file]")
 	fmt.Println("        Counter-sign a plugin's catalog listing (needs the private key)")
+	fmt.Println("  power-line <plugin.json>")
+	fmt.Println("        Whether a manifest needs a person's review before listing, and why (JSON)")
 }

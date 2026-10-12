@@ -39,6 +39,10 @@ type manifestVocabulary struct {
 	// nothing, each `<block>.<field>` with where or why.
 	DisclosedOutsideAxes map[string]string `json:"disclosed_outside_axes"`
 	NotConsentFields     map[string]string `json:"not_consent_fields"`
+	// Each privilege's side of the registry's review line: "acts", "reads"
+	// or "neither" (the app's privileges.rs `Reach`). crossesPowerLine
+	// reads it.
+	PrivilegeReach map[string]string `json:"privilege_reach"`
 }
 
 // publishedAxis is one consent axis as the app's registry describes it.

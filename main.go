@@ -184,6 +184,8 @@ func main() {
 			cmdRegistryKeygen(os.Args[3:])
 		case "sign":
 			cmdRegistrySign(os.Args[3:])
+		case "power-line":
+			cmdRegistryPowerLine(os.Args[3:])
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown registry command: %s\n", os.Args[2])
 			printRegistryUsage()
