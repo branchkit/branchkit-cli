@@ -42,6 +42,47 @@ func TestThePowerLine(t *testing.T) {
 	}
 }
 
+// Every grant a manifest can be given counts, not only required privileges:
+// an optional privilege is held once granted, and the other grant axes that
+// reach past the sandbox act or read on their own.
+func TestThePowerLineReadsEveryGrant(t *testing.T) {
+	parse := func(js string) PluginManifest {
+		var m PluginManifest
+		if err := json.Unmarshal([]byte(js), &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	over := []string{
+		`{"id":"x","requires":{"optional_privileges":["shell"]}}`,
+		`{"id":"x","requires":{"optional_privileges":["screenshot"],"network":{"hosts":["e.example"]}}}`,
+		`{"id":"x","requires":{"preferences":{"write":["defaults:com.apple.dock"]}}}`,
+		`{"id":"x","requires":{"dbus":{"methods":["org.freedesktop.login1.Manager.PowerOff"]}}}`,
+		`{"id":"x","consumes":{"dispatch":["tiling"]}}`,
+		`{"id":"x","consumes":{"writes":["snippets"]}}`,
+		`{"id":"x","provides":{"native_messaging":{"host_name":"com.x"}}}`,
+		`{"id":"x","requires":{"wmi":{"classes":["Win32_Process"]},"network":"outbound"}}`,
+		`{"id":"x","requires":{"devices":{"hid":["046d:c52b"]},"network":{"hosts":[],"requestable":true}}}`,
+		`{"id":"x","consumes":{"blobs":["voice/audio"]},"requires":{"network":{"hosts":["e.example"]}}}`,
+	}
+	for _, js := range over {
+		if got, _ := crossesPowerLine(parse(js)); !got {
+			t.Errorf("should cross: %s", js)
+		}
+	}
+	under := []string{
+		`{"id":"x","requires":{"optional_privileges":["clipboard"]}}`,
+		`{"id":"x","requires":{"preferences":{"read":["defaults:com.apple.dock"]}}}`,
+		`{"id":"x","requires":{"wmi":{"classes":["Win32_Battery"]}}}`,
+		`{"id":"x","requires":{"devices":{"hid":["046d:c52b"]},"network":"localhost"}}`,
+	}
+	for _, js := range under {
+		if got, reasons := crossesPowerLine(parse(js)); got {
+			t.Errorf("should not cross: %s (%v)", js, reasons)
+		}
+	}
+}
+
 // Every privilege the CLI validates against is placed on the line.
 func TestEveryPrivilegeHasAReach(t *testing.T) {
 	for _, p := range vocabulary.Privileges {
