@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
+	"strings"
 )
 
 // powerLineAxes places every consent axis (consentAxes, the app's registry)
@@ -19,14 +21,18 @@ import (
 //	"acts"      — harm past the sandbox with no network at all.
 //	"reads"     — reads something another app, plugin or device holds:
 //	              over the line together with network access.
-//	"network"   — the way out that turns a read into a leak.
+//	"network"   — each member is a way out (a host off this computer, or any
+//	              host it may request) or a read (a port on this
+//	              computer: another program's local service).
+//	"way out"   — a way out on its own: a listen socket answers any local
+//	              process or web page that connects.
 //	"neither"   — inside the sandbox, provided rather than taken, or told
 //	              rather than granted.
 var powerLineAxes = map[string]string{
 	"privileges":          "privilege",
 	"optional_privileges": "privilege", // granted at run time, held all the same
 	"network":             "network",
-	"sockets":             "neither", // listens on this computer only
+	"sockets":             "way out", // anything on this computer can connect and take what it serves
 	"dbus":                "acts",    // any D-Bus method, other services included
 	"wmi":                 "reads",
 	"preferences":         "reads", // other apps' settings
@@ -54,14 +60,6 @@ var powerLineAxes = map[string]string{
 // that acts past its sandbox, or anything that reads what is not its own
 // together with network access beyond localhost.
 func crossesPowerLine(m PluginManifest) (bool, []string) {
-	networked := false
-	for _, member := range networkSet(m) {
-		switch member {
-		case "preset:localhost", "localhost", "127.0.0.1":
-		default:
-			networked = true
-		}
-	}
 	reasons := []string{}
 	add := func(why string) {
 		for _, r := range reasons {
@@ -70,6 +68,22 @@ func crossesPowerLine(m PluginManifest) (bool, []string) {
 			}
 		}
 		reasons = append(reasons, why)
+	}
+	// First pass: is there a way out? Any network member that leaves this
+	// computer, or any listen socket.
+	networked := false
+	for _, ax := range consentAxes {
+		members := ax.extract(m)
+		switch powerLineAxes[ax.name] {
+		case "way out":
+			networked = networked || len(members) > 0
+		case "network":
+			for _, h := range networkSet(m) {
+				if !isLoopbackMember(h) {
+					networked = true
+				}
+			}
+		}
 	}
 	for _, ax := range consentAxes {
 		members := ax.extract(m)
@@ -99,12 +113,34 @@ func crossesPowerLine(m PluginManifest) (bool, []string) {
 			if networked {
 				add(ax.name + ": reads what is not its own, with network access")
 			}
-		case "network", "neither":
+		case "network":
+			// A port on this computer is another program's service: a read.
+			for _, h := range networkSet(m) {
+				if isLoopbackMember(h) && networked {
+					add("network " + h + ": reaches services on this computer, with a way out")
+					break
+				}
+			}
+		case "way out", "neither":
 		default:
 			add(ax.name + ": a grant this CLI has not placed on the line")
 		}
 	}
 	return len(reasons) > 0, reasons
+}
+
+// isLoopbackMember reports whether a networkSet member stays on this
+// computer: the localhost preset, or a loopback host with or without a port.
+func isLoopbackMember(member string) bool {
+	if member == "preset:localhost" {
+		return true
+	}
+	host := member
+	if h, _, err := net.SplitHostPort(member); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	return host == "localhost" || host == "::1" || strings.HasPrefix(host, "127.")
 }
 
 // cmdRegistryPowerLine prints, as JSON, whether the manifest at path crosses

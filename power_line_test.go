@@ -65,6 +65,10 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","requires":{"devices":{"hid":["046d:c52b"]},"network":{"hosts":[],"requestable":true}}}`,
 		`{"id":"x","consumes":{"collections":["snippets"]},"requires":{"network":{"hosts":["collect.example.com"]}}}`,
 		`{"id":"x","requires":{"protected_reads":["password_managers"],"network":{"hosts":["e.example"]}}}`,
+		// A read served on a listen socket: anything local can take it.
+		`{"id":"x","requires":{"privileges":["clipboard"],"network":"localhost","sockets":{"listen":[{"id":"s","port":8765}]}}}`,
+		// Another program's local service, with a way out.
+		`{"id":"x","requires":{"network":{"hosts":["localhost:8765","collect.example"]}}}`,
 		`{"id":"x","consumes":{"events":[{"pattern":"tiling.**"}]},"requires":{"network":"outbound"}}`,
 		`{"id":"x","consumes":{"blobs":["voice/audio"]},"requires":{"network":{"hosts":["e.example"]}}}`,
 	}
@@ -78,6 +82,10 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","requires":{"preferences":{"read":["defaults:com.apple.dock"]}}}`,
 		`{"id":"x","requires":{"wmi":{"classes":["Win32_Battery"]}}}`,
 		`{"id":"x","requires":{"devices":{"hid":["046d:c52b"]},"network":"localhost"}}`,
+		// Talking to a local service with no way out leaks nothing.
+		`{"id":"x","requires":{"network":{"hosts":["localhost:8765"]}}}`,
+		// A listen socket with nothing sensitive to serve.
+		`{"id":"x","requires":{"sockets":{"listen":[{"id":"s","port":0}]}}}`,
 	}
 	for _, js := range under {
 		if got, reasons := crossesPowerLine(parse(js)); got {
@@ -94,7 +102,7 @@ func TestEveryConsentAxisIsOnThePowerLine(t *testing.T) {
 	for _, ax := range consentAxes {
 		names[ax.name] = true
 		switch powerLineAxes[ax.name] {
-		case "privilege", "acts", "reads", "network", "neither":
+		case "privilege", "acts", "reads", "network", "way out", "neither":
 		default:
 			t.Errorf("consent axis %q has no place on the power line", ax.name)
 		}
