@@ -240,7 +240,7 @@
   "blocklisted": false,
   "source": "github.com/example/golden",
   "tag": "v2.0.0",
-  "consent_digest": "055cf0ea91d646ac5d903c9d3bbb0ef8280bdbd2a3f41b6f2cdfb5254651ca41",
+  "consent_digest": "32134f3edf564fe7cde0567c972caf36d42c1f3ef40b8173f73eefe491444c0e",
   "update": {
     "installed_version": "1.0.0",
     "added": [

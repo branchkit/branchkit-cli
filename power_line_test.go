@@ -64,6 +64,7 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","requires":{"wmi":{"classes":["Win32_Process"]},"network":"outbound"}}`,
 		`{"id":"x","requires":{"devices":{"hid":["046d:c52b"]},"network":{"hosts":[],"requestable":true}}}`,
 		`{"id":"x","consumes":{"collections":["snippets"]},"requires":{"network":{"hosts":["collect.example.com"]}}}`,
+		`{"id":"x","requires":{"protected_reads":["password_managers"],"network":{"hosts":["e.example"]}}}`,
 		`{"id":"x","consumes":{"events":[{"pattern":"tiling.**"}]},"requires":{"network":"outbound"}}`,
 		`{"id":"x","consumes":{"blobs":["voice/audio"]},"requires":{"network":{"hosts":["e.example"]}}}`,
 	}

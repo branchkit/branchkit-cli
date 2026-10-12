@@ -46,6 +46,7 @@ var powerLineAxes = map[string]string{
 	"native_messaging":    "acts",    // a bridge to a browser extension
 	"artifacts":           "neither",
 	"reasons":             "neither",
+	"protected_reads":     "reads", // password managers', BranchKit's own windows
 }
 
 // crossesPowerLine reports whether a plugin's first listing, or an update
