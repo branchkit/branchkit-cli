@@ -232,6 +232,7 @@
   "blocklisted": false,
   "source": "github.com/example/golden",
   "tag": "v2.0.0",
+  "consent_digest": "",
   "update": {
     "installed_version": "1.0.0",
     "added": [

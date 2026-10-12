@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -45,7 +46,7 @@ func main() {
 			cmdRemove(os.Args[3])
 		case "install":
 			if len(os.Args) < 4 {
-				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli plugin install <source> [--build] [--force] [--preview] [--yes]")
+				fmt.Fprintln(os.Stderr, "Usage: branchkit-cli plugin install <source> [--build] [--force] [--preview] [--yes] [--expect-consent=<digest>]")
 				os.Exit(1)
 			}
 			source := os.Args[3]
@@ -60,6 +61,10 @@ func main() {
 					preview = true
 				case "--yes", "-y":
 					installAssumeYes = true
+				default:
+					if d, ok := strings.CutPrefix(arg, "--expect-consent="); ok {
+						installExpectConsent = d
+					}
 				}
 			}
 			if preview {

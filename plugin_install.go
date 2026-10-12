@@ -215,6 +215,13 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		}
 	}
 
+	// The person agreed to what a preview showed: refuse a release whose
+	// manifest would show something else (checkExpectedConsent).
+	if err := checkExpectedConsent(manifest, installExpectConsent); err != nil {
+		os.RemoveAll(tempDir)
+		return err
+	}
+
 	// Consent moment. A fresh install discloses everything and asks; an
 	// update asks only about the DIFF against the manifest it will replace
 	// (the old plugin.json is sitting right at the swap target) — nothing

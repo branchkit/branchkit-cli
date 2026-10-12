@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,6 +48,12 @@ type previewResult struct {
 	BlockReason  string            `json:"block_reason,omitempty"`
 	Source       string            `json:"source"`
 	Tag          string            `json:"tag"`
+	// ConsentDigest names exactly what this preview showed (consentDigest).
+	// The app hands it back on confirm as --expect-consent, and the install
+	// refuses a release whose manifest asks for anything else: the preview
+	// reads plugin.json at the tag, the install the one inside the tarball,
+	// and the two are different files.
+	ConsentDigest string `json:"consent_digest"`
 	// Update is present when this plugin is already installed: the consent
 	// DIFF against the manifest the install would replace. The settings
 	// panel renders this above the full summary — standing consent covers
@@ -252,6 +260,7 @@ func cmdPreview(source string) {
 		Source:        source,
 		Tag:           tag,
 		Capabilities:  manifest.Requires.Capabilities,
+		ConsentDigest: consentDigest(manifest),
 	}
 
 	// Already installed → attach the consent diff, same basis as the
@@ -263,6 +272,33 @@ func cmdPreview(source string) {
 
 	data, _ := json.Marshal(result)
 	fmt.Println(string(data))
+}
+
+// consentDigest is a digest of everything the consent panel shows for a
+// manifest: its id, every disclosure (generated from consentAxes, so a new
+// axis is covered without naming it here), its effects and its required
+// capabilities. Two manifests that would show the same panel share it,
+// whatever their formatting.
+func consentDigest(m PluginManifest) string {
+	shown := struct {
+		ID           string              `json:"id"`
+		Disclosures  []previewDisclosure `json:"disclosures"`
+		Effects      []previewEffect     `json:"effects"`
+		Capabilities *capabilitiesDecl   `json:"capabilities,omitempty"`
+	}{m.ID, previewDisclosures(m), previewEffects(manifestEffects(m)), m.Requires.Capabilities}
+	data, _ := json.Marshal(shown)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// checkExpectedConsent refuses a manifest whose consent panel differs from
+// the one the person reviewed. expected "" means no preview preceded this
+// install (the terminal, which asks from this manifest itself).
+func checkExpectedConsent(m PluginManifest, expected string) error {
+	if expected == "" || consentDigest(m) == expected {
+		return nil
+	}
+	return fmt.Errorf("this release of %s asks for something its preview did not show; nothing was installed. Open it again to review what it asks for now", m.Name)
 }
 
 func boolPtr(b bool) *bool { return &b }

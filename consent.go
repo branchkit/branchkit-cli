@@ -18,6 +18,11 @@ import (
 // before ever invoking the CLI.
 var installAssumeYes bool
 
+// installExpectConsent is the consent digest of the preview the person
+// approved (--expect-consent). The settings-driven install passes it, and the
+// install refuses a release whose manifest would show something else.
+var installExpectConsent string
+
 func stdinIsTTY() bool {
 	fi, err := os.Stdin.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
