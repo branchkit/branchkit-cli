@@ -140,7 +140,14 @@ func isLoopbackMember(member string) bool {
 		host = h
 	}
 	host = strings.Trim(host, "[]")
-	return host == "localhost" || host == "::1" || strings.HasPrefix(host, "127.")
+	// Exactly localhost, or a literal loopback address. A NAME that merely
+	// starts with "127." (127.attacker.com) resolves wherever its owner
+	// says, so it is a way out like any other host.
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // cmdRegistryPowerLine prints, as JSON, whether the manifest at path crosses

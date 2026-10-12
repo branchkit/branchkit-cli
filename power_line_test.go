@@ -67,6 +67,11 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","requires":{"protected_reads":["password_managers"],"network":{"hosts":["e.example"]}}}`,
 		// A read served on a listen socket: anything local can take it.
 		`{"id":"x","requires":{"privileges":["clipboard"],"network":"localhost","sockets":{"listen":[{"id":"s","port":8765}]}}}`,
+		// A name that only looks like loopback is a way out.
+		`{"id":"x","requires":{"privileges":["clipboard"],"network":{"hosts":["127.attacker.com"]}}}`,
+		// Personal data below "dangerous" still reads.
+		`{"id":"x","requires":{"privileges":["contacts","calendar"],"network":"outbound"}}`,
+		`{"id":"x","requires":{"privileges":["events.output"],"network":{"hosts":["e.example"]}}}`,
 		// Another program's local service, with a way out.
 		`{"id":"x","requires":{"network":{"hosts":["localhost:8765","collect.example"]}}}`,
 		`{"id":"x","consumes":{"events":[{"pattern":"tiling.**"}]},"requires":{"network":"outbound"}}`,
