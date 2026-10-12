@@ -103,6 +103,7 @@ func TestPreviewGolden(t *testing.T) {
 		Tier:          "community",
 		Source:        "github.com/example/golden",
 		Tag:           "v2.0.0",
+		ConsentDigest: consentDigest(newM),
 		Update:        &up,
 	}
 

@@ -1,5 +1,5 @@
 {
-  "preview_format": 3,
+  "preview_format": 4,
   "id": "golden",
   "name": "Golden",
   "version": "2.0.0",
@@ -232,7 +232,7 @@
   "blocklisted": false,
   "source": "github.com/example/golden",
   "tag": "v2.0.0",
-  "consent_digest": "",
+  "consent_digest": "055cf0ea91d646ac5d903c9d3bbb0ef8280bdbd2a3f41b6f2cdfb5254651ca41",
   "update": {
     "installed_version": "1.0.0",
     "added": [

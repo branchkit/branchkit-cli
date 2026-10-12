@@ -21,8 +21,9 @@ import (
 // does not need it). 1 was the shape before `disclosures`, which carried no
 // number; 2 marked grants with a `grant` flag and counted every added
 // member as an expansion; 3 carries each member's `kind` (grant, scope or
-// note) and each added member's own `expands`.
-const previewFormat = 3
+// note) and each added member's own `expands`; 4 carries `consent_digest`,
+// which the app requires and hands back as --expect-consent.
+const previewFormat = 4
 
 type previewResult struct {
 	// PreviewFormat is previewFormat, so a reader can tell which shape it got.
