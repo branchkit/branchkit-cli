@@ -38,7 +38,7 @@ var powerLineAxes = map[string]string{
 	"wmi":                 "reads",
 	"preferences":         "reads", // other apps' settings
 	"preference_writes":   "acts",  // changing them
-	"devices":             "reads",
+	"devices":             "acts",  // a device grant writes to the hardware as well as reading it
 	"blobs":               "reads", // other plugins' byte channels
 	"events":              "reads", // other plugins' and the platform's events
 	"always_events":       "neither",
@@ -127,25 +127,27 @@ func crossesPowerLine(m PluginManifest) (bool, []string) {
 	return len(reasons) > 0, reasons
 }
 
-// isLoopbackMember reports whether a networkSet member stays on this
-// computer: the localhost preset, or a loopback host with or without a port.
+// isLoopbackMember reports whether a networkSet member reaches this
+// computer, by the same rule as the app's proxy (is_loopback_name in its
+// host proxy, which decides where a connection really goes): the localhost
+// preset, localhost or any *.localhost name, or a loopback or unspecified
+// address, case-insensitive, with or without a port or a trailing dot. A
+// name that merely starts with "127." (127.attacker.com) resolves wherever
+// its owner says, so it is not loopback.
 func isLoopbackMember(member string) bool {
 	if member == "preset:localhost" {
 		return true
 	}
-	host := member
-	if h, _, err := net.SplitHostPort(member); err == nil {
+	host := strings.TrimSpace(member)
+	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	host = strings.Trim(host, "[]")
-	// Exactly localhost, or a literal loopback address. A NAME that merely
-	// starts with "127." (127.attacker.com) resolves wherever its owner
-	// says, so it is a way out like any other host.
-	if host == "localhost" {
+	host = strings.ToLower(strings.TrimSuffix(strings.Trim(host, "[]"), "."))
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true
 	}
 	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return ip != nil && (ip.IsLoopback() || ip.IsUnspecified())
 }
 
 // cmdRegistryPowerLine prints, as JSON, whether the manifest at path crosses

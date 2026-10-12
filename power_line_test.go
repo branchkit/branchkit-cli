@@ -76,6 +76,13 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","requires":{"privileges":["events.output"],"network":{"hosts":["e.example"]}}}`,
 		// A reader with only localhost can relay to a plugin that listens.
 		`{"id":"x","requires":{"privileges":["clipboard"],"network":"localhost"}}`,
+		// A device grant writes to the hardware too.
+		`{"id":"x","requires":{"devices":{"ble":["fff0"]}}}`,
+		// Every spelling the proxy treats as this computer.
+		`{"id":"x","requires":{"network":{"hosts":["0.0.0.0:5432"]}}}`,
+		`{"id":"x","requires":{"network":{"hosts":["LOCALHOST:5432"]}}}`,
+		`{"id":"x","requires":{"network":{"hosts":["localhost.:5432"]}}}`,
+		`{"id":"x","requires":{"network":{"hosts":["db.localhost:5432"]}}}`,
 		// Another program's local service.
 		`{"id":"x","requires":{"network":{"hosts":["localhost:8765"]}}}`,
 		`{"id":"x","requires":{"network":{"hosts":["localhost:8765","collect.example"]}}}`,
@@ -91,8 +98,6 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","requires":{"optional_privileges":["clipboard"]}}`,
 		`{"id":"x","requires":{"preferences":{"read":["defaults:com.apple.dock"]}}}`,
 		`{"id":"x","requires":{"wmi":{"classes":["Win32_Battery"]}}}`,
-		// A device read with no network and no listener goes nowhere.
-		`{"id":"x","requires":{"devices":{"hid":["046d:c52b"]}}}`,
 		// A listen socket with nothing sensitive to serve.
 		`{"id":"x","requires":{"sockets":{"listen":[{"id":"s","port":0}]}}}`,
 	}
