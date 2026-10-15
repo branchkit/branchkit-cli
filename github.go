@@ -28,6 +28,7 @@ type ghRelease struct {
 type ghAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+	URL                string `json:"url"` // the API asset endpoint; the only one a token can download from
 }
 
 // parseGitHubSource parses "owner/repo", "owner/repo@version",
@@ -77,18 +78,22 @@ func pluginNameFromRepo(repo string) string {
 func releaseMiss(source ResolvedSource, suffix string) error {
 	client := &http.Client{Timeout: 15 * time.Second}
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", source.Owner, source.Repo)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := newGitHubRequest(url)
 	if err == nil {
-		req.Header.Set("User-Agent", "branchkit-cli")
-		if resp, err := client.Do(req); err == nil {
+		if resp, err := githubDo(client, req); err == nil {
 			defer resp.Body.Close()
 			if resp.StatusCode == 404 {
+				hint := "If it is private, sign in with `gh auth login` or set\n" +
+					"GITHUB_TOKEN to a token that can read it."
+				if githubToken() != "" {
+					hint = "If it is private, the GitHub token this machine has\n" +
+						"cannot read it."
+				}
 				return fmt.Errorf(
 					"no repository %s/%s that this machine can see\n\n"+
-						"Check the name, or — if it is private — that your git\n"+
-						"credentials reach it. A registry listing can name a\n"+
+						"Check the name. %s A registry listing can name a\n"+
 						"repository that has not been published yet.",
-					source.Owner, source.Repo,
+					source.Owner, source.Repo, hint,
 				)
 			}
 		}
@@ -106,13 +111,12 @@ func fetchLatestTag(source ResolvedSource) (string, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", source.Owner, source.Repo)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := newGitHubRequest(url)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "branchkit-cli")
 
-	resp, err := client.Do(req)
+	resp, err := githubDo(client, req)
 	if err != nil {
 		return "", fmt.Errorf("failed to reach GitHub API: %w", err)
 	}
@@ -148,12 +152,11 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, *Au
 
 	fmt.Printf("Fetching release from %s/%s...\n", source.Owner, source.Repo)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := newGitHubRequest(url)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("invalid request URL: %w", err)
 	}
-	req.Header.Set("User-Agent", "branchkit-cli")
-	resp, err := client.Do(req)
+	resp, err := githubDo(client, req)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to reach GitHub API: %w", err)
 	}
@@ -202,12 +205,11 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, *Au
 
 	// Download artifact
 	fmt.Printf("Downloading %s...\n", asset.Name)
-	dlReq, err := http.NewRequest("GET", asset.BrowserDownloadURL, nil)
+	dlReq, err := newAssetRequest(*asset)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("invalid download URL: %w", err)
 	}
-	dlReq.Header.Set("User-Agent", "branchkit-cli")
-	dlResp, err := client.Do(dlReq)
+	dlResp, err := githubDo(client, dlReq)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to download artifact: %w", err)
 	}
@@ -241,12 +243,11 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, *Au
 			continue
 		}
 		fmt.Println("Verifying checksum...")
-		csReq, err := http.NewRequest("GET", a.BrowserDownloadURL, nil)
+		csReq, err := newAssetRequest(a)
 		if err != nil {
 			return "", "", nil, fmt.Errorf("invalid checksum URL: %w", err)
 		}
-		csReq.Header.Set("User-Agent", "branchkit-cli")
-		csResp, err := client.Do(csReq)
+		csResp, err := githubDo(client, csReq)
 		if err != nil || csResp.StatusCode >= 300 {
 			return "", "", nil, fmt.Errorf("failed to download checksum file")
 		}

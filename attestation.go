@@ -82,24 +82,23 @@ func verifyReleaseAttestation(
 	wantOwnerRepo string,
 ) (*AuthorAttestation, error) {
 	bundleName := attestationAssetName(artifactName)
-	var bundleURL string
-	for _, a := range assets {
-		if a.Name == bundleName {
-			bundleURL = a.BrowserDownloadURL
+	var bundle *ghAsset
+	for i := range assets {
+		if assets[i].Name == bundleName {
+			bundle = &assets[i]
 			break
 		}
 	}
-	if bundleURL == "" {
+	if bundle == nil || bundle.BrowserDownloadURL == "" {
 		return &AuthorAttestation{Verified: false, Reason: "no attestation published"}, nil
 	}
 
 	fmt.Println("Verifying author attestation...")
-	req, err := http.NewRequest("GET", bundleURL, nil)
+	req, err := newAssetRequest(*bundle)
 	if err != nil {
 		return nil, fmt.Errorf("invalid attestation URL: %w", err)
 	}
-	req.Header.Set("User-Agent", "branchkit-cli")
-	resp, err := client.Do(req)
+	resp, err := githubDo(client, req)
 	if err != nil || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("failed to download attestation bundle %q", bundleName)
 	}

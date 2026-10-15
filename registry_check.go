@@ -172,15 +172,11 @@ func checkRelease(sourceArg string) releaseReport {
 
 func fetchRelease(client *http.Client, source ResolvedSource) (ghRelease, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/tags/%s", source.Owner, source.Repo, source.Version)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := newGitHubRequest(url)
 	if err != nil {
 		return ghRelease{}, err
 	}
-	req.Header.Set("User-Agent", "branchkit-cli")
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	resp, err := client.Do(req)
+	resp, err := githubDo(client, req)
 	if err != nil {
 		return ghRelease{}, fmt.Errorf("could not reach GitHub: %w", err)
 	}
@@ -195,13 +191,12 @@ func fetchRelease(client *http.Client, source ResolvedSource) (ghRelease, error)
 	return rel, nil
 }
 
-func download(client *http.Client, url string, limit int64) ([]byte, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func download(client *http.Client, asset ghAsset, limit int64) ([]byte, error) {
+	req, err := newAssetRequest(asset)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "branchkit-cli")
-	resp, err := client.Do(req)
+	resp, err := githubDo(client, req)
 	if err != nil {
 		return nil, err
 	}
@@ -224,23 +219,23 @@ func download(client *http.Client, url string, limit int64) ([]byte, error) {
 // that verifies and names the declared repository. Then it extracts the
 // tarball and reads its manifest.
 func checkArtifact(client *http.Client, assets []ghAsset, asset ghAsset, wantRepo, dir string) (checkedArtifact, error) {
-	body, err := download(client, asset.BrowserDownloadURL, maxArtifactBytes)
+	body, err := download(client, asset, maxArtifactBytes)
 	if err != nil {
 		return checkedArtifact{}, fmt.Errorf("download: %w", err)
 	}
 	sum := sha256.Sum256(body)
 	digest := hex.EncodeToString(sum[:])
 
-	var checksumURL string
-	for _, a := range assets {
-		if a.Name == asset.Name+".sha256" {
-			checksumURL = a.BrowserDownloadURL
+	var checksum *ghAsset
+	for i := range assets {
+		if assets[i].Name == asset.Name+".sha256" {
+			checksum = &assets[i]
 		}
 	}
-	if checksumURL == "" {
+	if checksum == nil {
 		return checkedArtifact{}, fmt.Errorf("no %s.sha256 published", asset.Name)
 	}
-	cs, err := download(client, checksumURL, 4096)
+	cs, err := download(client, *checksum, 4096)
 	if err != nil {
 		return checkedArtifact{}, fmt.Errorf("checksum: %w", err)
 	}

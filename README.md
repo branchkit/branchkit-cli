@@ -166,6 +166,17 @@ name without its `branchkit-plugin-` prefix) and then:
 Unsigned plugins still install, and are shown as unsigned. The release workflow
 that `dev init` writes for a Go plugin produces signed assets in this format.
 
+A private repository installs by its source (`github:owner/repo`) for anyone
+whose GitHub token can read it. Every request goes out anonymously first. The
+CLI retries once with a token (`GITHUB_TOKEN`, then `GH_TOKEN`, then the one
+`gh auth login` stored) only when GitHub answers "not found" for a repository
+it will not show anonymously, or when the anonymous rate limit (60 requests an
+hour) is spent. So public plugins never tell GitHub who you are, unless you
+hit that limit, and the token goes only to
+`api.github.com` and `raw.githubusercontent.com`. A private plugin cannot be
+listed in the public registry. Update checks the app runs do not see your
+shell's variables, so for those, sign in with `gh`.
+
 No plugin in the catalog has published a release yet, so installing by catalog
 name does not succeed today. Local installs (`plugin install .`) work.
 

@@ -316,16 +316,12 @@ func fetchManifestFromRepo(source ResolvedSource, tag string) (PluginManifest, e
 		source.Owner, source.Repo, tag)
 
 	client := &http.Client{Timeout: 15 * time.Second}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := newGitHubRequest(url)
 	if err != nil {
 		return PluginManifest{}, err
 	}
-	req.Header.Set("User-Agent", "branchkit-cli")
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
 
-	resp, err := client.Do(req)
+	resp, err := githubDo(client, req)
 	if err != nil {
 		return PluginManifest{}, fmt.Errorf("failed to fetch manifest: %w", err)
 	}

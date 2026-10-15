@@ -41,14 +41,13 @@ func fetchConformanceStatus(source ResolvedSource, tag string) conformanceStatus
 	client := &http.Client{Timeout: 5 * time.Second}
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s/check-runs", source.Owner, source.Repo, tag)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := newGitHubRequest(url)
 	if err != nil {
 		return conformanceStatus{Status: "unknown", Tag: tag}
 	}
-	req.Header.Set("User-Agent", "branchkit-cli")
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := client.Do(req)
+	resp, err := githubDo(client, req)
 	if err != nil || resp.StatusCode != 200 {
 		return conformanceStatus{Status: "unknown", Tag: tag}
 	}
