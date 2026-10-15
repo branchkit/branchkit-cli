@@ -72,7 +72,7 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name:        "sayable_commands",
-		Description: "The BranchKit voice commands the person can say right now, grouped as BranchKit shows them.",
+		Description: "The BranchKit voice commands the person can say right now: for each, the phrase to say ((a | b) is a choice of words, <list> a name from that list), what it does, which plugin runs it, and whether the person may always allow it for you (if not, risk says why and run_command will ask them).",
 		InputSchema: noArgs(),
 		path:        "/v1/connection/commands",
 	},
