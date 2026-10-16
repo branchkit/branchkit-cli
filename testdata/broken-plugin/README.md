@@ -18,7 +18,7 @@ Each defect below is silent at runtime if it ships:
 | `privileges` | `clipbord` — typo for `clipboard` | grants nothing; the calls it needed are refused |
 | `optional_privileges` | `audiox` | same, in the field a hand-written checker forgets |
 | `implements.on_actoin` | typo for `on_action` | INERT — never dispatched, never logged |
-| `implements.parse_key_event` | not a platform method | INERT. This is a real shipped bug: see `PluginImplements` in actuator/src/plugins/manifest.rs |
+| `implements.parse_key_event` | not a platform method | INERT. This is a real shipped bug: see `PluginImplements` in core/src/plugins/manifest.rs |
 
 Kept in sync by `just check-harness-fixture`, which asserts the run fails,
 exits non-zero, and names every defect.
