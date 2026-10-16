@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// `dest` and `path` come from a plugin author. The actuator confines them at
+// `dest` and `path` come from a plugin author. The platform confines them at
 // manifest validation, but this tool also runs against manifests it never
 // validated (a plugin installed while the app is not running), so the
 // confinement has to hold here on its own.

@@ -36,7 +36,7 @@ func cmdRemove(pluginID string) {
 	}
 	removeBlobs(pluginID)
 	fmt.Printf("Removed plugin '%s'.\n", pluginID)
-	notifyActuator()
+	notifyPlatform()
 }
 
 // removeBlobs clears the blobs a removed plugin provided and the platform's

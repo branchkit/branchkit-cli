@@ -356,7 +356,7 @@ func cmdDevSmoke(args []string) {
 	// --- 5b. Matcher↔grammar agreement: every sampled command phrase the
 	// matcher runs must be one the engine's compiled grammar can produce, in
 	// free context and in every exclusive mode. The app computes it in-process
-	// against the live commands and lists; the actuator test suite runs the
+	// against the live commands and lists; the platform test suite runs the
 	// same check over the checkout's plugins. A disagreement is a command the
 	// matcher would run that recognition can never produce.
 	if raw, status, err := devHTTP("GET", "/dev/grammar/agreement", token, nil); err != nil || status != 200 {

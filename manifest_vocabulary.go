@@ -25,9 +25,9 @@ type manifestVocabulary struct {
 	PlatformCollections     []string `json:"platform_collections"`
 	NonMethodImplementsKeys []string `json:"non_method_implements_keys"`
 	// Every property of the manifest's `requires`, `provides` and
-	// `consumes` blocks, from the actuator's manifest schema. The install
+	// `consumes` blocks, from the platform's manifest schema. The install
 	// disclosure is checked against it (consent_test.go), so a property
-	// the actuator adds is disclosed or exempted with a reason, never
+	// the platform adds is disclosed or exempted with a reason, never
 	// enforced while unshown.
 	ManifestConsentBlocks map[string][]string `json:"manifest_consent_blocks"`
 	// The app's consent-axis registry: every axis disclosed at install and
@@ -131,10 +131,10 @@ func didYouMean(list []string, s string) string {
 
 // checkImplementsMethods validates the method names in `implements`.
 //
-// This is the static check that declared hooks match methods the actuator
+// This is the static check that declared hooks match methods the platform
 // knows how to call, and it
 // earns its place because the failure is SILENT. `PluginImplements` in the
-// actuator says it plainly: "Only methods the actuator KNOWS are
+// platform says it plainly: "Only methods the platform KNOWS are
 // dispatched. An unrecognized name is inert ... declaring one buys nothing
 // and nothing will ever call it." A typo does not fail the load, does not
 // warn, and does not appear in any log — the plugin simply never gets
@@ -162,7 +162,7 @@ func checkImplementsMethods(m map[string]any) []TestResult {
 			Name:   "implements_" + name,
 			Status: "fail",
 			Detail: fmt.Sprintf(
-				"%q is not a method the actuator calls%s — declaring it is inert: "+
+				"%q is not a method the platform calls%s — declaring it is inert: "+
 					"nothing will ever invoke it, and nothing will say so at runtime. "+
 					"Known: %s",
 				name, didYouMean(known, name), strings.Join(known, ", ")),

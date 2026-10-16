@@ -13,7 +13,7 @@ import (
 // which a standard account holds only with Developer Mode on — the first
 // Windows trial session (2026-09-18) failed every install with "A required
 // privilege is not held by the client". A directory JUNCTION needs no
-// privilege, the actuator walks it like any directory, and os.Remove
+// privilege, the platform walks it like any directory, and os.Remove
 // deletes the junction without touching the target, so it keeps the
 // install-by-link semantics the trial wants. Symlink first, junction on
 // the privilege error.

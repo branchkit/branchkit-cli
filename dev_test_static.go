@@ -73,8 +73,8 @@ type TestPhaseResult struct {
 // referenced files, known field_type values, and author-time mirrors of
 // load-time refusals like the params envelope), so `dev test --static-only`
 // works without the Rust binary. Semantic checks (compatibility, cross-field,
-// security) are authoritative in the actuator's validate_manifest and are
-// deliberately NOT reimplemented here. Severities must match the actuator's:
+// security) are authoritative in the platform's validate_manifest and are
+// deliberately NOT reimplemented here. Severities must match the platform's:
 // they drive CI exit codes.
 func runStaticAnalysis(dir string) TestPhaseResult {
 	phase := TestPhaseResult{Phase: "static_analysis"}
@@ -543,7 +543,7 @@ func checkRequiredFields(m map[string]any) []TestResult {
 		}
 		s, _ := val.(string)
 		if s == "" {
-			// id is always an error; name/version are warnings to match actuator severity
+			// id is always an error; name/version are warnings to match platform severity
 			severity := "warn"
 			if field == "id" {
 				severity = "fail"
@@ -1073,7 +1073,7 @@ func runTarget(dir, run string, runtimes any) (target, via string) {
 	if _, err := os.Stat(filepath.Join(dir, program)); err == nil {
 		return program, ""
 	}
-	// Same derivation the actuator's file watcher uses (`classify_run_target`):
+	// Same derivation the platform's file watcher uses (`classify_run_target`):
 	// the script is the first argument that is a real file here, because a
 	// subcommand can sit in between (`bun run src/index.ts`). When nothing
 	// exists yet, name the first argument that LOOKS like a file, so the

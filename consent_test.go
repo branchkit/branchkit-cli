@@ -208,7 +208,7 @@ func TestConfirmUpdate(t *testing.T) {
 //
 // This is the ratchet the block exists for. Before it, the fields a user is
 // shown at install were a hand-written list in three places — here, the
-// actuator's InstallPreviewTemplate, and the sandbox compiler — and a new
+// platform's InstallPreviewTemplate, and the sandbox compiler — and a new
 // capability field could join the manifest, be honoured by the loader and
 // enforced by the sandbox while the install prompt said nothing. The user
 // would approve something never shown to them.

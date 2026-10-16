@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-// cmdDevEvents queries the actuator's structured event streams
+// cmdDevEvents queries the platform's structured event streams
 // (POST /v1/events/query) — the CLI face of the event inspector, same
 // filter dialect as the settings view. Three modes, mirroring the server:
 // a --tr id returns its causal chain; any filter flag returns matching

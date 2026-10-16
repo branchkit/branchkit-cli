@@ -13,7 +13,7 @@ import (
 // recognition log, split by verdict, to help site a confidence floor.
 //
 // It reads the collection's COMPACTED projection over HTTP
-// (GET /v1/collections/{name}?compacted=true) — the actuator folds the keyed
+// (GET /v1/collections/{name}?compacted=true) — the platform folds the keyed
 // append log into one current-state record per key, so this command does no
 // folding of its own. Each folded record carries its final verdict (empty =
 // an unflagged match, "wrong" = a flagged mishear) and its worst-word margin;
@@ -21,7 +21,7 @@ import (
 // floor would sit in.
 //
 // This replaces the recognition_log half of scripts/margin-distribution.py:
-// the fold now lives only in the actuator, and this is a real consumer of it.
+// the fold now lives only in the platform, and this is a real consumer of it.
 func cmdDevMargins(args []string) {
 	// No default: which keyed recognition log to read is the caller's to
 	// name, since any plugin may keep one.

@@ -24,10 +24,10 @@ import (
 //     sha) and the pin is VERIFIED after download. A manifest that reaches this
 //     code unvalidated still cannot cause unpinned bytes to land on disk.
 //   - Every part lands inside the model directory. `dest` is manifest-supplied,
-//     so it is confined here the same way the actuator confines it.
+//     so it is confined here the same way the platform confines it.
 //
 // Layout: <app_support>/models/<plugin_id>/<model_name>. The plugin id
-// namespace is what makes collisions impossible and what lets the actuator hand
+// namespace is what makes collisions impossible and what lets the platform hand
 // the stage `BRANCHKIT_MODELS_DIR=<...>/models/<plugin_id>` while granting the
 // sandbox exactly the one model the pipeline named.
 
@@ -267,7 +267,7 @@ func checkRequires(dir string, requires []string) error {
 }
 
 // confinedJoin joins a manifest-supplied relative path onto a root and refuses
-// anything that could escape it. Mirrors the actuator's path_confine — the
+// anything that could escape it. Mirrors the platform's path_confine — the
 // manifest is data from a plugin author, on both sides of the boundary.
 func confinedJoin(root, rel string) (string, error) {
 	if rel == "" {

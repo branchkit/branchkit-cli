@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// cmdDevWatch watches a plugin's sources and asks the running actuator to
+// cmdDevWatch watches a plugin's sources and asks the running platform to
 // rebuild and restart it on change.
 //
 // It does NOT build anything itself. It used to — `go build` when it saw a
@@ -159,7 +159,7 @@ func cmdDevWatch(args []string) {
 }
 
 // isCompiledRun reports whether the run command's program is a file inside
-// the plugin directory — the same derivation the actuator's file watcher
+// the plugin directory — the same derivation the platform's file watcher
 // uses to tell a compiled plugin from an interpreted one, with no list of
 // languages on either side.
 func isCompiledRun(pluginDir, runCmd string) bool {

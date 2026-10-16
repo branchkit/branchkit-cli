@@ -29,7 +29,7 @@ type PluginManifest struct {
 	// (or their agent) can dispatch to it without opening its manifest.
 	ActionTypes map[string]actionTypeDecl `json:"action_types,omitempty"`
 	// Requires is everything the user is shown and accepts at install.
-	// One block rather than five loose fields so this tool, the actuator's
+	// One block rather than five loose fields so this tool, the platform's
 	// install panel and the signing chain read the same subtree instead of
 	// each rebuilding the list.
 	Requires RequiresCfg `json:"requires,omitempty"`
@@ -48,7 +48,7 @@ type actionFieldDecl struct {
 	Placeholder string `json:"placeholder,omitempty"`
 }
 
-// RequiresCfg mirrors the actuator's `requires` block.
+// RequiresCfg mirrors the platform's `requires` block.
 type RequiresCfg struct {
 	// The manifest key was renamed capabilities → privileges platform-wide;
 	// this struct kept the old tag long enough that every "Privileges:" line
@@ -56,7 +56,7 @@ type RequiresCfg struct {
 	Privileges         []string    `json:"privileges,omitempty"`
 	OptionalPrivileges []string    `json:"optional_privileges,omitempty"`
 	Sockets            *SocketsCfg `json:"sockets,omitempty"`
-	// Network mirrors the actuator's `network` field — the string presets
+	// Network mirrors the platform's `network` field — the string presets
 	// ("localhost", "outbound") or the host-scoped `{ "hosts": [...] }`
 	// form. Raw because both shapes are legal; `networkSet` canonicalizes.
 	// Sandbox scope is consent surface: disclosed at install, diffed at
@@ -91,7 +91,7 @@ type RequiresCfg struct {
 	Reasons map[string]string `json:"reasons,omitempty"`
 }
 
-// DevicesCfg mirrors the actuator's `requires.devices`: HID products as
+// DevicesCfg mirrors the platform's `requires.devices`: HID products as
 // `<vendor>:<product>` (046d:c52b) and GATT services (fff0).
 type DevicesCfg struct {
 	Hid []string `json:"hid,omitempty"`
@@ -115,7 +115,7 @@ func deviceGrants(m PluginManifest) []string {
 	return out
 }
 
-// PreferencesCfg mirrors the actuator's `requires.preferences`: each entry
+// PreferencesCfg mirrors the platform's `requires.preferences`: each entry
 // `<store>:<domain>` (defaults:com.apple.dock,
 // gsettings:org.gnome.desktop.interface, registry:Software\7-Zip).
 type PreferencesCfg struct {
@@ -151,19 +151,19 @@ func preferenceWrites(m PluginManifest) []string {
 	return p.Write
 }
 
-// WmiCfg mirrors the actuator's `requires.wmi`.
+// WmiCfg mirrors the platform's `requires.wmi`.
 type WmiCfg struct {
 	Classes []string `json:"classes,omitempty"`
 }
 
-// DbusCfg mirrors the actuator's `requires.dbus`.
+// DbusCfg mirrors the platform's `requires.dbus`.
 type DbusCfg struct {
 	Methods []string `json:"methods,omitempty"`
 }
 
-// ConsumesCfg mirrors the actuator's `consumes` field, deeply enough to show
+// ConsumesCfg mirrors the platform's `consumes` field, deeply enough to show
 // the consent-relevant declarations at install time. Everything else under
-// `consumes` is the actuator's business.
+// `consumes` is the platform's business.
 type ConsumesCfg struct {
 	Effects []EffectDeclaration `json:"effects,omitempty"`
 	// Byte channels this plugin asked to read, each `<provider>/<name>`.
@@ -223,7 +223,7 @@ func (r *NamedRef) UnmarshalJSON(b []byte) error {
 
 // EffectDeclaration is one consent unit of effects the plugin will assert:
 // the author-written user_visible_* copy is exactly what an install prompt
-// shows (the actuator validates both non-empty for that purpose).
+// shows (the platform validates both non-empty for that purpose).
 type EffectDeclaration struct {
 	Asserts                []json.RawMessage `json:"asserts,omitempty"`
 	UserVisibleName        string            `json:"user_visible_name,omitempty"`
@@ -250,14 +250,14 @@ func (e *EffectDeclaration) AssertNames() []string {
 	return names
 }
 
-// ProvidesCfg mirrors the actuator's `provides` field, deeply enough to read
+// ProvidesCfg mirrors the platform's `provides` field, deeply enough to read
 // the model declarations this CLI provisions. Everything else under `provides`
-// is the actuator's business.
+// is the platform's business.
 type ProvidesCfg struct {
 	Artifacts map[string]ArtifactDeclaration `json:"artifacts,omitempty"`
 	// Collections this plugin introduces, by name. Only the NAMES are read
 	// here — for the shared-name check against the catalog
-	// (namespace_check.go); shapes are the actuator's business.
+	// (namespace_check.go); shapes are the platform's business.
 	Collections map[string]any `json:"collections,omitempty"`
 	// Blobs this plugin PROVIDES — a byte channel granted plugins read
 	// straight off disk. Read here only to disclose the provider's side at
@@ -277,7 +277,7 @@ type ProvidesCfg struct {
 	NativeMessaging *NativeMessagingDecl `json:"native_messaging,omitempty"`
 }
 
-// NativeMessagingDecl mirrors the actuator's `provides.native_messaging`.
+// NativeMessagingDecl mirrors the platform's `provides.native_messaging`.
 type NativeMessagingDecl struct {
 	HostName            string   `json:"host_name"`
 	ChromeExtensionIDs  []string `json:"chrome_extension_ids,omitempty"`
@@ -288,7 +288,7 @@ type NativeMessagingDecl struct {
 // StageDecl is the part of a `provides.stages` entry the CLI needs.
 type StageDecl struct {
 	// Binary is relative to the plugin directory; omitted means the stage
-	// name (the actuator's rule).
+	// name (the platform's rule).
 	Binary string `json:"binary,omitempty"`
 	// Platform is "macos" | "linux" | "windows" or a list of them; omitted
 	// means every platform. Raw because both shapes are legal.
@@ -296,7 +296,7 @@ type StageDecl struct {
 }
 
 // BlobDecl is the part of a `provides.blobs` entry a person consents to.
-// Defaults mirror the actuator's (`plugins/manifest.rs` BlobDeclaration).
+// Defaults mirror the platform's (`plugins/manifest.rs` BlobDeclaration).
 type BlobDecl struct {
 	ContentType string `json:"content_type,omitempty"`
 	MaxBytes    int64  `json:"max_bytes"`
@@ -306,7 +306,7 @@ type BlobDecl struct {
 }
 
 // ArtifactDeclaration is one model a plugin's stages can load — the recipe this
-// CLI executes. The actuator validates the shape at manifest load
+// CLI executes. The platform validates the shape at manifest load
 // (`plugins/validate/manifest.rs`); the checks here are the ones that matter
 // at fetch time, and they are enforced regardless of what validation ran.
 type ArtifactDeclaration struct {
@@ -370,7 +370,7 @@ type ArtifactPart struct {
 	Dest string `json:"dest,omitempty"`
 }
 
-// SocketsCfg mirrors the actuator's `sockets` manifest field, just deeply
+// SocketsCfg mirrors the platform's `sockets` manifest field, just deeply
 // enough to know whether the plugin declares loopback listeners — that
 // decides its runtime (a listener-granted TS plugin runs under Node, not
 // Bun; see runtime.go's needsNode).

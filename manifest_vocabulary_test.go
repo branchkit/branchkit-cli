@@ -31,7 +31,7 @@ func TestEmbeddedVocabularyIsPopulated(t *testing.T) {
 }
 
 // An unrecognized `implements` key is INERT at runtime: nothing dispatches
-// it and nothing says so. `PluginImplements` in the actuator records a real
+// it and nothing says so. `PluginImplements` in the platform records a real
 // shipped bug from exactly this — a plugin declared
 // `parse_key_event` and called it on every keypress, getting an error every
 // time. That name is the regression case.

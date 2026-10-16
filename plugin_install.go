@@ -134,7 +134,7 @@ func installFromLocal(source string) error {
 	writeSourceMeta(targetDir, localSourcePrefix+source, "local", nil, false)
 
 	fmt.Printf("Installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
-	notifyActuator()
+	notifyPlatform()
 	return nil
 }
 
@@ -285,7 +285,7 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		}
 	}
 	// Source metadata (update checking + the verified-author and
-	// registry-signed records the actuator's trust-tier resolution reads)
+	// registry-signed records the platform's trust-tier resolution reads)
 	// goes into the stage so the swap lands it atomically with the files.
 	writeSourceMeta(stageDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation, registrySigned)
 	if err := os.RemoveAll(targetDir); err != nil {
@@ -301,7 +301,7 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 
 	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
 	printInstallInfo(manifest, parsed, tag)
-	notifyActuator()
+	notifyPlatform()
 	os.RemoveAll(tempDir)
 	return nil
 }
@@ -424,7 +424,7 @@ func installFromSource(source string) error {
 			os.RemoveAll(tempDir)
 			return fmt.Errorf("built binary '%s' not found", binaryName)
 		}
-		// Keep the suffix the build wrote, so the actuator finds the .exe.
+		// Keep the suffix the build wrote, so the platform finds the .exe.
 		dest := filepath.Join(targetDir, binaryName)
 		if sfx := exeSuffix(); sfx != "" && strings.HasSuffix(strings.ToLower(srcBinary), sfx) &&
 			!strings.HasSuffix(strings.ToLower(dest), sfx) {
@@ -442,7 +442,7 @@ func installFromSource(source string) error {
 
 	fmt.Printf("Built and installed plugin '%s' v%s by github:%s\n", manifest.Name, manifest.Version, parsed.Owner)
 	printInstallInfo(manifest, parsed, "source-build")
-	notifyActuator()
+	notifyPlatform()
 	os.RemoveAll(tempDir)
 	return nil
 }
@@ -640,8 +640,8 @@ func findManifest(dir string) (string, error) {
 }
 
 // SourceMeta records where a plugin was installed from (for update checking)
-// and the signing outcome at install time (for the actuator's trust-tier
-// resolution: the actuator never sees artifact bytes, so the CLI records the
+// and the signing outcome at install time (for the platform's trust-tier
+// resolution: the platform never sees artifact bytes, so the CLI records the
 // outcome here).
 type SourceMeta struct {
 	Source       string `json:"source"`        // "owner/repo"
@@ -654,7 +654,7 @@ type SourceMeta struct {
 	AuthorIdentity string `json:"author_identity,omitempty"`
 	// RegistrySigned is true iff BranchKit's registry counter-signature over
 	// this exact listing verified — the canonical-listing signal that lets the
-	// actuator resolve RegistrySigned rather than a catalog claim.
+	// platform resolve RegistrySigned rather than a catalog claim.
 	RegistrySigned bool `json:"registry_signed"`
 }
 

@@ -109,18 +109,18 @@ func discoverPlugins() []DiscoveredPlugin {
 }
 
 // pluginState is the authoritative enabled/status for one plugin, as reported
-// by the running actuator.
+// by the running platform.
 type pluginState struct {
 	Enabled bool
 }
 
-// fetchPluginStates queries the running actuator for authoritative
+// fetchPluginStates queries the running platform for authoritative
 // enabled/status per plugin (GET /v1/plugins). Returns (states, true) when the
-// actuator answered; (nil, false) when it isn't reachable — no host token, not
+// platform answered; (nil, false) when it isn't reachable — no host token, not
 // running, or a non-200 — so callers degrade to "unknown" rather than reading a
-// stale on-disk file. The actuator is the single source of truth for disabled
+// stale on-disk file. The platform is the single source of truth for disabled
 // state (it's the only writer); the old disabled_plugins.json the CLI used to
-// read was never written by the actuator.
+// read was never written by the platform.
 func fetchPluginStates() (map[string]pluginState, bool) {
 	token := readHostToken()
 	if token == "" {

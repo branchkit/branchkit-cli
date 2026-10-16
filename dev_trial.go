@@ -286,7 +286,7 @@ func cmdDevTrial(args []string) {
 	}
 	var runErr error
 	if state != "Running" {
-		runErr = fmt.Errorf("status is %q — read `branchkit-cli dev plog %s --since 2m` and the actuator log", state, id)
+		runErr = fmt.Errorf("status is %q — read `branchkit-cli dev plog %s --since 2m` and the platform log", state, id)
 	}
 	if !t.record("running under the sandbox", runErr, "") {
 		finish()

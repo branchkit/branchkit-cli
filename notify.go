@@ -7,18 +7,18 @@ import (
 	"time"
 )
 
-// notifyActuator tells a running actuator to reload plugins.
-// Silently succeeds if the actuator is not running.
-func notifyActuator() {
+// notifyPlatform tells a running platform to reload plugins.
+// Silently succeeds if the platform is not running.
+func notifyPlatform() {
 	// readHostToken resolves the app's address first; without it there is
 	// no URL to build — and no operator socket for the client to dial. The
 	// client used to be built BEFORE this line, so it never got the socket
 	// transport, every call failed, and an install into a running app always
-	// reported "Actuator is not running".
+	// reported "BranchKit is not running".
 	token := readHostToken()
 	client := devClient(5 * time.Second)
 	if devBaseURL == "" {
-		fmt.Println("Actuator is not running — plugin will load on next start.")
+		fmt.Println("BranchKit is not running — plugin will load on next start.")
 		return
 	}
 	req, err := http.NewRequest(http.MethodPost, devBaseURL+"/settings/reload-plugins", nil)
@@ -33,14 +33,14 @@ func notifyActuator() {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Actuator is not running — plugin will load on next start.")
+		fmt.Println("BranchKit is not running — plugin will load on next start.")
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		fmt.Println("Actuator notified — plugin will load immediately.")
+		fmt.Println("BranchKit notified — plugin will load immediately.")
 	} else {
-		fmt.Fprintf(os.Stderr, "Actuator returned error %d — plugin will load on next restart.\n", resp.StatusCode)
+		fmt.Fprintf(os.Stderr, "BranchKit returned error %d — plugin will load on next restart.\n", resp.StatusCode)
 	}
 }

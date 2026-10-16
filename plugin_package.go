@@ -257,7 +257,7 @@ func writeChecksum(tarPath string) (string, error) {
 // stageBinaries names the files, relative to the plugin directory with
 // forward slashes, that the manifest's stages spawn on goos: each stage's
 // `binary` (default: its name), with ".exe" on Windows, the way the
-// actuator resolves it. Stages whose platform excludes goos are skipped.
+// platform resolves it. Stages whose platform excludes goos are skipped.
 func stageBinaries(m PluginManifest, goos string) []string {
 	if m.Provides == nil {
 		return nil

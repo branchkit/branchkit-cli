@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-// cmdDevPlog queries the actuator's per-plugin log read endpoint
+// cmdDevPlog queries the platform's per-plugin log read endpoint
 // (GET /v1/plugins/{id}/log) — the retrieval half of the plugin-logging
 // design. Unlike `dev logs` (a live tail of branchkit.log), this answers
 // "what did plugin X log in the last N seconds?" as a one-shot query:
@@ -49,7 +49,7 @@ func cmdDevPlog(args []string) {
 	}
 	if pluginID == "" {
 		fmt.Fprintln(os.Stderr, "Usage: branchkit-cli dev plog <plugin-id> [--since 30s|5m|ISO] [--tag GLOB[,GLOB]] [--exclude GLOB[,GLOB]] [--level warn] [--limit N] [--json]")
-		fmt.Fprintln(os.Stderr, "One-shot query of plugin-logs/<id>.log via the running actuator.")
+		fmt.Fprintln(os.Stderr, "One-shot query of plugin-logs/<id>.log via the running platform.")
 		os.Exit(1)
 	}
 

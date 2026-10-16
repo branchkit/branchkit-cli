@@ -21,7 +21,7 @@ const goSDKModule = "github.com/branchkit/plugin-sdk-go"
 //
 // Every generated wrapper takes one request struct, and Go does not enforce
 // required fields in a struct literal: a forgotten `Name` compiles and sends
-// "". The actuator refuses "" for a required parameter that names something
+// "". The platform refuses "" for a required parameter that names something
 // (a path, an id, a collection) and says which field, but only when the
 // call runs, so a request built on a path the author never exercised fails
 // first on a user's machine. TypeScript and Python refuse a missing required

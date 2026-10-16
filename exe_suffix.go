@@ -19,7 +19,7 @@ func exeSuffix() string {
 // manifest spells a binary the way `go build` and cargo name it on macOS and
 // Linux (`./snippets-plugin`); on Windows the same build writes
 // `snippets-plugin.exe`, and CreateProcess given a full path does not add
-// the suffix. The actuator resolves plugin programs and stage binaries by
+// the suffix. The platform resolves plugin programs and stage binaries by
 // the same rule, so the CLI must find the same file it will run.
 func withExeSuffix(path string) string {
 	return withExeSuffixFor(path, exeSuffix())

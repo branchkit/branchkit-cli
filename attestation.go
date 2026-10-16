@@ -11,7 +11,7 @@ package main
 // SHA-256 (integrity only) to real provenance (authenticity).
 //
 // This is the CLI half. The resolved AuthorVerified/Publisher get recorded
-// in .branchkit-source.json; the actuator's trust-tier resolution
+// in .branchkit-source.json; the platform's trust-tier resolution
 // (resolve_trust_tier) reads them in a later step, and the registry
 // counter-signature (the fork moat) is step 5.
 
@@ -134,7 +134,7 @@ func verifyReleaseAttestation(
 //
 // Rules, in order:
 //   - No publisher, or a malformed one → nothing to check. Malformed is
-//     treated as no provenance claim (matching the actuator validator's
+//     treated as no provenance claim (matching the platform validator's
 //     posture); a note is printed, never an error.
 //   - Publisher declared but no verified attestation → the claim is unproven.
 //     Noted, not fatal: unsigned installs stay on the community posture.
@@ -179,7 +179,7 @@ func checkPublisherClaim(publisher string, attestation *AuthorAttestation) error
 // does not positively recognize. `provider=host:identity` (self-hosted) parses
 // too — the host is carried in the provider slot's suffix and can never equal
 // "github", so self-hosted claims route to the unproven path above. This is a
-// deliberately narrow parser: the actuator's publisher.rs owns the full
+// deliberately narrow parser: the platform's publisher.rs owns the full
 // taxonomy; the CLI only needs to answer "is this a bare github claim, and
 // for whom?"
 func splitPublisher(s string) (provider, identity string, ok bool) {

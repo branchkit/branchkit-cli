@@ -38,14 +38,14 @@ func captureStdout(t *testing.T, f func()) string {
 	return <-done
 }
 
-// The ratchet against the actuator's own manifest schema rather than this
+// The ratchet against the platform's own manifest schema rather than this
 // tool's mirror structs. TestConsentAxesCoverEveryRequiresField can only see
-// a field someone already added to RequiresCfg; a property the actuator adds
+// a field someone already added to RequiresCfg; a property the platform adds
 // to the schema, honours and enforces, but nobody mirrors here, was
 // invisible to it — which is how `provides.native_messaging` and
 // `provides.stages` went unshown at install. The property lists travel in
 // the embedded vocabulary, derived from the schema and drift-gated in the
-// app's build, so this sees what the actuator accepts.
+// app's build, so this sees what the platform accepts.
 func TestEverySchemaConsentFieldIsDisclosedOrExempt(t *testing.T) {
 	schema := vocabulary.ManifestConsentBlocks
 	for _, block := range []string{"requires", "provides", "consumes"} {

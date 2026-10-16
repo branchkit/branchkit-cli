@@ -32,8 +32,8 @@ func cmdList() {
 		if dp.Manifest.Run != "" {
 			status = "managed"
 		}
-		// Disabled is runtime state owned by the actuator; overlay it only
-		// when the actuator answered.
+		// Disabled is runtime state owned by the platform; overlay it only
+		// when the platform answered.
 		if online {
 			if st, ok := states[dp.Manifest.ID]; ok && !st.Enabled {
 				status = "disabled"

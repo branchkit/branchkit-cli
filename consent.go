@@ -114,7 +114,7 @@ func networkSet(m PluginManifest) []string {
 		return hosts
 	}
 	// Unparseable network declarations are refused at load by the
-	// actuator; showing the raw bytes keeps the diff honest until then.
+	// platform; showing the raw bytes keeps the diff honest until then.
 	return []string{string(m.Requires.Network)}
 }
 
@@ -174,7 +174,7 @@ func socketsSet(m PluginManifest) []string {
 // hand.
 //
 // Which axes exist is the app's: its registry travels in the embedded
-// vocabulary (manifest_vocabulary.json, generated from the actuator), and
+// vocabulary (manifest_vocabulary.json, generated from the platform), and
 // an axis it adds fails this CLI's tests until axisReaders says how to read
 // and word it.
 //
@@ -626,7 +626,7 @@ var axisReaders = []consentAxis{
 }
 
 // consentAxes is the app's consent-axis registry (vocabulary.ConsentAxes,
-// generated from the actuator's), in its order, each joined with its reader
+// generated from the platform's), in its order, each joined with its reader
 // from axisReaders. The diff, the install summary, the update prompt and the
 // preview all iterate it.
 var consentAxes = joinAxes(vocabulary.ConsentAxes, axisReaders)
@@ -916,7 +916,7 @@ func namedRefs(refs []NamedRef) []string {
 }
 
 // stagesSet is each shipped stage with the program it runs ("ocr" when the
-// binary is the stage's name, the actuator's default; "ocr (bin/ocr-engine)"
+// binary is the stage's name, the platform's default; "ocr (bin/ocr-engine)"
 // otherwise).
 func stagesSet(m PluginManifest) []string {
 	if m.Provides == nil {
@@ -1109,7 +1109,7 @@ func diffConsent(oldM, newM PluginManifest) consentDiff {
 // what the plugin can do needs a fresh yes: asked on a TTY, skipped by
 // --yes (the settings panel asked already), and BLOCKED otherwise — a
 // scripted update must not widen a plugin's reach because nobody was there
-// to say no. Contractions always print, because the actuator will revoke
+// to say no. Contractions always print, because the platform will revoke
 // those grants on reload and the user should know why.
 //
 // grantsOn is whether the plugin's new grants arrive switched on
