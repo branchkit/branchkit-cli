@@ -69,7 +69,6 @@
   ],
   "platform_collections": [
     "_platform.accessibility",
-    "_platform.actuator_log_level",
     "_platform.binding_claims",
     "_platform.binding_overrides",
     "_platform.bindings",
@@ -79,6 +78,7 @@
     "_platform.hud_prefs",
     "_platform.input",
     "_platform.key_names",
+    "_platform.log_level",
     "_platform.log_recording",
     "_platform.log_retention",
     "_platform.model_download",

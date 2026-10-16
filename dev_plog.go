@@ -10,7 +10,7 @@ import (
 
 // cmdDevPlog queries the actuator's per-plugin log read endpoint
 // (GET /v1/plugins/{id}/log) — the retrieval half of the plugin-logging
-// design. Unlike `dev logs` (a live tail of actuator.log), this answers
+// design. Unlike `dev logs` (a live tail of branchkit.log), this answers
 // "what did plugin X log in the last N seconds?" as a one-shot query:
 // the server does the clock math, so no timestamp regexes and no
 // UTC-vs-local arithmetic on the caller's side.

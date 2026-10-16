@@ -363,7 +363,7 @@ func printDevUsage() {
 	fmt.Println("  watch [path]")
 	fmt.Println("        Watch for changes, rebuild, and have the app restart the plugin")
 	fmt.Println("  logs [plugin-id] [--source TAG] [--json]")
-	fmt.Println("        Tail the app log (actuator.log; --json streams show-all.current.jsonl),")
+	fmt.Println("        Tail the app log (branchkit.log; --json streams show-all.current.jsonl),")
 	fmt.Println("        optionally filtered")
 	fmt.Println("  plog <plugin-id> [--since 30s] [--tag GLOB[,GLOB]] [--exclude GLOB[,GLOB]] [--level warn] [--limit N] [--json]")
 	fmt.Println("        One-shot query of plugin-logs/<id>.log — server does the time math")

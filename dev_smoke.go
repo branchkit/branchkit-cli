@@ -306,7 +306,7 @@ func cmdDevSmoke(args []string) {
 		} else {
 			// The voice plugin logs every command_recognition transcript it
 			// handles (orchestrated / dropped) — either line proves delivery.
-			logPath := filepath.Join(appSupportDir(), "actuator.log")
+			logPath := filepath.Join(appSupportDir(), "branchkit.log")
 			seen := false
 			for i := 0; i < 15; i++ {
 				if tailContains(logPath, sentinel, 512*1024) {
@@ -796,7 +796,7 @@ func cmdDevSay(args []string) {
 		os.Exit(1)
 	}
 	fmt.Println(strings.TrimSpace(string(raw)))
-	fmt.Println("Trace: branchkit-cli dev chain   (or grep the text in actuator.log)")
+	fmt.Println("Trace: branchkit-cli dev chain   (or grep the text in branchkit.log)")
 }
 
 func cmdDevChain(args []string) {

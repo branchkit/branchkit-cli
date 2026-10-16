@@ -36,7 +36,7 @@ func cmdDevLogs(args []string) {
 	if jsonMode {
 		logPath = filepath.Join(appSupportDir(), "show-all.current.jsonl")
 	} else {
-		logPath = filepath.Join(appSupportDir(), "actuator.log")
+		logPath = filepath.Join(appSupportDir(), "branchkit.log")
 	}
 
 	if _, err := os.Stat(logPath); err != nil {
