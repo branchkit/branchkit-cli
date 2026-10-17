@@ -92,6 +92,7 @@
     "_platform.plugins.privilege_grants",
     "_platform.plugins.trusted_authors",
     "_platform.plugins.uninstalled",
+    "_platform.spoken_check",
     "_platform.stage_log_thresholds",
     "_platform.triggers",
     "_platform.user_collection_schemas",
