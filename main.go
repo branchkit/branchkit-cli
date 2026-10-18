@@ -139,6 +139,8 @@ func main() {
 			cmdDevBuild(os.Args[3:])
 		case "test":
 			cmdDevTest(os.Args[3:])
+		case "check-settings":
+			cmdDevCheckSettings(os.Args[3:])
 		case "agents":
 			cmdDevAgents(os.Args[3:])
 		case "watch":
@@ -352,6 +354,13 @@ func printDevUsage() {
 	fmt.Println("        Build the plugin, then check its manifest and source and run it")
 	fmt.Println("        under the test harness. A failure or warning names its docs page")
 	fmt.Println("        (under `branchkit-cli docs path`)")
+	fmt.Println("  check-settings [path] [--no-build] [--json]")
+	fmt.Println("        Build the plugin, render each settings tab as the app does and")
+	fmt.Println("        fail on a control that cannot work: a handler that does nothing,")
+	fmt.Println("        a call to a method the plugin never registered, a dialog the")
+	fmt.Println("        settings frame blocks, a signal name the browser lowercases.")
+	fmt.Println("        Fake data in conformance/plugin-data/ is copied into the plugin's")
+	fmt.Println("        data folder first, so controls that only show with data are checked")
 	fmt.Println("  agents [path] [--force]")
 	fmt.Println("        Write AGENTS.md, instructions for an AI coding agent working on the")
 	fmt.Println("        plugin, and a CLAUDE.md that imports it. `dev init` writes both; this")

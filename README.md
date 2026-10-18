@@ -6,7 +6,7 @@ packages plugins; installs, updates and removes them; and queries a running app
 when a plugin does not behave.
 
 BranchKit is pre-launch: the app is not publicly released. The authoring
-commands (`dev init`, `dev build`, `dev test`, `dev platforms`,
+commands (`dev init`, `dev build`, `dev test`, `dev check-settings`, `dev platforms`,
 `plugin package`) work without it. Commands that install into or query the app
 need it installed and, for most, running.
 
@@ -78,6 +78,7 @@ These need no running app.
 | `dev init` | Scaffold a plugin (`--name`, `--template go\|ts\|py`, `--description`, `--bare`) |
 | `dev build [path]` | Build with the manifest's `dev.build` recipe, or by source layout. `--os`/`--arch` cross-build into `dist/<os>-<arch>/` |
 | `dev test [path]` | Static checks of the manifest and source, then conformance under the test harness when it is found (`--static-only`, `--json`) |
+| `dev check-settings [path]` | Build, then render each settings tab with the request the app sends and fail on a control that cannot work: a handler that does nothing, a call to a method the plugin never registered, a dialog the settings frame blocks, a signal name the browser lowercases. Fake data in `conformance/plugin-data/` is copied into the plugin's data folder first, so controls that only show with data are checked; `plugin package` leaves that folder out. Needs the test harness, not the app or a browser (`--no-build`, `--json`) |
 | `dev platforms [path...]` | Which operating systems the plugin will work on, derived from the operations its source calls. `--write` records the result in `plugin.json`; `--check` fails when the recorded list is stale |
 | `docs path` | Print the directory of platform docs bundled with the app (markdown, for grep) |
 | `docs sync` | Copy the bundled docs to a stable path that survives app updates |

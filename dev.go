@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -471,6 +472,78 @@ func scaffoldPyPlugin(dir string, data templateData) error {
 	}
 
 	return nil
+}
+
+// cmdDevCheckSettings is the settings half of `dev test`: build, then the
+// harness renders every settings tab with the request the app sends and
+// fails a tab on any control that cannot work. It needs no running app and
+// no browser. Unlike `dev test`, a missing harness is an error: checking
+// settings is the whole of what this command does.
+func cmdDevCheckSettings(args []string) {
+	dir := "."
+	jsonOutput := false
+	noBuild := false
+	for _, a := range args {
+		switch a {
+		case "--json":
+			jsonOutput = true
+		case "--no-build":
+			noBuild = true
+		default:
+			if !strings.HasPrefix(a, "-") {
+				dir = a
+			}
+		}
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if _, err := os.Stat(filepath.Join(absDir, "plugin.json")); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: no plugin.json found in %s\n", absDir)
+		os.Exit(1)
+	}
+	binary := findHarnessBinary()
+	if binary == "" {
+		fmt.Fprintln(os.Stderr, "Error: branchkit-test-harness not found, so nothing was checked.")
+		fmt.Fprintln(os.Stderr, "  It ships with BranchKit beside this CLI (macOS: inside BranchKit.app;")
+		fmt.Fprintln(os.Stderr, "  Linux packages: /usr/bin; Windows: the install folder); install the")
+		fmt.Fprintln(os.Stderr, "  app, or point BRANCHKIT_TEST_HARNESS at a harness binary.")
+		os.Exit(1)
+	}
+	// The harness runs the built binary: without a build, a check after an
+	// edit judges the old code (see cmdDevTest).
+	if !noBuild {
+		if err := buildForTest(absDir, jsonOutput); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: build failed, so nothing was checked: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if code := runSettingsCheck(binary, absDir, jsonOutput, os.Stdout, os.Stderr); code != 0 {
+		os.Exit(code)
+	}
+}
+
+// runSettingsCheck runs the harness's settings phase on a built plugin and
+// returns the exit code to leave with: the harness's own, or 1 if it could
+// not be run at all.
+func runSettingsCheck(binary, absDir string, jsonOutput bool, stdout, stderr io.Writer) int {
+	harnessArgs := []string{absDir, "--settings-only"}
+	if jsonOutput {
+		harnessArgs = append(harnessArgs, "--json")
+	}
+	cmd := exec.Command(binary, harnessArgs...)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode()
+		}
+		fmt.Fprintf(stderr, "Error running harness: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func cmdDevTest(args []string) {
