@@ -59,8 +59,11 @@
     "windows"
   ],
   "plugin_methods": [
+    "list_action_types",
+    "list_methods",
     "on_action",
     "on_commands_changed",
+    "on_ready",
     "on_transcript",
     "render_settings",
     "trial_apply_fixture",
