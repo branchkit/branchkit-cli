@@ -76,6 +76,13 @@ func readAllTar(tr *tar.Reader) ([]byte, error) {
 
 func TestCollectPayloadDenylist(t *testing.T) {
 	dir := writeFakePlugin(t, "./demo")
+	fixture := filepath.Join(dir, "conformance", "plugin-data")
+	if err := os.MkdirAll(fixture, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture, "backup.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	entries, err := collectPayload(dir, "./demo", "", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +99,7 @@ func TestCollectPayloadDenylist(t *testing.T) {
 	}
 	// Build inputs / junk / prior outputs must NOT ship.
 	for _, bad := range []string{"src/main.go", "go.mod", "go.sum", ".gitignore",
-		"branchkit-plugin-demo-linux-x86_64.tar.gz"} {
+		"branchkit-plugin-demo-linux-x86_64.tar.gz", "conformance/plugin-data/backup.json"} {
 		if got[bad] {
 			t.Errorf("payload wrongly includes %q", bad)
 		}

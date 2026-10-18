@@ -61,6 +61,9 @@ var packageDenylistNames = map[string]bool{
 	"package.json": true, "package-lock.json": true, "bun.lock": true, "bun.lockb": true,
 	"tsconfig.json": true, "Taskfile.yml": true, "Justfile": true,
 	"justfile": true, "Makefile": true, ".DS_Store": true,
+	// Fake data the test harness seeds before checking the settings tabs
+	// (conformance/plugin-data/); it is for tests, never a user's install.
+	"conformance": true,
 }
 
 func hasReleaseSuffix(name string) bool {
