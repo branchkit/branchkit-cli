@@ -229,7 +229,7 @@ func cmdDevInit(args []string) {
 			fmt.Fprintln(os.Stderr, "\nError: the generated scaffold does not compile against the")
 			fmt.Fprintln(os.Stderr, "published SDK. This is a template/SDK version mismatch in the")
 			fmt.Fprintln(os.Stderr, "tooling — not something you did wrong. Upgrade branchkit-cli,")
-			fmt.Fprintln(os.Stderr, "or report it: https://github.com/branchkit/branchkit-registry/issues")
+			fmt.Fprintln(os.Stderr, "or report it: https://github.com/branchkit/registry/issues")
 			os.Exit(1)
 		}
 
@@ -304,7 +304,7 @@ func cmdDevInit(args []string) {
 		fmt.Fprintln(os.Stderr, "\nError: the generated scaffold does not compile against the")
 		fmt.Fprintln(os.Stderr, "published SDK. This is a template/SDK version mismatch in the")
 		fmt.Fprintln(os.Stderr, "tooling — not something you did wrong. Upgrade branchkit-cli,")
-		fmt.Fprintln(os.Stderr, "or report it: https://github.com/branchkit/branchkit-registry/issues")
+		fmt.Fprintln(os.Stderr, "or report it: https://github.com/branchkit/registry/issues")
 		os.Exit(1)
 	}
 
