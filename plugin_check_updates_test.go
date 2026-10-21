@@ -117,3 +117,18 @@ func TestSourceMetaRecordsRegistrySigned(t *testing.T) {
 		t.Errorf("unsigned should be false/false, got %v/%v", m2.AuthorVerified, m2.RegistrySigned)
 	}
 }
+
+func TestCheckSummary(t *testing.T) {
+	for _, c := range []struct {
+		reached, unreached int
+		catalogOK          bool
+		want               string
+	}{
+		{2, 1, true, "CHECKED reached=2 unreached=1 catalog=ok"},
+		{0, 0, false, "CHECKED reached=0 unreached=0 catalog=failed"},
+	} {
+		if got := checkSummary(c.reached, c.unreached, c.catalogOK); got != c.want {
+			t.Errorf("checkSummary(%d, %d, %v) = %q, want %q", c.reached, c.unreached, c.catalogOK, got, c.want)
+		}
+	}
+}

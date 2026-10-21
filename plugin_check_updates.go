@@ -16,9 +16,16 @@ type UpdateInfo struct {
 
 // checkUpdatesForPlugins returns update info for all user-installed plugins with newer releases.
 func checkUpdatesForPlugins() []UpdateInfo {
+	updates, _, _ := checkUpdatesCounted()
+	return updates
+}
+
+// checkUpdatesCounted is checkUpdatesForPlugins, also counting the plugins
+// whose source answered (reached) and those it could not ask (unreached).
+// A plugin with no GitHub source or a source-build install is neither.
+func checkUpdatesCounted() (updates []UpdateInfo, reached, unreached int) {
 	plugins := discoverPlugins()
 
-	var updates []UpdateInfo
 	for _, dp := range plugins {
 		if dp.Source != SourceUser {
 			continue
@@ -40,8 +47,10 @@ func checkUpdatesForPlugins() []UpdateInfo {
 		latest, err := fetchLatestTag(parsed)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "WARN: could not check %s: %v\n", dp.Manifest.ID, err)
+			unreached++
 			continue
 		}
+		reached++
 
 		if latest != meta.InstalledTag {
 			updates = append(updates, UpdateInfo{
@@ -52,7 +61,17 @@ func checkUpdatesForPlugins() []UpdateInfo {
 			})
 		}
 	}
-	return updates
+	return updates, reached, unreached
+}
+
+// checkSummary is the line check-updates ends its stderr with, for the app:
+// a check that reached nothing (offline) is retried sooner than one that did.
+func checkSummary(reached, unreached int, catalogOK bool) string {
+	catalog := "ok"
+	if !catalogOK {
+		catalog = "failed"
+	}
+	return fmt.Sprintf("CHECKED reached=%d unreached=%d catalog=%s", reached, unreached, catalog)
 }
 
 func cmdCheckUpdates() {
@@ -60,11 +79,12 @@ func cmdCheckUpdates() {
 	// listing of the registry is refreshed (fetchCatalog keeps it): Get
 	// plugins then lists what the registry lists now. A failure only leaves
 	// the old copy.
-	_, _ = fetchCatalog()
-	updates := checkUpdatesForPlugins()
+	_, catalogErr := fetchCatalog()
+	updates, reached, unreached := checkUpdatesCounted()
 	if updates == nil {
 		updates = []UpdateInfo{}
 	}
 	data, _ := json.Marshal(updates)
 	fmt.Println(string(data))
+	fmt.Fprintln(os.Stderr, checkSummary(reached, unreached, catalogErr == nil))
 }
