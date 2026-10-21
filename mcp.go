@@ -118,6 +118,17 @@ var mcpTools = []mcpTool{
 		waits: true,
 	},
 	{
+		Name: "problem_report",
+		Description: "When BranchKit itself misbehaves (it doesn't hear, a command or plugin fails, it quit): " +
+			"its recent warnings and errors, newest events and crash summaries from the last day, with versions, " +
+			"operating system and plugins. Cleaned as a saved report is: what the person said is reduced to its " +
+			"length. Use it to find the cause and explain it; if it is a bug, help them write it up, and tell them " +
+			"Help > Report a problem saves the full report with an ID for the BranchKit team. Off unless the " +
+			"person turned it on for this app.",
+		InputSchema: noArgs(),
+		path:        "/v1/connection/problem-report",
+	},
+	{
 		Name:        "screenshot",
 		Description: "A picture of the window in front. Off unless the person turned it on for this app; prefer window_text for reading.",
 		InputSchema: noArgs(),
