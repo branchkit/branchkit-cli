@@ -31,7 +31,7 @@ var checkDocs = []struct{ prefix, doc string }{
 	{"command", "how-to/voice/defining-commands.md"},
 	{"capture", "reference/specs/pattern-syntax.md"},
 	{"keybind", "guide/platform-model/triggers-and-authority.md"},
-	{"settings_tab", "how-to/ui/settings-ui.md"},
+	{"page", "how-to/ui/settings-ui.md"},
 	{"collection_data", "guide/collections/data.md"},
 	{"consumed_collections", "guide/collections/ownership-and-namespaces.md"},
 	{"provided_collections", "guide/collections/overview.md"},
@@ -103,7 +103,7 @@ func runStaticAnalysis(dir string) TestPhaseResult {
 	phase.Tests = append(phase.Tests, checkIDFormat(manifest))
 	phase.Tests = append(phase.Tests, checkActionPrefix(manifest))
 	phase.Tests = append(phase.Tests, checkActionTypes(manifest)...)
-	phase.Tests = append(phase.Tests, checkSettingsTabs(manifest)...)
+	phase.Tests = append(phase.Tests, checkPages(manifest)...)
 	phase.Tests = append(phase.Tests, checkCollectionDataFiles(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkCommandGrammar(dir, manifest)...)
 	phase.Tests = append(phase.Tests, checkKeybindBindings(manifest)...)
@@ -644,7 +644,7 @@ func checkActionTypes(m map[string]any) []TestResult {
 	return results
 }
 
-func checkSettingsTabs(m map[string]any) []TestResult {
+func checkPages(m map[string]any) []TestResult {
 	impl, ok := m["implements"]
 	if !ok {
 		return nil
@@ -653,13 +653,13 @@ func checkSettingsTabs(m map[string]any) []TestResult {
 	if !ok {
 		return nil
 	}
-	tabs, ok := implMap["settings_tabs"]
+	tabs, ok := implMap["pages"]
 	if !ok {
 		return nil
 	}
 	tabList, ok := tabs.([]any)
 	if !ok {
-		return []TestResult{{Name: "settings_tabs", Status: "fail", Detail: "settings_tabs must be an array"}}
+		return []TestResult{{Name: "pages", Status: "fail", Detail: "pages must be an array"}}
 	}
 
 	seen := map[string]bool{}
@@ -667,25 +667,25 @@ func checkSettingsTabs(m map[string]any) []TestResult {
 	for _, t := range tabList {
 		tab, ok := t.(map[string]any)
 		if !ok {
-			results = append(results, TestResult{Name: "settings_tab", Status: "fail", Detail: "tab entry must be an object"})
+			results = append(results, TestResult{Name: "page", Status: "fail", Detail: "page entry must be an object"})
 			continue
 		}
 		key, _ := tab["key"].(string)
 		label, _ := tab["label"].(string)
 		if key == "" {
-			results = append(results, TestResult{Name: "settings_tab", Status: "fail", Detail: "tab missing required field \"key\""})
+			results = append(results, TestResult{Name: "page", Status: "fail", Detail: "page missing required field \"key\""})
 			continue
 		}
 		if label == "" {
 			results = append(results, TestResult{
-				Name: "settings_tab_" + key, Status: "fail",
-				Detail: fmt.Sprintf("tab %q missing required field \"label\"", key),
+				Name: "page_" + key, Status: "fail",
+				Detail: fmt.Sprintf("page %q missing required field \"label\"", key),
 			})
 			continue
 		}
 		if seen[key] {
 			results = append(results, TestResult{
-				Name: "settings_tab_" + key, Status: "fail",
+				Name: "page_" + key, Status: "fail",
 				Detail: fmt.Sprintf("duplicate tab key %q", key),
 			})
 			continue
@@ -694,7 +694,7 @@ func checkSettingsTabs(m map[string]any) []TestResult {
 	}
 	if len(results) == 0 {
 		results = append(results, TestResult{
-			Name: "settings_tabs", Status: "pass",
+			Name: "pages", Status: "pass",
 			Detail: fmt.Sprintf("%d tab(s)", len(tabList)),
 		})
 	}

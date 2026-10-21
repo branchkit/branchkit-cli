@@ -26,7 +26,7 @@ func main() {
 	// through the settings stream whenever one of this plugin's methods
 	// returns. The markup is the platform's own components, so the tab
 	// matches the rest of the settings UI without CSS of its own.
-	plugin.SettingsTab("getting_started", func(_ *branchkit.RenderSettingsRequest) (string, error) {
+	plugin.Page("getting_started", func(_ *branchkit.RenderSettingsRequest) (string, error) {
 		return `
 <bk-cards>
   <bk-card label="{{.PluginName}}">

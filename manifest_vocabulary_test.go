@@ -25,8 +25,8 @@ func TestEmbeddedVocabularyIsPopulated(t *testing.T) {
 	if !inList(vocabulary.Privileges, "dispatch") {
 		t.Error("dispatch missing from privileges")
 	}
-	if !inList(vocabulary.NonMethodImplementsKeys, "settings_tabs") {
-		t.Error("settings_tabs must be accepted under implements")
+	if !inList(vocabulary.NonMethodImplementsKeys, "pages") {
+		t.Error("pages must be accepted under implements")
 	}
 }
 
@@ -38,7 +38,7 @@ func TestEmbeddedVocabularyIsPopulated(t *testing.T) {
 func TestImplementsRejectsInertMethodNames(t *testing.T) {
 	m := manifestFromJSON(t, `{
 		"id": "x",
-		"implements": {"parse_key_event": true, "on_action": true, "settings_tabs": []}
+		"implements": {"parse_key_event": true, "on_action": true, "pages": []}
 	}`)
 	results := checkImplementsMethods(m)
 
@@ -56,8 +56,8 @@ func TestImplementsRejectsInertMethodNames(t *testing.T) {
 	if findResult(results, "implements_on_action") != nil {
 		t.Error("on_action is a real method and must pass")
 	}
-	if findResult(results, "implements_settings_tabs") != nil {
-		t.Error("settings_tabs is a declaration, not a method, and must pass")
+	if findResult(results, "implements_pages") != nil {
+		t.Error("pages is a declaration, not a method, and must pass")
 	}
 }
 

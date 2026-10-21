@@ -17,7 +17,7 @@ plugin.handleAction<GreetParams>("{{.ActionPrefix}}.greet", async (req) => {
 // the settings stream whenever one of this plugin's methods returns. The
 // markup is the platform's own components, so the tab matches the rest of
 // the settings UI without CSS of its own.
-plugin.settingsTab("getting_started", () => `
+plugin.page("getting_started", () => `
 <bk-cards>
   <bk-card label="{{.PluginName}}">
     <p>{{.Description}}</p>

@@ -459,7 +459,7 @@ func TestAnnotateDocsMarksOnlyFailuresAndWarnings(t *testing.T) {
 	phase := TestPhaseResult{Tests: []TestResult{
 		{Name: "command_grammar", Status: "fail"},
 		{Name: "keybinds", Status: "warn"},
-		{Name: "settings_tabs", Status: "pass"},
+		{Name: "pages", Status: "pass"},
 		{Name: "no_such_check", Status: "fail"},
 	}}
 	annotateDocs(&phase)
