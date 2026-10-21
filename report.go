@@ -68,16 +68,20 @@ func cmdReport(args []string) {
 // appBinaryCandidates lists where the app's binary may be, most specific
 // first: beside this CLI (it ships inside the app on every OS), then the
 // usual install locations.
+// macAppExe is the macOS bundle's executable (Contents/MacOS/<name>), the
+// app's own name, not its data folder.
+const macAppExe = "BranchKit"
+
 func appBinaryCandidates(exeDir, home, goos string) []string {
 	var c []string
 	switch goos {
 	case "darwin":
 		c = append(c,
 			// The CLI ships in the bundle's Contents/MacOS or Contents/Resources.
-			filepath.Join(exeDir, "BranchKit"),
-			filepath.Join(exeDir, "..", "MacOS", "BranchKit"),
+			filepath.Join(exeDir, macAppExe),
+			filepath.Join(exeDir, "..", "MacOS", macAppExe),
 			"/Applications/BranchKit.app/Contents/MacOS/BranchKit",
-			filepath.Join(home, "Applications", "BranchKit.app", "Contents", "MacOS", "BranchKit"))
+			filepath.Join(home, "Applications", "BranchKit.app", "Contents", "MacOS", macAppExe))
 	case "windows":
 		c = append(c, filepath.Join(exeDir, "branchkit.exe"))
 	default:
