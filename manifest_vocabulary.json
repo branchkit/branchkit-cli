@@ -98,6 +98,7 @@
     "_platform.spoken_check",
     "_platform.stage_log_thresholds",
     "_platform.triggers",
+    "_platform.update_check",
     "_platform.user_collection_schemas",
     "_platform.user_commands"
   ],
