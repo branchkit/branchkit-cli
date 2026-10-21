@@ -122,9 +122,12 @@ var mcpTools = []mcpTool{
 		Description: "When BranchKit itself misbehaves (it doesn't hear, a command or plugin fails, it quit): " +
 			"its recent warnings and errors, newest events and crash summaries from the last day, with versions, " +
 			"operating system and plugins. Cleaned as a saved report is: what the person said is reduced to its " +
-			"length. Use it to find the cause and explain it; if it is a bug, help them write it up, and tell them " +
-			"Help > Report a problem saves the full report with an ID for the BranchKit team. Off unless the " +
-			"person turned it on for this app.",
+			"length. Use it to find the cause and explain it. If it is a bug, help them write it up as a public " +
+			"issue at https://github.com/branchkit/branchkit/issues/new?template=bug-report.yml (fields: " +
+			"what-happened, expected, steps, about, version, os, os-version, summary; a plugin with its own " +
+			"tracker takes it there): describe what happened, add the few warnings and errors that explain it, " +
+			"and leave out anything personal, since issues are public. Help > Report a problem in BranchKit " +
+			"drafts the same issue. Off unless the person turned it on for this app.",
 		InputSchema: noArgs(),
 		path:        "/v1/connection/problem-report",
 	},
