@@ -197,6 +197,8 @@ func main() {
 		}
 	case "mcp":
 		cmdMCP(os.Args[2:])
+	case "report":
+		cmdReport(os.Args[2:])
 	case "version", "--version":
 		cmdVersion()
 	case "help", "--help", "-h":
@@ -228,6 +230,7 @@ var groupUsage = map[string]func(){
 	"mcp":      printMCPUsage,
 	"docs":     printDocsUsage,
 	"registry": printRegistryUsage,
+	"report":   printReportUsage,
 }
 
 // usageFor returns the usage printer to run when args (everything after the
@@ -301,6 +304,7 @@ func printUsage() {
 	fmt.Println("  runtime list                       List installed managed runtimes")
 	fmt.Println("  docs path                          Print the platform docs directory (markdown — grep it)")
 	fmt.Println("  docs sync                          Copy bundled docs to a stable path")
+	fmt.Println("  report [flags]                     Save a problem report (recent logs, cleaned) to send")
 	fmt.Println("  version                            Print this CLI's version")
 	fmt.Println()
 	fmt.Println("  dev init [flags]                   Scaffold a new plugin from template")
