@@ -16,7 +16,7 @@ branchkit-cli version
 ```
 
 The CLI ships inside the BranchKit app. If it is missing, BranchKit is not
-installed: point the user to https://branchkit.dev/install and stop, since
+installed: point the user to https://branchkit.com/install and stop, since
 nothing can be built or tested without it.
 
 ## A new plugin
@@ -46,8 +46,8 @@ branchkit-cli dev agents .
 ## Without the app
 
 To read about BranchKit without it installed, the docs index is
-https://branchkit.dev/llms.txt. Every page is served as markdown at its URL
-plus `.md`, and https://branchkit.dev/llms/plugin-author.txt is the pages a
+https://branchkit.com/llms.txt. Every page is served as markdown at its URL
+plus `.md`, and https://branchkit.com/llms/plugin-author.txt is the pages a
 first plugin needs, in one file.
 
 ## Never, unless the user asks
