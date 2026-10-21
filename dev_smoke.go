@@ -796,7 +796,20 @@ func cmdDevSay(args []string) {
 		os.Exit(1)
 	}
 	fmt.Println(strings.TrimSpace(string(raw)))
-	fmt.Println("Trace: branchkit-cli dev chain   (or grep the text in branchkit.log)")
+	fmt.Println(sayTraceHint(raw))
+}
+
+// sayTraceHint names the command that follows this utterance's chain: the
+// exact `dev chain <tr_>` when the app returned the chain's id, else the
+// listing of recent chains (an app from before the id was returned).
+func sayTraceHint(raw []byte) string {
+	var r struct {
+		CorrelationID string `json:"correlation_id"`
+	}
+	if json.Unmarshal(raw, &r) == nil && strings.HasPrefix(r.CorrelationID, "tr_") {
+		return "Trace: branchkit-cli dev chain " + r.CorrelationID
+	}
+	return "Trace: branchkit-cli dev chain   (or grep the text in branchkit.log)"
 }
 
 func cmdDevChain(args []string) {

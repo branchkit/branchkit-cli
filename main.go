@@ -149,6 +149,8 @@ func main() {
 			cmdDevLogs(os.Args[3:])
 		case "plog":
 			cmdDevPlog(os.Args[3:])
+		case "diagnose":
+			cmdDevDiagnose(os.Args[3:])
 		case "events":
 			cmdDevEvents(os.Args[3:])
 		case "smoke":
@@ -380,6 +382,10 @@ func printDevUsage() {
 	fmt.Println("        optionally filtered")
 	fmt.Println("  plog <plugin-id> [--since 30s] [--tag GLOB[,GLOB]] [--exclude GLOB[,GLOB]] [--level warn] [--limit N] [--json]")
 	fmt.Println("        One-shot query of plugin-logs/<id>.log — server does the time math")
+	fmt.Println("  diagnose <plugin-id> [--since 1h] [--json]")
+	fmt.Println("        One snapshot of a plugin in the running app: status, recent warnings")
+	fmt.Println("        and errors, log tail, what it last received, the last chains that")
+	fmt.Println("        touched it, and the commands to dig further. Works on Developer Access")
 	fmt.Println("  smoke [--json]")
 	fmt.Println("        Side-effect-free health sweep of the running app (preview resolves,")
 	fmt.Println("        vocab lag, transcript transport) — executes nothing. Reads app-wide")

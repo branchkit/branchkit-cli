@@ -78,11 +78,37 @@ grep -rn "<term>" "$D"
   see `how-to/debug/test-a-plugin.md`; the rest of the harness API is in
   `branchkit/harness.py`.
 
-## When it fails
+## When something doesn't work
 
-- `dev test` prints one line per check; `!` is a warning, not a failure.
-  A failing or warning check prints `docs: <page>`, a path under
-  `$D`: read that page first. `dev test --json` gives the same as JSON.
-- Only if the user has installed the plugin and turned on Developer Access on
-  its card in Settings: `branchkit-cli dev plog {{.PluginID}} --since 60s`
-  shows what it logged in the running app.
+`dev test` prints one line per check; `!` is a warning, not a failure. A
+failing or warning check prints `docs: <page>`, a path under `$D`: read that
+page first. `dev test --json` gives the same as JSON.
+
+When the plugin misbehaves in the running app, read the app before changing
+code. These commands need the plugin installed and Developer Access turned on
+on its card in Settings (ask the user); they change nothing in the app.
+
+1. **Snapshot first.**
+   `branchkit-cli dev diagnose {{.PluginID}}` prints the plugin's status,
+   recent warnings and errors, its log tail, what it last received, and the
+   last chains (`tr_` ids) that touched it, then the commands to run next.
+   `--json` gives the same as one object; `--since 10m` narrows the window.
+2. **Reproduce without speaking.**
+   `branchkit-cli dev say "<phrase>" --simulate` runs the phrase through
+   matching and dispatch as if spoken, and records each action instead of
+   running it. Never drop `--simulate`: without it the actions really run on
+   the user's machine. Its last line is the `dev chain` command for the
+   utterance's `tr_` id; run it next.
+3. **Follow the chain.**
+   `branchkit-cli dev chain <tr_id>` lists the chain's records your plugin
+   can see, in order: what matched, what was dispatched, what failed.
+4. **Read what the plugin logged and received.**
+   `branchkit-cli dev plog {{.PluginID}} --since 60s` (add `--level warn` or
+   `--tag GLOB`) is its log. What it received is the replay buffer, the
+   "What it received" section of `dev diagnose`. When an expected event never
+   arrives, `branchkit-cli dev events --plugin {{.PluginID}} --since 10m`
+   and `how-to/debug/debug-event-delivery.md` find where it stopped.
+5. **Fix, then prove it without the app.**
+   Add a test for the case you reproduced and run `branchkit-cli dev test .`
+   and the plugin's own tests. Install into the app again only when the user
+   asks.
