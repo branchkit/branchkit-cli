@@ -352,7 +352,9 @@ func buildTypeScriptPluginFor(absDir string, target buildTarget) error {
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, out); err != nil {
+	// replaceFile, not a bare rename: Windows refuses to rename over a
+	// running program.
+	if err := replaceFile(tmp, out); err != nil {
 		return err
 	}
 	size := int64(0)

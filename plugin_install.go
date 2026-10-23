@@ -288,12 +288,7 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 	// registry-signed records the platform's trust-tier resolution reads)
 	// goes into the stage so the swap lands it atomically with the files.
 	writeSourceMeta(stageDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation, registrySigned)
-	if err := os.RemoveAll(targetDir); err != nil {
-		os.RemoveAll(stageDir)
-		os.RemoveAll(tempDir)
-		return fmt.Errorf("failed to clear previous install: %w", err)
-	}
-	if err := os.Rename(stageDir, targetDir); err != nil {
+	if err := replaceDir(stageDir, targetDir); err != nil {
 		os.RemoveAll(stageDir)
 		os.RemoveAll(tempDir)
 		return fmt.Errorf("failed to move plugin into place: %w", err)

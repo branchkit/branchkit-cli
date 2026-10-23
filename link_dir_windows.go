@@ -22,7 +22,7 @@ func linkPluginDir(dir, link string) error {
 	if err == nil {
 		return nil
 	}
-	if !strings.Contains(err.Error(), "privilege") {
+	if !isPrivilegeNotHeld(err) {
 		return err
 	}
 	out, jerr := exec.Command("cmd", "/c", "mklink", "/J", link, dir).CombinedOutput()
