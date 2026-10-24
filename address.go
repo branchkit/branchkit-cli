@@ -21,19 +21,30 @@ import (
 	"time"
 )
 
-// Set alongside devBaseURL when the address file lists an operator socket:
-// every request then dials the socket and devBaseURL is a placeholder host.
+// Set alongside devBaseURL when the address file lists an operator socket
+// (or, on Windows, an operator pipe): every request then dials it and
+// devBaseURL is a placeholder host.
 var devUnixSocket string
+var devPipe string
 
 // devClient is the one HTTP client for operator calls: over the operator
-// socket when the app offers one, over loopback TCP otherwise.
+// socket or pipe when the app offers one, over loopback TCP otherwise.
 func devClient(timeout time.Duration) *http.Client {
 	c := &http.Client{Timeout: timeout}
-	if sock := devUnixSocket; sock != "" {
+	switch {
+	case devUnixSocket != "":
+		sock := devUnixSocket
 		c.Transport = &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 				var d net.Dialer
 				return d.DialContext(ctx, "unix", sock)
+			},
+		}
+	case devPipe != "":
+		pipe := devPipe
+		c.Transport = &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return dialPipe(ctx, pipe)
 			},
 		}
 	}
@@ -49,6 +60,9 @@ type appAddress struct {
 	} `json:"ui"`
 	Operator *struct {
 		Socket string `json:"socket"`
+		// Windows' operator endpoint: a named pipe whose DACL admits only
+		// this user, the analogue of the 0600 socket.
+		Pipe string `json:"pipe"`
 	} `json:"operator,omitempty"`
 }
 
@@ -79,7 +93,9 @@ func readAppAddress() (*appAddress, error) {
 // (found 2026-09-18, the first `dev smoke` on the Win11 VM).
 
 // resolveDevBaseURL sets devBaseURL from the address file: the operator
-// socket when the app offers one, else the UI port. A development build
+// socket (Windows: the operator pipe) when the app offers one, else the UI
+// port. The owner-only endpoint first: the UI port is reachable by every
+// local account. A development build
 // serves the full router on that port; a production install serves the UI
 // routes plus the Developer Access operations there, and the socket.
 func resolveDevBaseURL() error {
@@ -87,12 +103,17 @@ func resolveDevBaseURL() error {
 	if err != nil {
 		return err
 	}
+	devUnixSocket, devPipe = "", ""
 	if a.Operator != nil && a.Operator.Socket != "" {
 		devUnixSocket = a.Operator.Socket
 		devBaseURL = "http://branchkit"
 		return nil
 	}
-	devUnixSocket = ""
+	if a.Operator != nil && a.Operator.Pipe != "" {
+		devPipe = a.Operator.Pipe
+		devBaseURL = "http://branchkit"
+		return nil
+	}
 	devBaseURL = fmt.Sprintf("http://127.0.0.1:%d", a.UI.Port)
 	return nil
 }
