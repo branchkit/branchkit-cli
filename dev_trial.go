@@ -3,9 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -318,10 +322,7 @@ func cmdDevTrial(args []string) {
 	t.record("voice command resolves (preview)", err, "")
 
 	// 8. The settings tab, rendered through the app.
-	raw, status, err := devHTTP("GET", "/plugins/"+id+"/settings/getting_started/frame", token, nil)
-	if err == nil && status != 200 {
-		err = fmt.Errorf("HTTP %d", status)
-	}
+	raw, err := fetchSettingsFrame(id, "getting_started", token)
 	if err == nil && !strings.Contains(string(raw), "bk-card") {
 		err = fmt.Errorf("the frame rendered, but without the tab's content")
 	}
@@ -329,6 +330,37 @@ func cmdDevTrial(args []string) {
 
 	finish()
 }
+
+// fetchSettingsFrame loads a plugin tab's frame document the way the browser
+// does: the tab's page names the frame's URL on the frame server, under a
+// credential the page hands only to an authenticated caller.
+func fetchSettingsFrame(id, tab, token string) ([]byte, error) {
+	page, status, err := devHTTP("GET", "/plugins/"+id+"/settings/"+tab, token, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("the tab page: HTTP %d", status)
+	}
+	m := iframeSrc.FindSubmatch(page)
+	if m == nil || string(m[1]) == "about:blank" {
+		return nil, fmt.Errorf("the tab page frames nothing")
+	}
+	src := html.UnescapeString(string(m[1]))
+	// Plain TCP: the frame server is never the operator socket devClient dials.
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Get(src)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err == nil && resp.StatusCode != 200 {
+		err = fmt.Errorf("the frame: HTTP %d", resp.StatusCode)
+	}
+	return raw, err
+}
+
+var iframeSrc = regexp.MustCompile(`<iframe src="([^"]+)" data-plugin-id=`)
 
 func printDevTrialUsage() {
 	fmt.Println("Usage: branchkit-cli dev trial --template go|ts|py [--listener | --network] [--keep]")
