@@ -119,6 +119,7 @@
       "privileges",
       "protected_reads",
       "reasons",
+      "resources",
       "runtimes",
       "sockets",
       "wmi"
@@ -274,6 +275,13 @@
       "field": "runtimes",
       "kind": "scope",
       "name": "runtimes",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "resources",
+      "kind": "scope",
+      "name": "resources",
       "update": "expands"
     },
     {

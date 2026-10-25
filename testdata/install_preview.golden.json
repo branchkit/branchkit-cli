@@ -165,6 +165,14 @@
       "kind": "scope"
     },
     {
+      "axis": "resources",
+      "items": [
+        "up to 2048 MB of memory"
+      ],
+      "text": "May use up to 2048 MB of memory (most plugins get 1024 MB)",
+      "kind": "scope"
+    },
+    {
       "axis": "capabilities",
       "items": [
         "speech.say"
@@ -240,7 +248,7 @@
   "blocklisted": false,
   "source": "github.com/example/golden",
   "tag": "v2.0.0",
-  "consent_digest": "32134f3edf564fe7cde0567c972caf36d42c1f3ef40b8173f73eefe491444c0e",
+  "consent_digest": "6f19712750d5dac48ce4f6fa6169be92875016bb8af26343c306666f14f10c9f",
   "update": {
     "installed_version": "1.0.0",
     "added": [
@@ -416,6 +424,13 @@
         "axis": "runtimes",
         "item": "python",
         "text": "runtime: python (read+exec of the managed runtime)",
+        "kind": "scope",
+        "expands": true
+      },
+      {
+        "axis": "resources",
+        "item": "up to 2048 MB of memory",
+        "text": "may use up to 2048 MB of memory",
         "kind": "scope",
         "expands": true
       },

@@ -48,6 +48,12 @@ type actionFieldDecl struct {
 	Placeholder string `json:"placeholder,omitempty"`
 }
 
+// ResourcesCfg mirrors the platform's `requires.resources`.
+type ResourcesCfg struct {
+	// The memory, in MB, the plugin's processes may hold together.
+	MemoryMB *uint32 `json:"memory_mb,omitempty"`
+}
+
 // RequiresCfg mirrors the platform's `requires` block.
 type RequiresCfg struct {
 	// The manifest key was renamed capabilities → privileges platform-wide;
@@ -65,6 +71,8 @@ type RequiresCfg struct {
 	Network json.RawMessage `json:"network,omitempty"`
 	// Managed runtimes the sandbox grants read+exec on.
 	Runtimes []string `json:"runtimes,omitempty"`
+	// More of the computer than the default share: today, memory.
+	Resources *ResourcesCfg `json:"resources,omitempty"`
 	// D-Bus methods the plugin calls (Linux), one grant each on the
 	// plugin's page.
 	Dbus *DbusCfg `json:"dbus,omitempty"`

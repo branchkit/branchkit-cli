@@ -546,6 +546,23 @@ var axisReaders = []consentAxis{
 		addFmt: "  + runtime: %s (read+exec of the managed runtime)\n",
 		delFmt: "  - runtime: %s\n",
 	},
+	// Worded as the app's card words it, so an update that changes the
+	// amount reads as a new member and asks again.
+	{
+		name: "resources",
+		extract: func(m PluginManifest) []string {
+			if m.Requires.Resources == nil || m.Requires.Resources.MemoryMB == nil {
+				return nil
+			}
+			return []string{fmt.Sprintf("up to %d MB of memory", *m.Requires.Resources.MemoryMB)}
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  May use %s (most plugins get 1024 MB)\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + may use %s\n",
+		delFmt: "  - no longer asks for %s\n",
+	},
 	// Platform operations the plugin cannot start without. Only `required`:
 	// one added by an update can stop the plugin starting on this computer,
 	// which is worth asking about again. A newly called optional operation
