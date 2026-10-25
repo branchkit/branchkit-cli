@@ -934,17 +934,28 @@ func namedRefs(refs []NamedRef) []string {
 
 // stagesSet is each shipped stage with the program it runs ("ocr" when the
 // binary is the stage's name, the platform's default; "ocr (bin/ocr-engine)"
-// otherwise).
+// otherwise) and the memory it asks for ("ocr (bin/ocr-engine; up to 2048
+// MB of memory)").
 func stagesSet(m PluginManifest) []string {
 	if m.Provides == nil {
 		return nil
 	}
 	out := make([]string, 0, len(m.Provides.Stages))
 	for name, s := range m.Provides.Stages {
-		if s.Binary == "" || s.Binary == name {
+		// A stage's memory request is part of the stage, so a changed
+		// amount reads as a new stage in an update (the platform's card
+		// words it the same way).
+		var parts []string
+		if s.Binary != "" && s.Binary != name {
+			parts = append(parts, s.Binary)
+		}
+		if s.Resources != nil && s.Resources.MemoryMB != nil {
+			parts = append(parts, fmt.Sprintf("up to %d MB of memory", *s.Resources.MemoryMB))
+		}
+		if len(parts) == 0 {
 			out = append(out, name)
 		} else {
-			out = append(out, fmt.Sprintf("%s (%s)", name, s.Binary))
+			out = append(out, fmt.Sprintf("%s (%s)", name, strings.Join(parts, "; ")))
 		}
 	}
 	return sortedUnique(out)

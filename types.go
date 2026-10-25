@@ -301,6 +301,8 @@ type StageDecl struct {
 	// Platform is "macos" | "linux" | "windows" or a list of them; omitted
 	// means every platform. Raw because both shapes are legal.
 	Platform json.RawMessage `json:"platform,omitempty"`
+	// Resources is the stage's own memory request, apart from its plugin's.
+	Resources *ResourcesCfg `json:"resources,omitempty"`
 }
 
 // BlobDecl is the part of a `provides.blobs` entry a person consents to.

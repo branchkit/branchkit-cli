@@ -61,7 +61,7 @@ const goldenNewManifest = `{
 		},
 		"collections": {"golden_notes": {}},
 		"blobs": {"frames": {"max_bytes": 1048576, "on_full": "evict_oldest"}},
-		"stages": {"ocr": {}, "stt": {"binary": "bin/stt-engine"}},
+		"stages": {"ocr": {}, "stt": {"binary": "bin/stt-engine", "resources": {"memory_mb": 4096}}},
 		"native_messaging": {
 			"host_name": "com.example.golden",
 			"chrome_extension_ids": ["abcdefghijklmnopabcdefghijklmnop"],

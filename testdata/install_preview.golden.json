@@ -184,9 +184,9 @@
       "axis": "stages",
       "items": [
         "ocr",
-        "stt (bin/stt-engine)"
+        "stt (bin/stt-engine; up to 4096 MB of memory)"
       ],
-      "text": "Pipeline stages: ocr, stt (bin/stt-engine) (programs of its own that BranchKit starts)",
+      "text": "Pipeline stages: ocr, stt (bin/stt-engine; up to 4096 MB of memory) (programs of its own that BranchKit starts)",
       "kind": "scope"
     },
     {
@@ -248,7 +248,7 @@
   "blocklisted": false,
   "source": "github.com/example/golden",
   "tag": "v2.0.0",
-  "consent_digest": "6f19712750d5dac48ce4f6fa6169be92875016bb8af26343c306666f14f10c9f",
+  "consent_digest": "04183f74fdc7749c30193916db8eb2c92eaf9f3373e0a0eaf8c58f0bae505b78",
   "update": {
     "installed_version": "1.0.0",
     "added": [
@@ -450,8 +450,8 @@
       },
       {
         "axis": "stages",
-        "item": "stt (bin/stt-engine)",
-        "text": "pipeline stage: stt (bin/stt-engine) (a program of its own that BranchKit starts)",
+        "item": "stt (bin/stt-engine; up to 4096 MB of memory)",
+        "text": "pipeline stage: stt (bin/stt-engine; up to 4096 MB of memory) (a program of its own that BranchKit starts)",
         "kind": "scope",
         "expands": true
       },

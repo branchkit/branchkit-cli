@@ -109,7 +109,7 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 		"id": "x", "name": "X", "version": "1.0.0",
 		"run": "./x-plugin",
 		"provides": {
-			"stages": {"ocr": {}, "stt": {"binary": "bin/stt-engine"}},
+			"stages": {"ocr": {}, "stt": {"binary": "bin/stt-engine", "resources": {"memory_mb": 4096}}},
 			"native_messaging": {
 				"host_name": "com.example.pair",
 				"chrome_extension_ids": ["abcdefghijklmnopabcdefghijklmnop"],
@@ -133,7 +133,7 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 		}
 	}
 	want := map[string][]string{
-		"stages":            {"ocr", "stt (bin/stt-engine)"},
+		"stages":            {"ocr", "stt (bin/stt-engine; up to 4096 MB of memory)"},
 		"native_messaging":  {"Chrome extension abcdefghijklmnopabcdefghijklmnop", "Firefox extension pair@example.com", "Safari extension com.example.app.safari"},
 		"events":            {"tempo.** (from metronome)"},
 		"always_events":     {"_platform.window.**"},
