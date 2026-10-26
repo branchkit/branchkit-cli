@@ -121,8 +121,9 @@ func newAssetRequest(a ghAsset) (*http.Request, error) {
 //     a missing tag or a missing file answers 404 too, so the repository's
 //     visibility is asked first (anonymously) and a visible one never gets
 //     the token.
-//   - 403 because the anonymous rate limit is spent (60 an hour per address),
-//     which no amount of waiting fixes inside one run.
+//   - 403 (or 429) because the anonymous rate limit is spent (60 an hour per
+//     address), which no amount of waiting fixes inside one run. A spent
+//     limit also answers the visibility probe, which then counts as private.
 //
 // A token GitHub refuses (401) is reported once, and the anonymous answer is
 // returned so callers keep their usual messages.
@@ -136,7 +137,7 @@ func githubDo(client *http.Client, req *http.Request) (*http.Response, error) {
 		if githubToken() == "" || repoVisibleAnonymously(client, req.URL) {
 			return resp, nil
 		}
-	case resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") == "0":
+	case rateLimited(resp):
 	default:
 		return resp, nil
 	}
@@ -180,7 +181,20 @@ func repoVisibleAnonymously(client *http.Client, u *url.URL) bool {
 		return true
 	}
 	resp.Body.Close()
+	// A spent anonymous quota answers the probe too: it says nothing about
+	// visibility, and the anonymous 404 being asked about is then the only
+	// answer, so the request goes on to the token as a rate limit does.
+	if rateLimited(resp) {
+		return false
+	}
 	return resp.StatusCode != http.StatusNotFound
+}
+
+// rateLimited reports whether GitHub refused a request for the anonymous
+// rate limit: 403 with no requests remaining, or 429.
+func rateLimited(resp *http.Response) bool {
+	return resp.StatusCode == http.StatusTooManyRequests ||
+		(resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") == "0")
 }
 
 // repoOf reads owner and repository from an api.github.com /repos/ URL, a

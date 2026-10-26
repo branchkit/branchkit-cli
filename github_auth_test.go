@@ -191,6 +191,48 @@ func TestASpentAnonymousRateLimitRetriesWithTheToken(t *testing.T) {
 
 // A refused token (expired, revoked) must leave the anonymous answer in
 // place, so the caller still shows its usual message.
+// The asset 404s anonymously and the visibility probe meets the spent
+// anonymous quota: that is no proof the repository is public, so the asset
+// is still fetched with the token.
+func TestASpentQuotaOnTheVisibilityProbeStillRetriesWithTheToken(t *testing.T) {
+	setGitHubToken(t, "secret")
+	var log []seen
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log = append(log, seen{r.URL.Path, r.Header.Get("Accept"), r.Header.Get("Authorization")})
+		switch {
+		case r.Header.Get("Authorization") != "":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/repos/o/r":
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	req, _ := newAssetRequest(ghAsset{
+		Name:               "x.tar.gz",
+		BrowserDownloadURL: "https://github.com/o/r/releases/download/v1/x.tar.gz",
+		URL:                "https://api.github.com/repos/o/r/releases/assets/7",
+	})
+	resp, err := githubDo(asGitHub(srv), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200; requests = %+v", resp.StatusCode, log)
+	}
+	want := []seen{
+		{"/o/r/releases/download/v1/x.tar.gz", "", ""},
+		{"/repos/o/r", "", ""},
+		{"/repos/o/r/releases/assets/7", "application/octet-stream", "Bearer secret"},
+	}
+	if !equalSeen(log, want) {
+		t.Fatalf("requests = %+v, want %+v", log, want)
+	}
+}
+
 func TestARefusedTokenReturnsTheAnonymousAnswer(t *testing.T) {
 	setGitHubToken(t, "stale")
 	srv, _ := fakeGitHub(t, func(r *http.Request) int {
