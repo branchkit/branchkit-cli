@@ -69,6 +69,27 @@ widens what the plugin can do needs a fresh yes, and without a terminal or
 (any plugin that does not ship with BranchKit asking for another plugin's
 events, actions or collections) is shown and does not stop it.
 
+### BranchKit itself
+
+The app never downloads its own updates; it runs these.
+
+| Command | What it does |
+|---|---|
+| `app download` | Download the latest BranchKit release's file for this computer into the app's `updates/<version>/` folder (owner-only) and verify it. Prints JSON: `version`, `tag`, `kind`, `path`, `sha256`, `identity`. Installs nothing |
+
+`app download` flags: `--version vX.Y.Z` picks a release; `--current vX.Y.Z`
+(or `BRANCHKIT_APP_VERSION`) is the installed version, and a release that is
+not newer is refused unless `--allow-downgrade`; `--kind` picks another file
+than the one the updater uses (`release_assets.json` lists them per OS).
+
+A release is a tag on `branchkit/releases`. Its `SHA256SUMS` must carry a
+Sigstore attestation (`SHA256SUMS.sigstore.json`) signed either by a workflow
+of that repository running on that tag, or by GitHub's release signer for that
+repository and tag; anything else, or no attestation, stops the download
+before the file is fetched. The file is then kept only if it matches its line
+in `SHA256SUMS`, and its name carries the version, so another release's
+checksums cannot vouch for it.
+
 ### Authoring
 
 These need no running app.

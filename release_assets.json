@@ -1,0 +1,67 @@
+{
+  "about": [
+    "The files a BranchKit app release publishes, and which of them an install or an update uses.",
+    "branchkit-cli embeds this file (release_assets.go): `app download` picks this machine's file from it.",
+    "The release assembler reads the same file, so the names it writes are the names the updater looks for.",
+    "A release is the tag `tag_prefix` + version (version X.Y.Z) on GitHub `repository`.",
+    "In `name`, {version} is X.Y.Z and {arch} is the spelling `arch` maps this machine's Go GOARCH to.",
+    "`use` says what consumes the file: `install` (a person's first install) and/or `update` (the updater).",
+    "Each OS has exactly one `update` file. Linux packages are left to the package manager that owns the files.",
+    "`checksums` lists every other file in sha256sum's text format (`<sha256 hex>  <name>`, sorted by name, LF).",
+    "`checksums_attestation` is a Sigstore bundle over the checksums file, signed by `repository`."
+  ],
+  "repository": "branchkit/releases",
+  "tag_prefix": "v",
+  "checksums": "SHA256SUMS",
+  "checksums_attestation": "SHA256SUMS.sigstore.json",
+  "artifacts": [
+    {
+      "os": "darwin",
+      "kind": "dmg",
+      "name": "BranchKit-{version}-macos-{arch}.dmg",
+      "arch": {"arm64": "arm64"},
+      "use": ["install"],
+      "about": "Disk image holding BranchKit.app, for a first install."
+    },
+    {
+      "os": "darwin",
+      "kind": "zip",
+      "name": "BranchKit-{version}-macos-{arch}.zip",
+      "arch": {"arm64": "arm64"},
+      "use": ["update"],
+      "about": "BranchKit.app zipped with `ditto -c -k --keepParent`, which keeps its signature and extended attributes; the updater swaps it in place."
+    },
+    {
+      "os": "windows",
+      "kind": "zip",
+      "name": "BranchKit-{version}-windows-{arch}.zip",
+      "arch": {"amd64": "x64", "arm64": "arm64"},
+      "use": ["install", "update"],
+      "about": "The install folder and install.ps1, for a first install and for an update."
+    },
+    {
+      "os": "linux",
+      "kind": "deb",
+      "name": "branchkit_{version}_{arch}.deb",
+      "arch": {"amd64": "amd64", "arm64": "arm64"},
+      "use": ["install"],
+      "about": "Debian and Ubuntu package; apt updates it."
+    },
+    {
+      "os": "linux",
+      "kind": "rpm",
+      "name": "branchkit-{version}-1.{arch}.rpm",
+      "arch": {"amd64": "x86_64", "arm64": "aarch64"},
+      "use": ["install"],
+      "about": "Fedora package; dnf updates it."
+    },
+    {
+      "os": "linux",
+      "kind": "appimage",
+      "name": "BranchKit-{version}-{arch}.AppImage",
+      "arch": {"amd64": "x86_64", "arm64": "aarch64"},
+      "use": ["install", "update"],
+      "about": "AppImage for any distribution; no package manager owns it, so the updater replaces it."
+    }
+  ]
+}

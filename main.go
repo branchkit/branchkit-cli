@@ -178,6 +178,8 @@ func main() {
 		}
 	case "docs":
 		cmdDocs(os.Args[2:])
+	case "app":
+		cmdApp(os.Args[2:])
 	case "registry":
 		if len(os.Args) < 3 {
 			printRegistryUsage()
@@ -225,6 +227,7 @@ var specificUsage = map[string]func(){
 
 var groupUsage = map[string]func(){
 	"plugin":   printPluginUsage,
+	"app":      printAppUsage,
 	"artifact": printArtifactUsage,
 	"model":    printArtifactUsage, // deprecated alias
 	"runtime":  printRuntimeUsage,
@@ -299,6 +302,7 @@ func printUsage() {
 	fmt.Println("  plugin info <plugin-id>            Show plugin details")
 	fmt.Println("  plugin check-updates               Check for available updates (JSON)")
 	fmt.Println("  plugin update [plugin-id]          Update one or all plugins")
+	fmt.Println("  app download [flags]               Download and verify a BranchKit release for this machine")
 	fmt.Println("  artifact download <plugin/name>    Download a model or other artifact a plugin declares")
 	fmt.Println("  artifact list                      List installed artifacts and what plugins declare")
 	fmt.Println("  mcp --connection <id>              Serve BranchKit reads to an AI app over MCP (stdio)")
