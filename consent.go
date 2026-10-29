@@ -1028,14 +1028,16 @@ type consentDiff struct {
 // expands reports whether the update asks for anything the installed version
 // did not — the condition that requires fresh consent. grantsOn is whether
 // the plugin's new grants would arrive switched on (grantsArriveOn): a new
-// grant that arrives off widens nothing until the person allows it.
+// grant that arrives off widens nothing until the person allows it. An
+// effect is such a grant too (the app offers it on only for a plugin that
+// ships with BranchKit); a changed run command always asks.
 func (d consentDiff) expands(grantsOn bool) bool {
 	for _, ax := range consentAxes {
 		if len(d.Axes[ax.name].Added) > 0 && ax.addExpands(grantsOn) {
 			return true
 		}
 	}
-	return len(d.AddedEffects) > 0 || d.RunChanged
+	return (len(d.AddedEffects) > 0 && grantsOn) || d.RunChanged
 }
 
 // contracts reports whether the update drops anything whose grant the app
@@ -1051,6 +1053,14 @@ func (d consentDiff) contracts() bool {
 
 // axis returns one axis's diff by registry name (empty if none).
 func (d consentDiff) axis(name string) axisDiff { return d.Axes[name] }
+
+// effectAddLine is the "+" line for an effect an update adds.
+func effectAddLine(e EffectDeclaration) string {
+	if e.UserVisibleDescription != "" {
+		return fmt.Sprintf("  + effect: %s — %s\n", effectLabel(e), e.UserVisibleDescription)
+	}
+	return fmt.Sprintf("  + effect: %s\n", effectLabel(e))
+}
 
 // effectKey is an effect declaration's consent identity: the sorted set of
 // asserted names. Copy edits (user_visible_*) are not a consent change.
@@ -1181,6 +1191,11 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, gran
 			}
 		}
 	}
+	if !grantsOn {
+		for _, e := range d.AddedEffects {
+			arriveOff = append(arriveOff, effectAddLine(e))
+		}
+	}
 	if len(arriveOff) > 0 {
 		fmt.Println("New requests, each off until you allow it on the plugin's page:")
 		for _, line := range arriveOff {
@@ -1208,11 +1223,9 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, gran
 			fmt.Printf(ax.addFmt, ax.display(m))
 		}
 	}
-	for _, e := range d.AddedEffects {
-		if e.UserVisibleDescription != "" {
-			fmt.Printf("  + effect: %s — %s\n", effectLabel(e), e.UserVisibleDescription)
-		} else {
-			fmt.Printf("  + effect: %s\n", effectLabel(e))
+	if grantsOn {
+		for _, e := range d.AddedEffects {
+			fmt.Print(effectAddLine(e))
 		}
 	}
 	if d.RunChanged {

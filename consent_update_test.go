@@ -9,7 +9,8 @@ import (
 	"testing"
 )
 
-// A new consumes grant asks again only when it would arrive switched on.
+// A new consumes grant (blob reads and effects included) asks again only
+// when it would arrive switched on.
 // For any plugin that does not ship with BranchKit it arrives off on the
 // plugin's page, so a scripted update proceeds and says so; for one that
 // does, the update would switch it on, so a scripted update blocks. New
@@ -22,7 +23,9 @@ func TestConsumesGrantsAskOnlyWhenTheyArriveOn(t *testing.T) {
 			"events": [{"pattern": "tempo.**", "source": "metronome"}],
 			"dispatch": ["tiling"],
 			"collections": ["alphabet"],
-			"writes": ["snippets"]
+			"writes": ["snippets"],
+			"blobs": ["metronome/beats"],
+			"effects": [{"asserts": ["suppress_notifications"], "user_visible_name": "Quiet"}]
 		}
 	}`)
 	d := diffConsent(base, consumes)
@@ -38,7 +41,7 @@ func TestConsumesGrantsAskOnlyWhenTheyArriveOn(t *testing.T) {
 			t.Errorf("a scripted update whose new grants arrive off must proceed: %v", err)
 		}
 	})
-	for _, s := range []string{"each off until you allow it", "receives events: tempo.** (from metronome)", "tiling", "alphabet", "snippets"} {
+	for _, s := range []string{"each off until you allow it", "receives events: tempo.** (from metronome)", "tiling", "alphabet", "snippets", "reads shared data: metronome/beats", "effect: Quiet"} {
 		if !strings.Contains(out, s) {
 			t.Errorf("the update does not say %q:\n%s", s, out)
 		}

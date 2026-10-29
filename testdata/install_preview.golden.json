@@ -355,7 +355,7 @@
         "item": "camera/frames",
         "text": "reads shared data: camera/frames (allow it on the plugin's page)",
         "kind": "grant",
-        "expands": true
+        "expands": false
       },
       {
         "axis": "events",

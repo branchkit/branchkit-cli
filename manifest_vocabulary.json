@@ -219,7 +219,7 @@
       "field": "blobs",
       "kind": "grant",
       "name": "blobs",
-      "update": "expands"
+      "update": "expands_when_granted_on"
     },
     {
       "block": "consumes",
