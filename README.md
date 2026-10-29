@@ -75,7 +75,15 @@ The app never downloads its own updates; it runs these.
 
 | Command | What it does |
 |---|---|
+| `app check-updates` | Ask GitHub whether a BranchKit release newer than `--current` (or `BRANCHKIT_APP_VERSION`) is out. Downloads nothing. Prints JSON: `current`, `latest`, `newer`, `notes_url`, `apply` (`self`, or `package-manager` for a Linux .deb or .rpm install, which apt or dnf updates) |
 | `app download` | Download the latest BranchKit release's file for this computer into the app's `updates/<version>/` folder (owner-only) and verify it. Prints JSON: `version`, `tag`, `kind`, `path`, `sha256`, `identity`. Installs nothing |
+
+`app check-updates` reads only the latest release of `branchkit/releases`,
+always anonymously: the repository is public, and a token would tie the check
+to a GitHub account. It ignores a pre-release. Its stderr ends `CHECKED
+reached=N unreached=M`, so the app can retry a check that could not reach
+GitHub sooner; a repository with no release yet counts as reached, with
+nothing newer.
 
 `app download` flags: `--version vX.Y.Z` picks a release; `--current vX.Y.Z`
 (or `BRANCHKIT_APP_VERSION`) is the installed version, and a release that is

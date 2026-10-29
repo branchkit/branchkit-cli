@@ -66,7 +66,8 @@ func liveAppEnv() (appEnv, error) {
 
 // appCommands maps each `app` subcommand to its runner.
 var appCommands = map[string]func(args []string, env appEnv) error{
-	"download": runAppDownload,
+	"check-updates": runAppCheckUpdates,
+	"download":      runAppDownload,
 }
 
 func cmdApp(args []string) {
@@ -94,6 +95,13 @@ func printAppUsage() {
 	fmt.Println("Usage: branchkit-cli app <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
+	fmt.Println("  check-updates [--current vX.Y.Z]")
+	fmt.Println("        Ask GitHub whether a BranchKit release newer than the installed one is out.")
+	fmt.Println("        Downloads nothing. Prints JSON {current, latest, newer, notes_url, apply};")
+	fmt.Println("        apply is self, or package-manager for a Linux .deb/.rpm install (apt or")
+	fmt.Println("        dnf updates it). Stderr ends `CHECKED reached=N unreached=M`. A repository")
+	fmt.Println("        with no release yet is reached, with nothing newer.")
+	fmt.Println("        --current   the installed app's version (or BRANCHKIT_APP_VERSION)")
 	fmt.Println("  download [--version vX.Y.Z] [--current vX.Y.Z] [--kind KIND] [--allow-downgrade]")
 	fmt.Println("        Download a BranchKit release for this machine into the app's updates/")
 	fmt.Println("        folder and verify it: GitHub's release attestation of branchkit/releases")

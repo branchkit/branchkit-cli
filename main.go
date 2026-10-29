@@ -302,6 +302,7 @@ func printUsage() {
 	fmt.Println("  plugin info <plugin-id>            Show plugin details")
 	fmt.Println("  plugin check-updates               Check for available updates (JSON)")
 	fmt.Println("  plugin update [plugin-id]          Update one or all plugins")
+	fmt.Println("  app check-updates [--current V]    Check for a newer BranchKit release (JSON)")
 	fmt.Println("  app download [flags]               Download and verify a BranchKit release for this machine")
 	fmt.Println("  artifact download <plugin/name>    Download a model or other artifact a plugin declares")
 	fmt.Println("  artifact list                      List installed artifacts and what plugins declare")
