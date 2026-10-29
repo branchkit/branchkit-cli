@@ -109,6 +109,58 @@ func TestParseSums(t *testing.T) {
 	}
 }
 
+// testdata/release_SHA256SUMS.golden is what the release assembler writes
+// for every file the contract names at 0.1.0, each digest the SHA-256 of the
+// name and a newline. The assembler's own test compares its output with the
+// same file, so the writer and this parser are held to one text.
+func TestParseSumsReadsTheAssemblersFile(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "release_SHA256SUMS.golden"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sums, err := parseSums(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := loadReleaseContract()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for _, a := range c.Artifacts {
+		for goarch := range a.Arch {
+			name, _ := a.fileName("0.1.0", goarch)
+			want = append(want, name)
+		}
+	}
+	if len(sums) != len(want) {
+		t.Errorf("the golden file lists %d files, the contract names %d", len(sums), len(want))
+	}
+	for _, name := range want {
+		d := sha256.Sum256([]byte(name + "\n"))
+		if sums[name] != hex.EncodeToString(d[:]) {
+			t.Errorf("%s: digest %q", name, sums[name])
+		}
+	}
+	if !bytes.Equal(data, sumsOfDigests(sums)) {
+		t.Errorf("the golden file is not sorted by name, one LF line per file:\n%s", data)
+	}
+}
+
+// sumsOfDigests writes name → digest in sha256sum's text format, sorted.
+func sumsOfDigests(sums map[string]string) []byte {
+	names := make([]string, 0, len(sums))
+	for n := range sums {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var b bytes.Buffer
+	for _, n := range names {
+		fmt.Fprintf(&b, "%s  %s\n", sums[n], n)
+	}
+	return b.Bytes()
+}
+
 // sumsOf is a SHA256SUMS over files, as the release assembler writes it.
 func sumsOf(files map[string][]byte) []byte {
 	names := make([]string, 0, len(files))
