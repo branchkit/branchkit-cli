@@ -17,6 +17,7 @@ import (
 // test can run a whole command against a fake GitHub and a test Sigstore.
 type appEnv struct {
 	client     *http.Client
+	stall      time.Duration // a response that sends nothing for this long fails (0: appStallTimeout)
 	anchors    []trustAnchor
 	appSupport string
 	goos       string
@@ -26,6 +27,11 @@ type appEnv struct {
 	stderr     io.Writer
 }
 
+// appStallTimeout is how long a download may go without a byte. A release
+// file is tens to hundreds of megabytes, so nothing bounds a download's
+// total time: a slow link that keeps sending finishes, one that stops fails.
+const appStallTimeout = 60 * time.Second
+
 // liveAppEnv is the real machine: GitHub, the embedded trusted roots and the
 // app-support folder this CLI targets.
 func liveAppEnv() (appEnv, error) {
@@ -33,10 +39,12 @@ func liveAppEnv() (appEnv, error) {
 	if err != nil {
 		return appEnv{}, err
 	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = appStallTimeout
 	return appEnv{
-		// A release file is tens to hundreds of megabytes; the limit is for
-		// a connection that stalls, not for a slow one.
-		client:     &http.Client{Timeout: 30 * time.Minute},
+		// No Client.Timeout: it would bound the whole body too (appGet
+		// guards stalls instead).
+		client:     &http.Client{Transport: transport},
 		anchors:    anchors,
 		appSupport: appSupportDir(),
 		goos:       runtime.GOOS,

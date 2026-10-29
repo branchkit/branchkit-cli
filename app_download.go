@@ -21,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 const (
@@ -72,6 +74,9 @@ func parseAppDownloadArgs(args []string, env appEnv) (appDownloadOptions, error)
 			}
 			i++
 			value = args[i]
+		}
+		if value == "" {
+			return o, fmt.Errorf("%s needs a value", name)
 		}
 		switch name {
 		case "--version":
@@ -156,13 +161,13 @@ func runAppDownload(args []string, env appEnv) error {
 		return err
 	}
 	fmt.Fprintf(env.stderr, "Verifying %s %s...\n", contract.Repository, release.TagName)
-	sums, err := download(env.client, sumsAsset, maxSumsBytes)
+	sums, err := appFetch(env, sumsAsset, maxSumsBytes)
 	if err != nil {
-		return fmt.Errorf("download %s: %w", contract.Checksums, err)
+		return err
 	}
-	bundleJSON, err := download(env.client, bundleAsset, maxBundleBytes)
+	bundleJSON, err := appFetch(env, bundleAsset, maxBundleBytes)
 	if err != nil {
-		return fmt.Errorf("download %s: %w", contract.ChecksumsAttestation, err)
+		return err
 	}
 	signer, err := verifyAppSums(bundleJSON, sums, release.TagName, env.anchors)
 	if err != nil {
@@ -187,7 +192,7 @@ func runAppDownload(args []string, env appEnv) error {
 		fmt.Fprintf(env.stderr, "%s is already staged.\n", fileName)
 	} else {
 		fmt.Fprintf(env.stderr, "Downloading %s...\n", fileName)
-		if err := stageVerifiedAsset(env.client, assets[fileName], path, want); err != nil {
+		if err := stageVerifiedAsset(env, assets[fileName], path, want); err != nil {
 			return err
 		}
 	}
@@ -221,7 +226,7 @@ func fetchAppRelease(env appEnv, contract *releaseContract, version string) (*gh
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := githubDo(env.client, req)
+	resp, err := appGet(env, req)
 	if err != nil {
 		return nil, fmt.Errorf("could not reach GitHub: %w", err)
 	}
@@ -257,7 +262,10 @@ func checkNewer(version string, opts appDownloadOptions) error {
 }
 
 // appUpdateDir is <app support>/updates/<version>, created owner-only. It is
-// the only place `app download` writes.
+// the only place `app download` writes. A partial download a killed run left
+// anywhere under updates/ is removed first: a run that is stopped cannot
+// clean up after itself, and each run's temporary name is new. A concurrent
+// run whose file this removes fails at its rename and stages nothing.
 func appUpdateDir(appSupport, version string) (string, error) {
 	updates := filepath.Join(appSupport, "updates")
 	dir := filepath.Join(updates, version)
@@ -270,18 +278,99 @@ func appUpdateDir(appSupport, version string) (string, error) {
 			return "", err
 		}
 	}
+	parts, _ := filepath.Glob(filepath.Join(updates, "*", ".*"+partSuffix))
+	for _, p := range parts {
+		os.Remove(p)
+	}
 	return dir, nil
+}
+
+// partSuffix ends the temporary name a file downloads under.
+const partSuffix = ".part"
+
+// appGet sends a request through githubDo and guards its body against a
+// connection that stops sending (stallGuard).
+func appGet(env appEnv, req *http.Request) (*http.Response, error) {
+	resp, err := githubDo(env.client, req)
+	if err != nil {
+		return nil, err
+	}
+	idle := env.stall
+	if idle == 0 {
+		idle = appStallTimeout
+	}
+	resp.Body = guardStalls(resp.Body, idle)
+	return resp, nil
+}
+
+// appFetch reads a small release asset whole, refusing one over limit bytes.
+func appFetch(env appEnv, asset ghAsset, limit int64) ([]byte, error) {
+	req, err := newAssetRequest(asset)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := appGet(env, req)
+	if err != nil {
+		return nil, fmt.Errorf("download %s: %w", asset.Name, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("download %s answered %d", asset.Name, resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("download %s: %w", asset.Name, err)
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%s is larger than %d MB", asset.Name, limit>>20)
+	}
+	return data, nil
+}
+
+// stallGuard fails a response body that has sent nothing for idle, by
+// closing it, so the read in progress returns. Only silence counts: a slow
+// body that keeps arriving runs as long as it needs.
+type stallGuard struct {
+	body    io.ReadCloser
+	idle    time.Duration
+	timer   *time.Timer
+	stalled atomic.Bool
+}
+
+func guardStalls(body io.ReadCloser, idle time.Duration) *stallGuard {
+	g := &stallGuard{body: body, idle: idle}
+	g.timer = time.AfterFunc(idle, func() {
+		g.stalled.Store(true)
+		body.Close()
+	})
+	return g
+}
+
+func (g *stallGuard) Read(p []byte) (int, error) {
+	n, err := g.body.Read(p)
+	if n > 0 {
+		g.timer.Reset(g.idle)
+	}
+	if err != nil && g.stalled.Load() {
+		return n, fmt.Errorf("nothing arrived for %s, so the download was stopped", g.idle)
+	}
+	return n, err
+}
+
+func (g *stallGuard) Close() error {
+	g.timer.Stop()
+	return g.body.Close()
 }
 
 // stageVerifiedAsset streams an asset to a temporary file beside path and
 // renames it to path only when its SHA-256 is want. A file that does not
 // match is deleted, never left where an installer could find it.
-func stageVerifiedAsset(client *http.Client, asset ghAsset, path, want string) (err error) {
+func stageVerifiedAsset(env appEnv, asset ghAsset, path, want string) (err error) {
 	req, err := newAssetRequest(asset)
 	if err != nil {
 		return err
 	}
-	resp, err := githubDo(client, req)
+	resp, err := appGet(env, req)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", asset.Name, err)
 	}
@@ -290,7 +379,7 @@ func stageVerifiedAsset(client *http.Client, asset ghAsset, path, want string) (
 		return fmt.Errorf("download %s answered %d", asset.Name, resp.StatusCode)
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.part")
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*"+partSuffix)
 	if err != nil {
 		return err
 	}

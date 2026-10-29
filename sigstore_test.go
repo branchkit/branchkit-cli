@@ -58,20 +58,23 @@ func loadSigstoreFixtures(t *testing.T) (bundleJSON []byte, digestHex string, ro
 	return
 }
 
-// The embedded roots parse, and the second one (GitHub's instance, the
-// order `gh attestation trusted-root` prints) is the only one the release
-// signer counts from.
+// The embedded roots parse, and exactly one of them (GitHub's instance) is
+// the one the release signer counts from: a refresh that dropped it would
+// fail every release-attestation install, and one that marked Public Good as
+// GitHub's would drop the release signer's root restriction.
 func TestEmbeddedTrustAnchors(t *testing.T) {
 	anchors, err := trustAnchors()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(anchors) != 2 || anchors[0].github || !anchors[1].github {
-		got := make([]bool, len(anchors))
-		for i, a := range anchors {
-			got[i] = a.github
+	github := 0
+	for _, a := range anchors {
+		if a.github {
+			github++
 		}
-		t.Fatalf("GitHub-instance flags = %v, want [false true]", got)
+	}
+	if len(anchors) != 2 || github != 1 {
+		t.Fatalf("%d roots, %d of them GitHub's instance; want 2 and 1", len(anchors), github)
 	}
 }
 
@@ -224,6 +227,10 @@ func TestVerifyBundleRepoComesFromTheSignerNotTheStatement(t *testing.T) {
 			actionsIdentity("mallory/fork", "release.yml@refs/tags/v1.0.0"), false, "mallory/fork"},
 		{"another issuer's source-repository extension names no repo",
 			fakeIdentity{SAN: "https://ci.example/pipelines/1", Issuer: "https://oidc.ci.example", SourceRepo: "https://github.com/victim/plugin"}, false, ""},
+		{"an enterprise's own Actions issuer names its repo",
+			fakeIdentity{SAN: "https://github.com/acme/plugin/.github/workflows/release.yml@refs/tags/v1.0.0", Issuer: actionsIssuer + "/acme", SourceRepo: "https://github.com/acme/plugin"}, false, "acme/plugin"},
+		{"a host that only starts like GitHub's issuer names none",
+			fakeIdentity{SAN: "https://ci.example/pipelines/1", Issuer: actionsIssuer + ".evil.example", SourceRepo: "https://github.com/victim/plugin"}, false, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

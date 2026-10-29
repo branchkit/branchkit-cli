@@ -62,8 +62,9 @@ type SigstoreIdentity struct {
 // The two GitHub identities whose repository binding the CLI reads, and the
 // one place each is defined.
 const (
-	// actionsIssuer is the OIDC issuer of a GitHub Actions workflow. Only
-	// its certificates carry a SourceRepositoryURI the CLI believes: Fulcio
+	// actionsIssuer is the OIDC issuer of a GitHub Actions workflow (an
+	// enterprise's own issuer sits under it: isActionsIssuer). Only its
+	// certificates carry a SourceRepositoryURI the CLI believes: Fulcio
 	// copies that extension from the issuer's token, and some other CI
 	// issuers fill it from a claim their user can point at any repository.
 	actionsIssuer = "https://token.actions.githubusercontent.com"
@@ -217,12 +218,25 @@ func identityOf(result *verify.VerificationResult, anchor trustAnchor) (*Sigstor
 	}
 
 	switch {
-	case issuer == actionsIssuer:
+	case isActionsIssuer(issuer):
 		id.RepoSlug = repoSlugFromURI(id.SourceRepo)
 	case id.SAN == releaseSignerSAN && anchor.github && result.Statement != nil:
 		id.RepoSlug = repoSlugFromStatement(result.Statement)
 	}
 	return id, nil
+}
+
+// isActionsIssuer reports whether a certificate's OIDC issuer is GitHub
+// Actions: the shared issuer, or an enterprise's own issuer under it
+// (`<actionsIssuer>/<enterprise>`, which GitHub issues when an enterprise
+// chooses a unique token URL). Both are GitHub's, and so is the repository
+// claim Fulcio copies from them.
+func isActionsIssuer(issuer string) bool {
+	if issuer == actionsIssuer {
+		return true
+	}
+	enterprise, ok := strings.CutPrefix(issuer, actionsIssuer+"/")
+	return ok && enterprise != "" && !strings.Contains(enterprise, "/")
 }
 
 // repoSlugFromURI normalizes a "https://github.com/OWNER/REPO[/...]" URI to

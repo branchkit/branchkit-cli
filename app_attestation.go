@@ -9,7 +9,7 @@ package main
 // against its line there, so one signature covers every file of a release.
 
 import (
-	"encoding/hex"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"regexp"
@@ -57,11 +57,16 @@ type appSigner struct {
 // bundle and the app's identity policy for one release tag. Any failure is
 // an error: an update with no valid attestation is never staged.
 func verifyAppSums(bundleJSON, sums []byte, tag string, anchors []trustAnchor) (*appSigner, error) {
+	digest := sha256.Sum256(sums)
+	return verifyAppAttestation(bundleJSON, digest[:], tag, anchors)
+}
+
+// verifyAppAttestation is verifyAppSums for a file known by its SHA-256.
+func verifyAppAttestation(bundleJSON, digest []byte, tag string, anchors []trustAnchor) (*appSigner, error) {
 	b, err := parseBundle(bundleJSON)
 	if err != nil {
 		return nil, err
 	}
-	digest, _ := hex.DecodeString(sha256HexBytes(sums))
 
 	workflow, err := appWorkflowIdentity(tag)
 	if err != nil {

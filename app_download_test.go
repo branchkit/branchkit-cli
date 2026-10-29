@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReleaseContract(t *testing.T) {
@@ -187,6 +189,35 @@ func TestVerifyAppSums(t *testing.T) {
 	})
 }
 
+// A real certificate of GitHub's release signer (cli/cli's v2.96.0
+// checksums) passes the release-signer identity on the embedded GitHub root:
+// what stops it is only its predicate, which names cli/cli. So the identity
+// policy matches the signer as GitHub really issues it (no OIDC issuer, the
+// GitHub instance's root), not only as the test instance draws it.
+func TestVerifyAppAttestationRealCertificates(t *testing.T) {
+	bundleJSON, digestHex, _ := loadSigstoreFixtures(t)
+	digest, _ := hex.DecodeString(digestHex)
+	_, err := verifyAppAttestation(bundleJSON, digest, "v2.96.0", embeddedAnchors(t))
+	if err == nil || !strings.Contains(err.Error(), "is for cli/cli v2.96.0, not "+appReleaseRepo) {
+		t.Fatalf("error = %v, want the predicate to be what refuses it", err)
+	}
+	// Another tag: the predicate check still names it, so it got that far.
+	_, err = verifyAppAttestation(bundleJSON, digest, "v9.9.9", embeddedAnchors(t))
+	if err == nil || !strings.Contains(err.Error(), "is for cli/cli v2.96.0") {
+		t.Fatalf("error = %v", err)
+	}
+
+	// A real Actions certificate from another repository (the announcements
+	// plugin's release workflow, through Public Good) fails the identity.
+	public, _ := os.ReadFile("testdata/sigstore/public_bundle.jsonl")
+	publicDigest, _ := os.ReadFile("testdata/sigstore/public_artifact.sha256")
+	d, _ := hex.DecodeString(strings.Fields(string(publicDigest))[0])
+	_, err = verifyAppAttestation(bytes.TrimSpace(public), d, "v0.2.0-rc.1", embeddedAnchors(t))
+	if err == nil || !strings.Contains(err.Error(), "is not a signature by "+appReleaseRepo) {
+		t.Fatalf("error = %v, want the workflow identity to refuse it", err)
+	}
+}
+
 // fakeReleases serves one release of branchkit/releases the way GitHub
 // does: the API's release JSON and the asset downloads.
 func fakeReleases(t *testing.T, tag string, files map[string][]byte) (*http.Client, *[]string) {
@@ -351,6 +382,8 @@ func TestAppDownloadRefusals(t *testing.T) {
 		{"the installed version is unknown", nil, nil, "installed version is unknown"},
 		{"no such file for the kind", nil, []string{"--current", "0.1.0", "--kind", "deb"}, "no \"deb\" file"},
 		{"a version that is not X.Y.Z", nil, []string{"--version", "0.2", "--current", "0.1.0"}, "not X.Y.Z"},
+		{"an empty version", nil, []string{"--version=", "--current", "0.1.0"}, "needs a value"},
+		{"an unknown flag", nil, []string{"--current", "0.1.0", "--force"}, "unknown argument"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -368,6 +401,80 @@ func TestAppDownloadRefusals(t *testing.T) {
 				t.Errorf("left behind %v", matches)
 			}
 		})
+	}
+}
+
+// A partial download a killed run left behind, in any version's folder, is
+// gone after the next run; the staged file is untouched by that sweep.
+func TestAppDownloadRemovesPartialDownloads(t *testing.T) {
+	r := newAppRelease(t, nil)
+	client, _ := fakeReleases(t, "v0.2.0", r.files)
+	support := t.TempDir()
+	stale := []string{
+		filepath.Join(support, "updates", "0.1.0", ".BranchKit-0.1.0-macos-arm64.zip.111.part"),
+		filepath.Join(support, "updates", "0.2.0", ".BranchKit-0.2.0-macos-arm64.zip.222.part"),
+	}
+	for _, p := range stale {
+		os.MkdirAll(filepath.Dir(p), 0o700)
+		os.WriteFile(p, []byte("half"), 0o600)
+	}
+	err := runAppDownload([]string{"--current", "0.1.0"}, appEnv{
+		client: client, anchors: []trustAnchor{r.fs.anchor(false)}, appSupport: support,
+		goos: "darwin", goarch: "arm64", getenv: func(string) string { return "" },
+		stdout: io.Discard, stderr: io.Discard,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range stale {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s survived: %v", p, err)
+		}
+	}
+	if got, _ := os.ReadFile(filepath.Join(support, "updates", "0.2.0", r.zip)); !bytes.Equal(got, r.zipped) {
+		t.Errorf("staged file = %q", got)
+	}
+}
+
+// A download that stops sending fails after the stall limit, however long it
+// has run, and leaves nothing behind. (A slow one that keeps sending is
+// bounded by nothing: there is no total timeout to test.)
+func TestAppDownloadStallFails(t *testing.T) {
+	r := newAppRelease(t, nil)
+	setGitHubToken(t, "")
+	release := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		name := filepath.Base(req.URL.Path)
+		switch {
+		case strings.HasSuffix(req.URL.Path, "/releases/latest"):
+			var assets []map[string]string
+			for n := range r.files {
+				assets = append(assets, map[string]string{"name": n, "browser_download_url": "https://github.com/" + appReleaseRepo + "/releases/download/v0.2.0/" + n})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"tag_name": "v0.2.0", "assets": assets})
+		case name == r.zip:
+			w.Write(r.zipped[:4]) // then silence
+			w.(http.Flusher).Flush()
+			<-req.Context().Done()
+		default:
+			w.Write(r.files[name])
+		}
+	}))
+	t.Cleanup(release.Close)
+	support := t.TempDir()
+	err := runAppDownload([]string{"--current", "0.1.0"}, appEnv{
+		client: asGitHub(release), stall: 200 * time.Millisecond,
+		anchors: []trustAnchor{r.fs.anchor(false)}, appSupport: support,
+		goos: "darwin", goarch: "arm64", getenv: func(string) string { return "" },
+		stdout: io.Discard, stderr: io.Discard,
+	})
+	if err == nil || !strings.Contains(err.Error(), "nothing arrived") {
+		t.Fatalf("error = %v, want the stall named", err)
+	}
+	left, _ := filepath.Glob(filepath.Join(support, "updates", "*", "*"))
+	for _, p := range left {
+		if strings.Contains(filepath.Base(p), r.zip) {
+			t.Errorf("left behind %s", p)
+		}
 	}
 }
 
