@@ -75,6 +75,7 @@
   ],
   "platform_collections": [
     "_platform.accessibility",
+    "_platform.app_update",
     "_platform.binding_claims",
     "_platform.binding_overrides",
     "_platform.bindings",
