@@ -21,12 +21,11 @@ import (
 var releaseAssetsJSON []byte
 
 type releaseContract struct {
-	About                []string          `json:"about"`
-	Repository           string            `json:"repository"` // "owner/name" on GitHub
-	TagPrefix            string            `json:"tag_prefix"`
-	Checksums            string            `json:"checksums"`
-	ChecksumsAttestation string            `json:"checksums_attestation"`
-	Artifacts            []releaseArtifact `json:"artifacts"`
+	About      []string          `json:"about"`
+	Repository string            `json:"repository"` // "owner/name" on GitHub
+	TagPrefix  string            `json:"tag_prefix"`
+	Checksums  string            `json:"checksums"`
+	Artifacts  []releaseArtifact `json:"artifacts"`
 }
 
 // releaseArtifact is one kind of file, for every architecture it ships on.
@@ -44,9 +43,7 @@ const (
 	useUpdate  = "update"
 )
 
-// appVersionPattern is a release version: X.Y.Z, no pre-release suffix. The
-// workflow identity an update is checked against is pinned to the same
-// shape (appAttestationPolicy).
+// appVersionPattern is a release version: X.Y.Z, no pre-release suffix.
 var appVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 // loadReleaseContract decodes the embedded contract, refusing unknown fields
@@ -68,10 +65,10 @@ func loadReleaseContract() (*releaseContract, error) {
 // architecture, every file name is unique across the release, and each OS
 // has exactly one file the updater uses.
 func (c *releaseContract) validate() error {
-	if c.Repository == "" || c.Checksums == "" || c.ChecksumsAttestation == "" {
-		return fmt.Errorf("repository, checksums and checksums_attestation are required")
+	if c.Repository == "" || c.Checksums == "" {
+		return fmt.Errorf("repository and checksums are required")
 	}
-	names := map[string]bool{c.Checksums: true, c.ChecksumsAttestation: true}
+	names := map[string]bool{c.Checksums: true}
 	updates := map[string]int{}
 	for _, a := range c.Artifacts {
 		if !strings.Contains(a.Name, "{version}") || !strings.Contains(a.Name, "{arch}") {

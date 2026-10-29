@@ -3,18 +3,20 @@ package main
 // `branchkit-cli app download`: fetch one BranchKit release file for this
 // machine and prove it is the release's, before anything could install it.
 //
-// Order matters. The checksums file and its attestation are fetched and
-// verified first, so a release that is not signed by the releases repository
-// costs two small downloads and stages nothing. Only then is the large file
-// downloaded, to a temporary name, and it takes its real name only once its
-// digest matches its line in the verified checksums. The file name comes
-// from the contract (release_assets.json) and carries the version, so a
-// checksums file from another release cannot vouch for it.
+// Order matters. The checksums file and GitHub's attestation of it are
+// fetched and verified first, so a release GitHub did not attest for the
+// releases repository costs a few small downloads and stages nothing. Only
+// then is the large file downloaded, to a temporary name, and it takes its
+// real name only once its digest matches its line in the verified
+// checksums. The file name comes from the contract (release_assets.json)
+// and carries the version, so a checksums file from another release cannot
+// vouch for it.
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,8 +32,12 @@ const (
 	// few kilobytes, more for a release predicate naming every asset.
 	maxSumsBytes   = 1 << 20
 	maxBundleBytes = 4 << 20
-	// A release's API answer lists its assets.
+	// A release's API answer lists its assets; an attestations answer may
+	// carry its bundles inline.
 	maxReleaseJSONBytes = 4 << 20
+	maxAttestationsJSON = 16 << 20
+	// How many attestations of one digest are read, at most.
+	maxAttestations = 30
 	// The largest release file the updater will stage.
 	maxAppArtifactBytes = 4 << 30
 )
@@ -147,13 +153,9 @@ func runAppDownload(args []string, env appEnv) error {
 		return a, nil
 	}
 
-	// 1. The checksums and their attestation. No attestation, or one that
-	//    does not verify under the app's identity policy, ends it here.
+	// 1. The checksums and GitHub's attestation of them. No attestation, or
+	//    none that verifies under the app's identity policy, ends it here.
 	sumsAsset, err := need(contract.Checksums, "checksums file")
-	if err != nil {
-		return err
-	}
-	bundleAsset, err := need(contract.ChecksumsAttestation, "attestation of its checksums")
 	if err != nil {
 		return err
 	}
@@ -165,11 +167,8 @@ func runAppDownload(args []string, env appEnv) error {
 	if err != nil {
 		return err
 	}
-	bundleJSON, err := appFetch(env, bundleAsset, maxBundleBytes)
-	if err != nil {
-		return err
-	}
-	signer, err := verifyAppSums(bundleJSON, sums, release.TagName, env.anchors)
+	sumsDigest := sha256.Sum256(sums)
+	signer, bundleJSON, err := releaseAttestation(env, contract.Repository, sumsDigest[:], release.TagName)
 	if err != nil {
 		return err
 	}
@@ -196,7 +195,8 @@ func runAppDownload(args []string, env appEnv) error {
 			return err
 		}
 	}
-	for name, data := range map[string][]byte{contract.Checksums: sums, contract.ChecksumsAttestation: bundleJSON} {
+	// The two signed records the file was checked against, beside it.
+	for name, data := range map[string][]byte{contract.Checksums: sums, contract.Checksums + ".sigstore.json": bundleJSON} {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 			return err
 		}
@@ -245,6 +245,98 @@ func fetchAppRelease(env appEnv, contract *releaseContract, version string) (*gh
 		return nil, fmt.Errorf("read release: %w", err)
 	}
 	return &release, nil
+}
+
+// releaseAttestation finds GitHub's release attestation of a file among the
+// attestations GitHub's API lists for its digest in repo, and verifies it
+// (verifyAppAttestation). It returns the bundle that verified, to keep beside
+// the staged file. An immutable release's attestation cannot be one of its
+// assets (it is made at publication, when the assets freeze), so this API is
+// the one place it is read from.
+func releaseAttestation(env appEnv, repo string, digest []byte, tag string) (*appSigner, []byte, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/attestations/sha256:%s?per_page=%d",
+		repo, hex.EncodeToString(digest), maxAttestations)
+	req, err := newGitHubRequest(url)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := appGet(env, req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not reach GitHub's attestations: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil, fmt.Errorf("GitHub holds no attestation of %s's checksums; an update is never staged without one", tag)
+	}
+	if resp.StatusCode >= 300 {
+		return nil, nil, fmt.Errorf("GitHub's attestations answered %d", resp.StatusCode)
+	}
+	var list struct {
+		Attestations []struct {
+			Bundle    json.RawMessage `json:"bundle"`
+			BundleURL string          `json:"bundle_url"`
+		} `json:"attestations"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAttestationsJSON)).Decode(&list); err != nil {
+		return nil, nil, fmt.Errorf("read attestations: %w", err)
+	}
+	if len(list.Attestations) == 0 {
+		return nil, nil, fmt.Errorf("GitHub holds no attestation of %s's checksums; an update is never staged without one", tag)
+	}
+
+	var errs []error
+	for i, a := range list.Attestations {
+		if i == maxAttestations {
+			break
+		}
+		bundleJSON, err := attestationBundle(env, a.Bundle, a.BundleURL)
+		if err == nil {
+			var signer *appSigner
+			if signer, err = verifyAppAttestation(bundleJSON, digest, tag, env.anchors); err == nil {
+				return signer, bundleJSON, nil
+			}
+		}
+		errs = append(errs, err)
+	}
+	return nil, nil, fmt.Errorf("none of GitHub's attestations of %s's checksums is its release attestation: %w",
+		tag, errors.Join(errs...))
+}
+
+// attestationBundle is one listed attestation's bundle: inline, or fetched
+// from its bundle_url, a Snappy-compressed blob on GitHub's storage. The
+// request carries no credentials (githubDo sends a token only to GitHub's own
+// API hosts), and the blob is verified like any other bundle.
+func attestationBundle(env appEnv, inline json.RawMessage, bundleURL string) ([]byte, error) {
+	if len(inline) > 0 && string(inline) != "null" {
+		return inline, nil
+	}
+	if bundleURL == "" {
+		return nil, fmt.Errorf("an attestation carries neither a bundle nor a bundle_url")
+	}
+	if !strings.HasPrefix(bundleURL, "https://") {
+		return nil, fmt.Errorf("an attestation's bundle_url is not https")
+	}
+	req, err := newGitHubRequest(bundleURL)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := appGet(env, req)
+	if err != nil {
+		return nil, fmt.Errorf("download an attestation bundle: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("an attestation bundle answered %d", resp.StatusCode)
+	}
+	compressed, err := io.ReadAll(io.LimitReader(resp.Body, maxBundleBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("download an attestation bundle: %w", err)
+	}
+	if len(compressed) > maxBundleBytes {
+		return nil, fmt.Errorf("an attestation bundle is larger than %d MB", maxBundleBytes>>20)
+	}
+	return snappyDecode(compressed, 4*maxBundleBytes)
 }
 
 // checkNewer refuses a release that is not newer than the installed one,

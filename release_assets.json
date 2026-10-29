@@ -8,12 +8,12 @@
     "`use` says what consumes the file: `install` (a person's first install) and/or `update` (the updater).",
     "Each OS has exactly one `update` file. Linux packages are left to the package manager that owns the files.",
     "`checksums` lists every other file in sha256sum's text format (`<sha256 hex>  <name>`, sorted by name, LF).",
-    "`checksums_attestation` is a Sigstore bundle over the checksums file, signed by `repository`."
+    "The release is published immutable, so GitHub attests it: no signature file is an asset.",
+    "The updater reads that attestation from GitHub's attestations API by the checksums file's digest."
   ],
   "repository": "branchkit/releases",
   "tag_prefix": "v",
   "checksums": "SHA256SUMS",
-  "checksums_attestation": "SHA256SUMS.sigstore.json",
   "artifacts": [
     {
       "os": "darwin",

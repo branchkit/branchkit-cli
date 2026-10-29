@@ -82,13 +82,16 @@ The app never downloads its own updates; it runs these.
 not newer is refused unless `--allow-downgrade`; `--kind` picks another file
 than the one the updater uses (`release_assets.json` lists them per OS).
 
-A release is a tag on `branchkit/releases`. Its `SHA256SUMS` must carry a
-Sigstore attestation (`SHA256SUMS.sigstore.json`) signed either by a workflow
-of that repository running on that tag, or by GitHub's release signer for that
-repository and tag; anything else, or no attestation, stops the download
-before the file is fetched. The file is then kept only if it matches its line
-in `SHA256SUMS`, and its name carries the version, so another release's
-checksums cannot vouch for it.
+A release is an immutable release tagged on `branchkit/releases`, which GitHub
+attests itself: its release signer signs one statement covering every asset,
+naming the repository and the tag. `app download` reads that attestation of
+the release's `SHA256SUMS` from GitHub's attestations API (the bundle comes
+from GitHub's storage, Snappy-compressed) and accepts only GitHub's release
+signer, on GitHub's own Sigstore instance, for that repository and tag; no
+attestation, or any other signer, stops the download before the file is
+fetched. The file is then kept only if it matches its line in `SHA256SUMS`,
+and its name carries the version, so another release's checksums cannot
+vouch for it. The checksums and the attestation are kept beside the file.
 
 ### Authoring
 

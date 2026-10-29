@@ -5,41 +5,33 @@ package main
 // app release is judged during it, by an identity policy pinned here, because
 // there is exactly one publisher and its identity is known in advance.
 //
-// The release's SHA256SUMS carries the attestation, and each file is checked
-// against its line there, so one signature covers every file of a release.
+// A release is published on branchkit/releases as an immutable release, and
+// GitHub's release signer attests it: one in-toto statement whose subjects
+// are every asset with its digest, and whose release predicate names the
+// repository and tag. The updater verifies that attestation over the
+// release's SHA256SUMS and checks each file against its line there.
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
-	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 )
 
-// The identities an app release may be signed by, all bound to the one
-// repository releases are published from. Two shapes are accepted because
-// both are ways GitHub signs a release, and which one the release workflow
-// uses is not settled:
+// The one identity an app release may be signed by. GitHub's release signer
+// (releaseSignerSAN in sigstore.go) counts only from GitHub's own Sigstore
+// instance, and only with a release predicate for exactly this repository
+// and the release's tag.
 //
-//   - a workflow in that repository, run on the release's own tag, signing
-//     with its Actions identity (attest-build-provenance and the like);
-//   - GitHub's release signer, which signs an immutable release's assets
-//     with a release predicate naming the repository and tag. Only its
-//     certificates from GitHub's own Sigstore instance count (see
-//     releaseSignerSAN in sigstore.go). Such a bundle is made when the
-//     release is published, after which its assets cannot change, so it
-//     cannot be the release's own SHA256SUMS.sigstore.json asset: GitHub
-//     serves it from its attestations API, which `app download` does not
-//     read yet. The policy accepts it so that reading it is the only change
-//     that shape needs.
+// This is how BranchKit publishes a release: built elsewhere, uploaded to a
+// draft, then published immutable, so GitHub attests it and no signing key
+// exists to keep. Two other shapes were weighed and are not accepted: a
+// workflow in the releases repository attesting files it did not build, and
+// a separate signing key. Should immutable releases prove unavailable, the
+// shape that replaces them is added here, and nowhere else.
 const (
-	appReleaseRepo    = "branchkit/releases"
-	appReleaseRepoURI = "https://github.com/" + appReleaseRepo
-	// A workflow file directly under .github/workflows, at refs/tags/<tag>.
-	appWorkflowSANPrefix = appReleaseRepoURI + "/.github/workflows/"
+	appReleaseRepo = "branchkit/releases"
 	// The release predicate's type, any version of it: its `repository`
 	// and `tag` fields are what the binding below reads.
 	releasePredicatePrefix = "https://in-toto.io/attestation/release/"
@@ -48,27 +40,17 @@ const (
 // appSigner is who signed a verified app release, for the record the
 // download prints.
 type appSigner struct {
-	Signer     string `json:"signer"` // "workflow" or "release-signer"
+	Signer     string `json:"signer"` // "release-signer"
 	SAN        string `json:"san"`
 	Repository string `json:"repository"`
 }
 
-// verifyAppSums verifies a release's checksums file against its Sigstore
-// bundle and the app's identity policy for one release tag. Any failure is
-// an error: an update with no valid attestation is never staged.
-func verifyAppSums(bundleJSON, sums []byte, tag string, anchors []trustAnchor) (*appSigner, error) {
-	digest := sha256.Sum256(sums)
-	return verifyAppAttestation(bundleJSON, digest[:], tag, anchors)
-}
-
-// verifyAppAttestation is verifyAppSums for a file known by its SHA-256.
+// verifyAppAttestation verifies one Sigstore bundle over a release file's
+// SHA-256 (the release's SHA256SUMS) under the app's identity policy for one
+// release tag. Any failure is an error: an update with no valid attestation
+// is never staged.
 func verifyAppAttestation(bundleJSON, digest []byte, tag string, anchors []trustAnchor) (*appSigner, error) {
 	b, err := parseBundle(bundleJSON)
-	if err != nil {
-		return nil, err
-	}
-
-	workflow, err := appWorkflowIdentity(tag)
 	if err != nil {
 		return nil, err
 	}
@@ -84,15 +66,10 @@ func verifyAppAttestation(bundleJSON, digest []byte, tag string, anchors []trust
 
 	var errs []error
 	for _, anchor := range anchors {
-		result, err := verifyEntity(b, digest, anchor, verify.WithCertificateIdentity(workflow))
-		if err == nil {
-			return &appSigner{Signer: "workflow", SAN: result.Signature.Certificate.SubjectAlternativeName, Repository: appReleaseRepo}, nil
-		}
-		errs = append(errs, err)
 		if !anchor.github {
 			continue
 		}
-		result, err = verifyEntity(b, digest, anchor, verify.WithCertificateIdentity(releaseSigner))
+		result, err := verifyEntity(b, digest, anchor, verify.WithCertificateIdentity(releaseSigner))
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -102,26 +79,11 @@ func verifyAppAttestation(bundleJSON, digest []byte, tag string, anchors []trust
 		}
 		return &appSigner{Signer: "release-signer", SAN: releaseSignerSAN, Repository: appReleaseRepo}, nil
 	}
-	if len(anchors) == 0 {
-		errs = append(errs, errors.New("no trusted roots"))
+	if len(errs) == 0 {
+		errs = append(errs, errors.New("no GitHub trusted root"))
 	}
-	return nil, fmt.Errorf("the checksums' attestation is not a signature by %s for %s: %w",
+	return nil, fmt.Errorf("the attestation is not GitHub's release attestation of %s %s: %w",
 		appReleaseRepo, tag, errors.Join(errs...))
-}
-
-// appWorkflowIdentity is the Actions identity of a workflow in the releases
-// repository run on exactly this tag.
-func appWorkflowIdentity(tag string) (verify.CertificateIdentity, error) {
-	san, err := verify.NewSANMatcher("",
-		"^"+regexp.QuoteMeta(appWorkflowSANPrefix)+`[^@/]+@refs/tags/`+regexp.QuoteMeta(tag)+"$")
-	if err != nil {
-		return verify.CertificateIdentity{}, err
-	}
-	issuer, err := verify.NewIssuerMatcher(actionsIssuer, "")
-	if err != nil {
-		return verify.CertificateIdentity{}, err
-	}
-	return verify.NewCertificateIdentity(san, issuer, certificate.Extensions{SourceRepositoryURI: appReleaseRepoURI})
 }
 
 // checkReleasePredicate binds a release-signer attestation to the releases

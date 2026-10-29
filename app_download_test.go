@@ -1,13 +1,16 @@
 package main
 
 // The app updater's download: the asset contract, the release identity
-// policy, and the whole command run against a fake GitHub serving releases
-// signed by a test Sigstore instance. No network.
+// policy, and the whole command run against a fake GitHub (release JSON,
+// assets, the attestations API and its blob storage) serving releases that a
+// test Sigstore instance attests. No network.
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -60,7 +63,7 @@ func TestReleaseContract(t *testing.T) {
 
 func TestReleaseContractRules(t *testing.T) {
 	base := func() releaseContract {
-		return releaseContract{Repository: "o/r", TagPrefix: "v", Checksums: "SUMS", ChecksumsAttestation: "SUMS.sigstore.json",
+		return releaseContract{Repository: "o/r", TagPrefix: "v", Checksums: "SUMS",
 			Artifacts: []releaseArtifact{{OS: "linux", Kind: "appimage", Name: "B-{version}-{arch}.AppImage", Arch: map[string]string{"amd64": "x86_64"}, Use: []string{"update"}}}}
 	}
 	if c := base(); c.validate() != nil {
@@ -75,6 +78,7 @@ func TestReleaseContractRules(t *testing.T) {
 		"unknown use":      func(c *releaseContract) { c.Artifacts[0].Use = []string{"update", "sideload"} },
 		"name used twice":  func(c *releaseContract) { c.Artifacts[0].Arch["arm64"] = "x86_64" },
 		"name is the sums": func(c *releaseContract) { c.Checksums = "B-0.0.0-x86_64.AppImage" },
+		"no checksums":     func(c *releaseContract) { c.Checksums = "" },
 	}
 	for name, breakIt := range breaks {
 		c := base()
@@ -105,10 +109,8 @@ func TestParseSums(t *testing.T) {
 	}
 }
 
-// signedSums is a SHA256SUMS over files and its bundle, signed as id with
-// predicate (nil: a provenance-shaped statement).
-func signedSums(t *testing.T, fs *fakeSigstore, id fakeIdentity, files map[string][]byte, predicate map[string]any) (sums, bundle []byte) {
-	t.Helper()
+// sumsOf is a SHA256SUMS over files, as the release assembler writes it.
+func sumsOf(files map[string][]byte) []byte {
 	names := make([]string, 0, len(files))
 	for n := range files {
 		names = append(names, n)
@@ -118,47 +120,54 @@ func signedSums(t *testing.T, fs *fakeSigstore, id fakeIdentity, files map[strin
 	for _, n := range names {
 		buf.WriteString(sha256HexBytes(files[n]) + "  " + n + "\n")
 	}
-	sums = buf.Bytes()
+	return buf.Bytes()
+}
+
+// verifyAppSums is verifyAppAttestation over a checksums file's bytes.
+func verifyAppSums(bundleJSON, sums []byte, tag string, anchors []trustAnchor) (*appSigner, error) {
+	digest := sha256.Sum256(sums)
+	return verifyAppAttestation(bundleJSON, digest[:], tag, anchors)
+}
+
+// attestSums signs a statement over sums as id with predicate (nil: a
+// provenance-shaped one) and returns the bundle.
+func attestSums(t *testing.T, fs *fakeSigstore, id fakeIdentity, sums []byte, predicate map[string]any) []byte {
+	t.Helper()
 	predicateType := releasePredicateType
 	if predicate == nil {
 		predicateType, predicate = "https://slsa.dev/provenance/v1", map[string]any{}
 	}
-	return sums, fs.attest(t, id, statement("SHA256SUMS", sha256HexBytes(sums), predicateType, predicate))
+	return fs.attest(t, id, statement("SHA256SUMS", sha256HexBytes(sums), predicateType, predicate))
 }
 
 func TestVerifyAppSums(t *testing.T) {
 	fs := newFakeSigstore(t)
-	files := map[string][]byte{"BranchKit-0.2.0-macos-arm64.zip": []byte("app")}
+	sums := sumsOf(map[string][]byte{"BranchKit-0.2.0-macos-arm64.zip": []byte("app")})
 	const tag = "v0.2.0"
-	workflow := actionsIdentity(appReleaseRepo, "release.yml@refs/tags/"+tag)
+	release := releasePredicate(appReleaseRepo, tag)
 	cases := []struct {
 		name      string
 		id        fakeIdentity
 		predicate map[string]any
 		github    bool // the test instance stands in for GitHub's own
-		want      string
+		ok        bool
 	}{
-		{"the releases repo's workflow on the tag", workflow, nil, false, "workflow"},
-		{"...on GitHub's instance too", workflow, nil, true, "workflow"},
-		{"GitHub's release signer for the repo and tag", signerOnly, releasePredicate(appReleaseRepo, tag), true, "release-signer"},
+		{"GitHub's release signer for the repo and tag", signerOnly, release, true, true},
 
-		{"the release signer off GitHub's instance", signerOnly, releasePredicate(appReleaseRepo, tag), false, ""},
-		{"the release signer for a fork", signerOnly, releasePredicate("mallory/releases", tag), true, ""},
-		{"the release signer for another tag", signerOnly, releasePredicate(appReleaseRepo, "v0.1.0"), true, ""},
-		{"a fork's workflow", actionsIdentity("mallory/releases", "release.yml@refs/tags/"+tag), nil, true, ""},
-		{"the workflow on a branch", actionsIdentity(appReleaseRepo, "release.yml@refs/heads/main"), nil, false, ""},
-		{"the workflow on another tag", actionsIdentity(appReleaseRepo, "release.yml@refs/tags/v0.1.0"), nil, false, ""},
-		{"the workflow's SAN from another issuer",
-			fakeIdentity{SAN: workflow.SAN, Issuer: "https://oidc.ci.example", SourceRepo: workflow.SourceRepo}, nil, false, ""},
-		{"the workflow's SAN with another source repo",
-			fakeIdentity{SAN: workflow.SAN, Issuer: actionsIssuer, SourceRepo: "https://github.com/mallory/releases"}, nil, false, ""},
-		{"an email identity whose predicate names the repo", emailIdentity, releasePredicate(appReleaseRepo, tag), true, ""},
+		{"the release signer off GitHub's instance", signerOnly, release, false, false},
+		{"the release signer for a fork", signerOnly, releasePredicate("mallory/releases", tag), true, false},
+		{"the release signer for another tag", signerOnly, releasePredicate(appReleaseRepo, "v0.1.0"), true, false},
+		{"the release signer with no release predicate", signerOnly, nil, true, false},
+		{"an email identity whose predicate names the repo", emailIdentity, release, true, false},
+		// Not a shape the release workflow uses (an immutable release is
+		// attested by GitHub), so not accepted either.
+		{"a workflow of the releases repo on the tag", actionsIdentity(appReleaseRepo, "release.yml@refs/tags/"+tag), release, true, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			sums, bundle := signedSums(t, fs, c.id, files, c.predicate)
+			bundle := attestSums(t, fs, c.id, sums, c.predicate)
 			signer, err := verifyAppSums(bundle, sums, tag, []trustAnchor{fs.anchor(c.github)})
-			if c.want == "" {
+			if !c.ok {
 				if err == nil {
 					t.Fatalf("accepted as %+v", signer)
 				}
@@ -167,22 +176,22 @@ func TestVerifyAppSums(t *testing.T) {
 			if err != nil {
 				t.Fatalf("verifyAppSums: %v", err)
 			}
-			if signer.Signer != c.want || signer.Repository != appReleaseRepo {
-				t.Errorf("signer = %+v, want %s for %s", signer, c.want, appReleaseRepo)
+			if signer.Signer != "release-signer" || signer.Repository != appReleaseRepo || signer.SAN != releaseSignerSAN {
+				t.Errorf("signer = %+v", signer)
 			}
 		})
 	}
 
 	t.Run("checksums changed after signing", func(t *testing.T) {
-		sums, bundle := signedSums(t, fs, workflow, files, nil)
+		bundle := attestSums(t, fs, signerOnly, sums, release)
 		tampered := append([]byte(strings.Repeat("0", 64)+"  evil.zip\n"), sums...)
-		if _, err := verifyAppSums(bundle, tampered, tag, []trustAnchor{fs.anchor(false)}); err == nil {
+		if _, err := verifyAppSums(bundle, tampered, tag, []trustAnchor{fs.anchor(true)}); err == nil {
 			t.Fatal("verified checksums the bundle never signed")
 		}
 	})
 
 	t.Run("the real roots refuse the test instance", func(t *testing.T) {
-		sums, bundle := signedSums(t, fs, workflow, files, nil)
+		bundle := attestSums(t, fs, signerOnly, sums, release)
 		if _, err := verifyAppSums(bundle, sums, tag, embeddedAnchors(t)); err == nil {
 			t.Fatal("a certificate from an untrusted CA verified")
 		}
@@ -201,51 +210,82 @@ func TestVerifyAppAttestationRealCertificates(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "is for cli/cli v2.96.0, not "+appReleaseRepo) {
 		t.Fatalf("error = %v, want the predicate to be what refuses it", err)
 	}
-	// Another tag: the predicate check still names it, so it got that far.
-	_, err = verifyAppAttestation(bundleJSON, digest, "v9.9.9", embeddedAnchors(t))
-	if err == nil || !strings.Contains(err.Error(), "is for cli/cli v2.96.0") {
-		t.Fatalf("error = %v", err)
-	}
 
-	// A real Actions certificate from another repository (the announcements
-	// plugin's release workflow, through Public Good) fails the identity.
+	// A real Actions certificate (the announcements plugin's release
+	// workflow, through Public Good) is not the release signer.
 	public, _ := os.ReadFile("testdata/sigstore/public_bundle.jsonl")
 	publicDigest, _ := os.ReadFile("testdata/sigstore/public_artifact.sha256")
 	d, _ := hex.DecodeString(strings.Fields(string(publicDigest))[0])
 	_, err = verifyAppAttestation(bytes.TrimSpace(public), d, "v0.2.0-rc.1", embeddedAnchors(t))
-	if err == nil || !strings.Contains(err.Error(), "is not a signature by "+appReleaseRepo) {
-		t.Fatalf("error = %v, want the workflow identity to refuse it", err)
+	if err == nil || !strings.Contains(err.Error(), "is not GitHub's release attestation") {
+		t.Fatalf("error = %v, want the identity to refuse it", err)
 	}
 }
 
-// fakeReleases serves one release of branchkit/releases the way GitHub
-// does: the API's release JSON and the asset downloads.
-func fakeReleases(t *testing.T, tag string, files map[string][]byte) (*http.Client, *[]string) {
+// fakeAttestation is one entry of the attestations API's answer.
+type fakeAttestation struct {
+	Bundle    json.RawMessage `json:"bundle,omitempty"`
+	BundleURL string          `json:"bundle_url,omitempty"`
+}
+
+// fakeGitHubRelease is what the fake GitHub serves: one release of
+// branchkit/releases, its assets, the attestations the API lists per digest,
+// and the blobs a bundle_url points at.
+type fakeGitHubRelease struct {
+	tag    string
+	files  map[string][]byte
+	attest map[string][]fakeAttestation // sha256 hex → the API's list
+	blobs  map[string][]byte            // path on the blob host → body
+	stall  string                       // an asset that sends 4 bytes, then nothing
+}
+
+const fakeBlobHost = "https://tmaproduction.blob.core.windows.net"
+
+func (f *fakeGitHubRelease) serve(t *testing.T) (*http.Client, *[]string) {
 	t.Helper()
 	setGitHubToken(t, "")
 	var requested []string
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requested = append(requested, r.URL.Path)
-		api := "/repos/" + appReleaseRepo + "/releases/"
+		api := "/repos/" + appReleaseRepo + "/"
 		switch {
-		case r.URL.Path == api+"latest" || r.URL.Path == api+"tags/"+tag:
+		case r.URL.Path == api+"releases/latest" || r.URL.Path == api+"releases/tags/"+f.tag:
 			type asset struct {
 				Name string `json:"name"`
 				URL  string `json:"browser_download_url"`
 			}
 			var assets []asset
-			for name := range files {
-				assets = append(assets, asset{name, "https://github.com/" + appReleaseRepo + "/releases/download/" + tag + "/" + name})
+			for name := range f.files {
+				assets = append(assets, asset{name, "https://github.com/" + appReleaseRepo + "/releases/download/" + f.tag + "/" + name})
 			}
-			json.NewEncoder(w).Encode(map[string]any{"tag_name": tag, "assets": assets})
-		case strings.HasPrefix(r.URL.Path, "/"+appReleaseRepo+"/releases/download/"+tag+"/"):
-			data, ok := files[filepath.Base(r.URL.Path)]
+			json.NewEncoder(w).Encode(map[string]any{"tag_name": f.tag, "assets": assets, "immutable": true})
+		case strings.HasPrefix(r.URL.Path, api+"attestations/sha256:"):
+			list, ok := f.attest[strings.TrimPrefix(r.URL.Path, api+"attestations/sha256:")]
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
+			json.NewEncoder(w).Encode(map[string]any{"attestations": list})
+		case strings.HasPrefix(r.URL.Path, "/"+appReleaseRepo+"/releases/download/"+f.tag+"/"):
+			name := filepath.Base(r.URL.Path)
+			data, ok := f.files[name]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			if name == f.stall {
+				w.Write(data[:4])
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+				return
+			}
 			w.Write(data)
 		default:
+			if data, ok := f.blobs[r.URL.Path]; ok {
+				w.Header().Set("Content-Type", "application/x-snappy")
+				w.Write(data)
+				return
+			}
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
@@ -253,11 +293,20 @@ func fakeReleases(t *testing.T, tag string, files map[string][]byte) (*http.Clie
 	return asGitHub(srv), &requested
 }
 
-// appRelease is a v0.2.0 release with a macOS update zip, signed by the
-// releases repo's workflow, plus whatever mutate changes.
+// publish lists bundle as the attestation of sums, the way GitHub answers
+// today: no inline bundle, a bundle_url to a Snappy blob.
+func (f *fakeGitHubRelease) publish(sums, bundle []byte) {
+	path := fmt.Sprintf("/attestations/%d.json.sn", len(f.blobs)+1)
+	f.blobs[path] = snappyLiterals(bundle)
+	digest := sha256HexBytes(sums)
+	f.attest[digest] = append(f.attest[digest], fakeAttestation{BundleURL: fakeBlobHost + path})
+}
+
+// appRelease is a v0.2.0 release with every contract file, attested by
+// GitHub's release signer, after whatever mutate changes.
 type appRelease struct {
 	fs     *fakeSigstore
-	files  map[string][]byte
+	feed   *fakeGitHubRelease
 	zip    string
 	zipped []byte
 }
@@ -273,41 +322,50 @@ func newAppRelease(t *testing.T, mutate func(files, signed map[string][]byte)) *
 		r.zip:                               r.zipped,
 		"BranchKit-0.2.0-macos-arm64.dmg":   []byte("disk image"),
 		"BranchKit-0.2.0-windows-x64.zip":   []byte("windows"),
+		"BranchKit-0.2.0-windows-arm64.zip": []byte("windows arm"),
 		"BranchKit-0.2.0-x86_64.AppImage":   []byte("appimage"),
 		"branchkit_0.2.0_amd64.deb":         []byte("deb"),
 		"branchkit-0.2.0-1.x86_64.rpm":      []byte("rpm"),
-		"BranchKit-0.2.0-windows-arm64.zip": []byte("windows arm"),
 	}
-	r.files = map[string][]byte{}
+	r.feed = &fakeGitHubRelease{tag: "v0.2.0", files: map[string][]byte{},
+		attest: map[string][]fakeAttestation{}, blobs: map[string][]byte{}}
 	for n, d := range signed {
-		r.files[n] = d
+		r.feed.files[n] = d
 	}
 	if mutate != nil {
-		mutate(r.files, signed)
+		mutate(r.feed.files, signed)
 	}
-	sums, bundle := signedSums(t, r.fs, actionsIdentity(appReleaseRepo, "release.yml@refs/tags/v0.2.0"), signed, nil)
-	r.files["SHA256SUMS"] = sums
-	r.files["SHA256SUMS.sigstore.json"] = bundle
+	sums := sumsOf(signed)
+	r.feed.files["SHA256SUMS"] = sums
+	r.feed.publish(sums, attestSums(t, r.fs, signerOnly, sums, releasePredicate(appReleaseRepo, "v0.2.0")))
 	return r
 }
 
-// run runs `app download args...` as a Mac on Apple silicon would, and
-// returns the app-support folder, what it printed and its error.
-func (r *appRelease) run(t *testing.T, args ...string) (string, appDownloadResult, error) {
-	t.Helper()
-	client, _ := fakeReleases(t, "v0.2.0", r.files)
-	support := t.TempDir()
-	var out bytes.Buffer
-	err := runAppDownload(args, appEnv{
+func (r *appRelease) sums() []byte { return r.feed.files["SHA256SUMS"] }
+
+// env is a Mac on Apple silicon talking to the fake GitHub, with the test
+// instance as GitHub's Sigstore.
+func (r *appRelease) env(t *testing.T, client *http.Client, support string, out io.Writer) appEnv {
+	return appEnv{
 		client:     client,
-		anchors:    []trustAnchor{r.fs.anchor(false)},
+		anchors:    []trustAnchor{r.fs.anchor(true)},
 		appSupport: support,
 		goos:       "darwin",
 		goarch:     "arm64",
 		getenv:     func(string) string { return "" },
-		stdout:     &out,
+		stdout:     out,
 		stderr:     io.Discard,
-	})
+	}
+}
+
+// run runs `app download args...` and returns the app-support folder, what
+// it printed and its error.
+func (r *appRelease) run(t *testing.T, args ...string) (string, appDownloadResult, error) {
+	t.Helper()
+	client, _ := r.feed.serve(t)
+	support := t.TempDir()
+	var out bytes.Buffer
+	err := runAppDownload(args, r.env(t, client, support, &out))
 	var res appDownloadResult
 	if err == nil {
 		if jerr := json.Unmarshal(out.Bytes(), &res); jerr != nil {
@@ -332,8 +390,7 @@ func TestAppDownloadStagesAVerifiedUpdate(t *testing.T) {
 	if res.Version != want.Version || res.Tag != want.Tag || res.Kind != want.Kind || res.Path != want.Path || res.SHA256 != want.SHA256 {
 		t.Errorf("result = %+v, want %+v", res, want)
 	}
-	if res.Identity == nil || res.Identity.Signer != "workflow" || res.Identity.Repository != appReleaseRepo ||
-		!strings.HasPrefix(res.Identity.SAN, appWorkflowSANPrefix) {
+	if res.Identity == nil || res.Identity.Signer != "release-signer" || res.Identity.Repository != appReleaseRepo {
 		t.Errorf("identity = %+v", res.Identity)
 	}
 	if got, err := os.ReadFile(res.Path); err != nil || !bytes.Equal(got, r.zipped) {
@@ -354,6 +411,9 @@ func TestAppDownloadStagesAVerifiedUpdate(t *testing.T) {
 	if strings.Join(names, " ") != "BranchKit-0.2.0-macos-arm64.zip SHA256SUMS SHA256SUMS.sigstore.json" {
 		t.Errorf("updates/0.2.0 holds %v", names)
 	}
+	if kept, _ := os.ReadFile(filepath.Join(dir, "SHA256SUMS.sigstore.json")); !bytes.HasPrefix(kept, []byte(`{"mediaType"`)) {
+		t.Errorf("the kept attestation is not the decoded bundle: %.40q", kept)
+	}
 	if runtime.GOOS != "windows" {
 		for _, d := range []string{filepath.Dir(dir), dir} {
 			if fi, err := os.Stat(d); err != nil || fi.Mode().Perm() != 0o700 {
@@ -363,33 +423,72 @@ func TestAppDownloadStagesAVerifiedUpdate(t *testing.T) {
 	}
 }
 
+// The attestations API may also carry a bundle inline, and may list other
+// attestations of the same file first; the release attestation is found
+// among them.
+func TestAppDownloadFindsTheReleaseAttestationAmongOthers(t *testing.T) {
+	r := newAppRelease(t, nil)
+	sums := r.sums()
+	digest := sha256HexBytes(sums)
+	release := r.feed.attest[digest]
+	other := attestSums(t, r.fs, emailIdentity, sums, releasePredicate(appReleaseRepo, "v0.2.0"))
+	inline := attestSums(t, r.fs, signerOnly, sums, releasePredicate(appReleaseRepo, "v0.2.0"))
+	r.feed.attest[digest] = []fakeAttestation{{Bundle: other}, {}, {Bundle: inline}}
+	if _, res, err := r.run(t, "--current", "0.1.0"); err != nil || res.Identity == nil {
+		t.Fatalf("inline: %v", err)
+	}
+	r.feed.attest[digest] = append([]fakeAttestation{{Bundle: other}}, release...)
+	if _, _, err := r.run(t, "--current", "0.1.0"); err != nil {
+		t.Fatalf("bundle_url after another: %v", err)
+	}
+}
+
 func TestAppDownloadRefusals(t *testing.T) {
 	cases := []struct {
 		name   string
 		mutate func(files, signed map[string][]byte)
+		after  func(r *appRelease) // after signing
 		args   []string
 		want   string // in the error
 	}{
-		{"no attestation", nil, []string{"--current", "0.1.0"}, "publishes no attestation"},
+		{"no attestation", nil, func(r *appRelease) { r.feed.attest = map[string][]fakeAttestation{} },
+			[]string{"--current", "0.1.0"}, "holds no attestation"},
+		{"an empty attestation list", nil, func(r *appRelease) {
+			r.feed.attest[sha256HexBytes(r.sums())] = []fakeAttestation{}
+		}, []string{"--current", "0.1.0"}, "holds no attestation"},
+		{"only someone else's attestation", nil, func(r *appRelease) {
+			r.feed.attest = map[string][]fakeAttestation{}
+			r.feed.publish(r.sums(), attestSums(t, r.fs, emailIdentity, r.sums(), releasePredicate(appReleaseRepo, "v0.2.0")))
+		}, []string{"--current", "0.1.0"}, "is its release attestation"},
+		{"a bundle blob that is not Snappy", nil, func(r *appRelease) {
+			for p := range r.feed.blobs {
+				r.feed.blobs[p] = []byte("{not snappy")
+			}
+		}, []string{"--current", "0.1.0"}, "snappy"},
+		{"a bundle_url that is not https", nil, func(r *appRelease) {
+			r.feed.attest[sha256HexBytes(r.sums())] = []fakeAttestation{{BundleURL: "http://tmaproduction.blob.core.windows.net/x.json.sn"}}
+		}, []string{"--current", "0.1.0"}, "not https"},
+		{"no checksums file", nil, func(r *appRelease) { delete(r.feed.files, "SHA256SUMS") },
+			[]string{"--current", "0.1.0"}, "publishes no checksums file"},
 		{"the file is missing from the checksums", func(files, signed map[string][]byte) {
 			delete(signed, "BranchKit-0.2.0-macos-arm64.zip")
-		}, []string{"--current", "0.1.0"}, "does not list"},
+		}, nil, []string{"--current", "0.1.0"}, "does not list"},
 		{"the file is not the one the checksums name", func(files, _ map[string][]byte) {
 			files["BranchKit-0.2.0-macos-arm64.zip"] = []byte("swapped after signing")
-		}, []string{"--current", "0.1.0"}, "does not match"},
-		{"the release is older", nil, []string{"--current", "0.3.0"}, "not newer"},
-		{"the release is the installed one", nil, []string{"--current", "v0.2.0"}, "not newer"},
-		{"the installed version is unknown", nil, nil, "installed version is unknown"},
-		{"no such file for the kind", nil, []string{"--current", "0.1.0", "--kind", "deb"}, "no \"deb\" file"},
-		{"a version that is not X.Y.Z", nil, []string{"--version", "0.2", "--current", "0.1.0"}, "not X.Y.Z"},
-		{"an empty version", nil, []string{"--version=", "--current", "0.1.0"}, "needs a value"},
-		{"an unknown flag", nil, []string{"--current", "0.1.0", "--force"}, "unknown argument"},
+		}, nil, []string{"--current", "0.1.0"}, "does not match"},
+		{"the release is older", nil, nil, []string{"--current", "0.3.0"}, "not newer"},
+		{"the release is the installed one", nil, nil, []string{"--current", "v0.2.0"}, "not newer"},
+		{"the installed version is unknown", nil, nil, nil, "installed version is unknown"},
+		{"no such file for the kind", nil, nil, []string{"--current", "0.1.0", "--kind", "deb"}, "no \"deb\" file"},
+		{"a version that is not X.Y.Z", nil, nil, []string{"--version", "0.2", "--current", "0.1.0"}, "not X.Y.Z"},
+		{"an empty version", nil, nil, []string{"--version=", "--current", "0.1.0"}, "needs a value"},
+		{"an unknown flag", nil, nil, []string{"--current", "0.1.0", "--force"}, "unknown argument"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			r := newAppRelease(t, c.mutate)
-			if c.name == "no attestation" {
-				delete(r.files, "SHA256SUMS.sigstore.json") // newAppRelease always signs
+			if c.after != nil {
+				c.after(r)
 			}
 			support, _, err := r.run(t, c.args...)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
@@ -408,7 +507,7 @@ func TestAppDownloadRefusals(t *testing.T) {
 // gone after the next run; the staged file is untouched by that sweep.
 func TestAppDownloadRemovesPartialDownloads(t *testing.T) {
 	r := newAppRelease(t, nil)
-	client, _ := fakeReleases(t, "v0.2.0", r.files)
+	client, _ := r.feed.serve(t)
 	support := t.TempDir()
 	stale := []string{
 		filepath.Join(support, "updates", "0.1.0", ".BranchKit-0.1.0-macos-arm64.zip.111.part"),
@@ -418,12 +517,7 @@ func TestAppDownloadRemovesPartialDownloads(t *testing.T) {
 		os.MkdirAll(filepath.Dir(p), 0o700)
 		os.WriteFile(p, []byte("half"), 0o600)
 	}
-	err := runAppDownload([]string{"--current", "0.1.0"}, appEnv{
-		client: client, anchors: []trustAnchor{r.fs.anchor(false)}, appSupport: support,
-		goos: "darwin", goarch: "arm64", getenv: func(string) string { return "" },
-		stdout: io.Discard, stderr: io.Discard,
-	})
-	if err != nil {
+	if err := runAppDownload([]string{"--current", "0.1.0"}, r.env(t, client, support, io.Discard)); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range stale {
@@ -441,32 +535,12 @@ func TestAppDownloadRemovesPartialDownloads(t *testing.T) {
 // bounded by nothing: there is no total timeout to test.)
 func TestAppDownloadStallFails(t *testing.T) {
 	r := newAppRelease(t, nil)
-	setGitHubToken(t, "")
-	release := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		name := filepath.Base(req.URL.Path)
-		switch {
-		case strings.HasSuffix(req.URL.Path, "/releases/latest"):
-			var assets []map[string]string
-			for n := range r.files {
-				assets = append(assets, map[string]string{"name": n, "browser_download_url": "https://github.com/" + appReleaseRepo + "/releases/download/v0.2.0/" + n})
-			}
-			json.NewEncoder(w).Encode(map[string]any{"tag_name": "v0.2.0", "assets": assets})
-		case name == r.zip:
-			w.Write(r.zipped[:4]) // then silence
-			w.(http.Flusher).Flush()
-			<-req.Context().Done()
-		default:
-			w.Write(r.files[name])
-		}
-	}))
-	t.Cleanup(release.Close)
+	r.feed.stall = r.zip
+	client, _ := r.feed.serve(t)
 	support := t.TempDir()
-	err := runAppDownload([]string{"--current", "0.1.0"}, appEnv{
-		client: asGitHub(release), stall: 200 * time.Millisecond,
-		anchors: []trustAnchor{r.fs.anchor(false)}, appSupport: support,
-		goos: "darwin", goarch: "arm64", getenv: func(string) string { return "" },
-		stdout: io.Discard, stderr: io.Discard,
-	})
+	env := r.env(t, client, support, io.Discard)
+	env.stall = 200 * time.Millisecond
+	err := runAppDownload([]string{"--current", "0.1.0"}, env)
 	if err == nil || !strings.Contains(err.Error(), "nothing arrived") {
 		t.Fatalf("error = %v, want the stall named", err)
 	}
@@ -491,13 +565,8 @@ func TestAppDownloadAllowDowngrade(t *testing.T) {
 
 func TestAppDownloadFetchesTheAskedTag(t *testing.T) {
 	r := newAppRelease(t, nil)
-	client, requested := fakeReleases(t, "v0.2.0", r.files)
-	err := runAppDownload([]string{"--version=0.2.0", "--current=0.1.0"}, appEnv{
-		client: client, anchors: []trustAnchor{r.fs.anchor(false)}, appSupport: t.TempDir(),
-		goos: "darwin", goarch: "arm64", getenv: func(string) string { return "" },
-		stdout: io.Discard, stderr: io.Discard,
-	})
-	if err != nil {
+	client, requested := r.feed.serve(t)
+	if err := runAppDownload([]string{"--version=0.2.0", "--current=0.1.0"}, r.env(t, client, t.TempDir(), io.Discard)); err != nil {
 		t.Fatal(err)
 	}
 	if len(*requested) == 0 || (*requested)[0] != "/repos/branchkit/releases/releases/tags/v0.2.0" {
@@ -507,19 +576,15 @@ func TestAppDownloadFetchesTheAskedTag(t *testing.T) {
 
 func TestAppDownloadReadsTheVersionFromTheEnvironment(t *testing.T) {
 	r := newAppRelease(t, nil)
-	client, _ := fakeReleases(t, "v0.2.0", r.files)
-	err := runAppDownload(nil, appEnv{
-		client: client, anchors: []trustAnchor{r.fs.anchor(false)}, appSupport: t.TempDir(),
-		goos: "darwin", goarch: "arm64",
-		getenv: func(k string) string {
-			if k == "BRANCHKIT_APP_VERSION" {
-				return "0.3.0"
-			}
-			return ""
-		},
-		stdout: io.Discard, stderr: io.Discard,
-	})
-	if err == nil || !strings.Contains(err.Error(), "not newer") {
+	client, _ := r.feed.serve(t)
+	env := r.env(t, client, t.TempDir(), io.Discard)
+	env.getenv = func(k string) string {
+		if k == "BRANCHKIT_APP_VERSION" {
+			return "0.3.0"
+		}
+		return ""
+	}
+	if err := runAppDownload(nil, env); err == nil || !strings.Contains(err.Error(), "not newer") {
 		t.Fatalf("error = %v, want the installed 0.3.0 to refuse 0.2.0", err)
 	}
 }
