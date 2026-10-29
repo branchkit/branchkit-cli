@@ -11,7 +11,8 @@ package main
 // would arrive only through the updater. So `app download` reads GitHub's
 // trusted root from the TUF repository GitHub publishes it in (the one
 // `gh attestation` reads), verified by TUF from the root metadata embedded
-// here, and uses it in place of the snapshot's GitHub entry.
+// here, and uses it in place of the snapshot's GitHub entry. A download that
+// cannot read it stops (withFreshGitHubRoot).
 //
 // Root metadata rotates too, but an old copy keeps working: TUF walks forward
 // from it through every later root, each signed by a threshold of the keys of
@@ -21,7 +22,6 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/sigstore/sigstore-go/pkg/tuf"
@@ -73,18 +73,19 @@ func refreshGitHubAnchor(client *http.Client, repoURL string, tufRoot []byte) (t
 }
 
 // withFreshGitHubRoot is anchors with its GitHub instance replaced by what
-// fresh returns (nil fresh: anchors as they are). When fresh fails, anchors
-// is kept and stderr says so: the embedded snapshot is what this CLI shipped
-// with, so verifying against it is never weaker than before the refresh
-// existed, and a release it cannot verify is still refused.
-func withFreshGitHubRoot(anchors []trustAnchor, fresh func() (trustAnchor, error), stderr io.Writer) []trustAnchor {
+// fresh returns (nil fresh: anchors as they are). When fresh fails, so does
+// this, and the download stops: TUF is where GitHub revokes a key, so
+// verifying against the embedded snapshot instead would let anyone who can
+// make that read fail, by blocking it or by tampering with it, bring a
+// revoked key back. A download that stops here is tried again by the next
+// update check.
+func withFreshGitHubRoot(anchors []trustAnchor, fresh func() (trustAnchor, error)) ([]trustAnchor, error) {
 	if fresh == nil {
-		return anchors
+		return anchors, nil
 	}
 	gh, err := fresh()
 	if err != nil {
-		fmt.Fprintf(stderr, "Could not read GitHub's current trusted root (%v); verifying with the one this CLI was built with.\n", err)
-		return anchors
+		return nil, fmt.Errorf("could not read GitHub's current trusted root from %s, so no release can be verified: %w", githubTUFURL, err)
 	}
 	out := []trustAnchor{gh}
 	for _, a := range anchors {
@@ -92,5 +93,5 @@ func withFreshGitHubRoot(anchors []trustAnchor, fresh func() (trustAnchor, error
 			out = append(out, a)
 		}
 	}
-	return out
+	return out, nil
 }

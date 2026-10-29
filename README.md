@@ -98,7 +98,8 @@ certificate about every six months, so the trusted root built into the CLI
 ages. Before verifying, `app download` reads GitHub's current trusted root
 from its TUF repository (`tuf-repo.github.com`, the one `gh attestation`
 reads), checked by TUF from root metadata built into the CLI. If that read
-fails, the built-in root is used, and a release it cannot verify is refused.
+fails, the download stops, since TUF is where GitHub revokes a key; the next
+update check tries again.
 
 ### Authoring
 

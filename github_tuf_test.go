@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -202,36 +203,29 @@ func TestWithFreshGitHubRoot(t *testing.T) {
 	stale, fresh, other := newFakeSigstore(t), newFakeSigstore(t), newFakeSigstore(t)
 	anchors := []trustAnchor{other.anchor(false), stale.anchor(true)}
 
-	var notice bytes.Buffer
-	got := withFreshGitHubRoot(anchors, func() (trustAnchor, error) { return fresh.anchor(true), nil }, &notice)
-	if len(got) != 2 || got[0].material != fresh || !got[0].github || got[1].material != other {
-		t.Errorf("anchors = %+v, want the fresh GitHub root in place of the stale one, the other kept", got)
-	}
-	if notice.Len() != 0 {
-		t.Errorf("a refresh that worked printed %q", notice.String())
+	got, err := withFreshGitHubRoot(anchors, func() (trustAnchor, error) { return fresh.anchor(true), nil })
+	if err != nil || len(got) != 2 || got[0].material != fresh || !got[0].github || got[1].material != other {
+		t.Errorf("anchors = %+v, %v; want the fresh GitHub root in place of the stale one, the other kept", got, err)
 	}
 
-	got = withFreshGitHubRoot(anchors, func() (trustAnchor, error) { return trustAnchor{}, errors.New("offline") }, &notice)
-	if len(got) != 2 || got[1].material != stale {
-		t.Errorf("anchors = %+v, want them unchanged when the refresh fails", got)
-	}
-	if !strings.Contains(notice.String(), "Could not read GitHub's current trusted root (offline)") {
-		t.Errorf("notice = %q", notice.String())
+	got, err = withFreshGitHubRoot(anchors, func() (trustAnchor, error) { return trustAnchor{}, errors.New("offline") })
+	if err == nil || got != nil || !strings.Contains(err.Error(), "could not read GitHub's current trusted root") || !strings.Contains(err.Error(), "offline") {
+		t.Errorf("a failed refresh gave %+v, %v; want no anchors and the failure named", got, err)
 	}
 
-	if got := withFreshGitHubRoot(anchors, nil, &notice); len(got) != 2 || got[1].material != stale {
-		t.Errorf("no refresh changed the anchors: %+v", got)
+	if got, err := withFreshGitHubRoot(anchors, nil); err != nil || len(got) != 2 || got[1].material != stale {
+		t.Errorf("no refresh changed the anchors: %+v, %v", got, err)
 	}
 }
 
 // A release GitHub attests after its root moved on verifies with the root
-// read fresh, and fails, closed, with only the CLI's own snapshot.
+// read fresh. The CLI's own snapshot refuses it, and a download that cannot
+// read the fresh root stops rather than fall back to that snapshot.
 func TestAppDownloadUsesGitHubsCurrentRoot(t *testing.T) {
 	r := newAppRelease(t, nil)
 	client, _ := r.feed.serve(t)
-	var out, notice bytes.Buffer
+	var out bytes.Buffer
 	env := r.env(t, client, t.TempDir(), &out)
-	env.stderr = &notice
 	env.anchors = []trustAnchor{newFakeSigstore(t).anchor(true)} // a root from before the move
 
 	env.freshGitHubRoot = func() (trustAnchor, error) { return r.fs.anchor(true), nil }
@@ -239,16 +233,27 @@ func TestAppDownloadUsesGitHubsCurrentRoot(t *testing.T) {
 		t.Fatalf("with GitHub's current root: %v", err)
 	}
 
-	env.appSupport = t.TempDir()
-	env.freshGitHubRoot = func() (trustAnchor, error) { return trustAnchor{}, errors.New("offline") }
-	err := runAppDownload([]string{"--current", "0.1.0"}, env)
-	if err == nil || !strings.Contains(err.Error(), "is not GitHub's release attestation") {
-		t.Fatalf("error = %v, want the old root to refuse the release", err)
+	cases := []struct {
+		name  string
+		fresh func() (trustAnchor, error)
+		want  string
+	}{
+		{"the snapshot alone", nil, "is not GitHub's release attestation"},
+		{"the fresh root unreadable", func() (trustAnchor, error) { return trustAnchor{}, errors.New("offline") },
+			"could not read GitHub's current trusted root"},
 	}
-	if !strings.Contains(notice.String(), "Could not read GitHub's current trusted root") {
-		t.Errorf("stderr = %q, want the failed refresh named", notice.String())
-	}
-	if _, err := os.Stat(env.appSupport + "/updates/0.2.0/" + r.zip); err == nil {
-		t.Error("a release the snapshot could not verify was staged")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			env := env
+			env.appSupport = t.TempDir()
+			env.freshGitHubRoot = c.fresh
+			err := runAppDownload([]string{"--current", "0.1.0"}, env)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("error = %v, want one containing %q", err, c.want)
+			}
+			if _, err := os.Stat(filepath.Join(env.appSupport, "updates", "0.2.0", r.zip)); err == nil {
+				t.Error("a release the snapshot could not verify was staged")
+			}
+		})
 	}
 }

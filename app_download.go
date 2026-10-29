@@ -163,7 +163,9 @@ func runAppDownload(args []string, env appEnv) error {
 		return err
 	}
 	fmt.Fprintf(env.stderr, "Verifying %s %s...\n", contract.Repository, release.TagName)
-	env.anchors = withFreshGitHubRoot(env.anchors, env.freshGitHubRoot, env.stderr)
+	if env.anchors, err = withFreshGitHubRoot(env.anchors, env.freshGitHubRoot); err != nil {
+		return err
+	}
 	sums, err := appFetch(env, sumsAsset, maxSumsBytes)
 	if err != nil {
 		return err
