@@ -30,6 +30,15 @@ func loadWorkflowFixture(t *testing.T) (bundle []byte, digestHex string) {
 	return b, strings.Fields(string(d))[0]
 }
 
+func embeddedAnchors(t *testing.T) []trustAnchor {
+	t.Helper()
+	anchors, err := trustAnchors()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return anchors
+}
+
 // serveAssets returns a test server and the ghAsset list pointing at it.
 func serveAssets(t *testing.T, files map[string][]byte) (*httptest.Server, []ghAsset) {
 	t.Helper()
@@ -54,7 +63,7 @@ func TestReleaseAttestationVerified(t *testing.T) {
 	})
 	defer srv.Close()
 
-	att, err := verifyReleaseAttestation(srv.Client(), assets, artifact, digest, "astral-sh/uv")
+	att, err := verifyReleaseAttestation(srv.Client(), assets, artifact, digest, "astral-sh/uv", embeddedAnchors(t))
 	if err != nil {
 		t.Fatalf("verifyReleaseAttestation: %v", err)
 	}
@@ -70,7 +79,7 @@ func TestReleaseAttestationAbsentIsSoft(t *testing.T) {
 	srv, assets := serveAssets(t, map[string][]byte{artifact: []byte("x")})
 	defer srv.Close()
 
-	att, err := verifyReleaseAttestation(srv.Client(), assets, artifact, digest, "astral-sh/uv")
+	att, err := verifyReleaseAttestation(srv.Client(), assets, artifact, digest, "astral-sh/uv", embeddedAnchors(t))
 	if err != nil {
 		t.Fatalf("absent attestation must be a soft outcome, got error: %v", err)
 	}
@@ -94,7 +103,7 @@ func TestReleaseAttestationRepoMismatchIsHard(t *testing.T) {
 	// The bundle really attests astral-sh/uv; installing it as someone else's
 	// plugin must be rejected — a valid signature for the WRONG repo is an
 	// attack, not a pass.
-	_, err := verifyReleaseAttestation(srv.Client(), assets, artifact, digest, "evil/impostor")
+	_, err := verifyReleaseAttestation(srv.Client(), assets, artifact, digest, "evil/impostor", embeddedAnchors(t))
 	if err == nil {
 		t.Fatal("repo mismatch must be a hard error")
 	}
@@ -115,8 +124,38 @@ func TestReleaseAttestationBadDigestIsHard(t *testing.T) {
 	// Bundle present and authentic, but for a different artifact digest — a
 	// swapped tarball. Must fail closed.
 	wrong := strings.Repeat("00", 32)
-	if _, err := verifyReleaseAttestation(srv.Client(), assets, artifact, wrong, "astral-sh/uv"); err == nil {
+	if _, err := verifyReleaseAttestation(srv.Client(), assets, artifact, wrong, "astral-sh/uv", embeddedAnchors(t)); err == nil {
 		t.Fatal("a bundle that doesn't cover the downloaded bytes must be a hard error")
+	}
+}
+
+// Someone who can write victim/plugin's release assets, but cannot run its
+// workflow, signs with their own email identity a statement that says
+// "repository: victim/plugin" and publishes it beside their tarball. The
+// signature is valid and covers the bytes; it is still no attestation of
+// victim/plugin, and installing must fail rather than fall back to unsigned.
+func TestReleaseAttestationForgedRepositoryIsHard(t *testing.T) {
+	fs := newFakeSigstore(t)
+	const artifact = "branchkit-plugin-demo-linux-x86_64.tar.gz"
+	tarball := []byte("attacker's tarball")
+	digest := sha256HexBytes(tarball)
+	forged := fs.attest(t, emailIdentity,
+		statement(artifact, digest, releasePredicateType, releasePredicate("victim/plugin", "v1.0.0")))
+	srv, assets := serveAssets(t, map[string][]byte{
+		artifact:                       tarball,
+		attestationAssetName(artifact): forged,
+	})
+	defer srv.Close()
+
+	// GitHub's instance included: the email identity is not the release
+	// signer, so even there its predicate counts for nothing.
+	anchors := []trustAnchor{fs.anchor(false), fs.anchor(true)}
+	att, err := verifyReleaseAttestation(srv.Client(), assets, artifact, digest, "victim/plugin", anchors)
+	if err == nil {
+		t.Fatalf("a statement's own repository claim was accepted: %+v", att)
+	}
+	if !strings.Contains(err.Error(), "mismatch") {
+		t.Errorf("error should name the mismatch, got: %v", err)
 	}
 }
 

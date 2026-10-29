@@ -53,104 +53,176 @@ type SigstoreIdentity struct {
 	// ("https://github.com/OWNER/REPO"). Empty for release attestations.
 	SourceRepo string
 	// "owner/name" resolved from whichever source carried it (cert extension
-	// or statement predicate). The normalized publisher-matching key.
+	// or statement predicate). The normalized publisher-matching key. Empty
+	// when the signer is neither of the two GitHub identities, so it matches
+	// no repository.
 	RepoSlug string
 }
 
-// verifyBundle verifies a Sigstore bundle against an artifact digest using
-// one of the provided trusted roots (each a serialized TrustedRoot JSON —
-// callers may hold several, e.g. Sigstore Public Good + GitHub's instance,
-// and the bundle's certificate decides which one applies).
-//
-// digestHex is the artifact's SHA-256 as lowercase hex. Verification is
-// fully offline given the bundle + trusted root: the Rekor inclusion proof
-// travels inside the bundle.
-func verifyBundle(bundleJSON []byte, digestHex string, trustedRootJSONs [][]byte) (*SigstoreIdentity, error) {
-	digest, err := hex.DecodeString(strings.TrimSpace(digestHex))
-	if err != nil {
-		return nil, fmt.Errorf("artifact digest is not hex: %w", err)
-	}
+// The two GitHub identities whose repository binding the CLI reads, and the
+// one place each is defined.
+const (
+	// actionsIssuer is the OIDC issuer of a GitHub Actions workflow. Only
+	// its certificates carry a SourceRepositoryURI the CLI believes: Fulcio
+	// copies that extension from the issuer's token, and some other CI
+	// issuers fill it from a claim their user can point at any repository.
+	actionsIssuer = "https://token.actions.githubusercontent.com"
+	// releaseSignerSAN is the certificate identity of GitHub's release
+	// infrastructure. Its certificates name no repository; the repository is
+	// in the release predicate it signs. Anyone can write such a predicate,
+	// so it counts only from this signer, chained to GitHub's own instance.
+	releaseSignerSAN = "https://dotcom.releases.github.com"
+	// githubFulcioURI is the Fulcio of GitHub's own Sigstore instance, as
+	// its trusted root names it. The committed release-signer fixtures
+	// verify against that root and not against Sigstore's Public Good root
+	// (TestVerifyBundleRejectsWithoutMatchingRoot).
+	githubFulcioURI = "fulcio.githubapp.com"
+)
 
+// trustAnchor is one Sigstore instance's trusted material, and whether it is
+// GitHub's own instance: the only one whose release-signer certificates the
+// CLI accepts.
+type trustAnchor struct {
+	material root.TrustedMaterial
+	github   bool
+}
+
+// parseTrustAnchors reads serialized TrustedRoot JSONs, one per instance, as
+// `gh attestation trusted-root` prints them. A root that does not parse is an
+// error: the set is embedded, so a bad one is a build defect, not input.
+func parseTrustAnchors(rootJSONs [][]byte) ([]trustAnchor, error) {
+	anchors := make([]trustAnchor, 0, len(rootJSONs))
+	for _, rootJSON := range rootJSONs {
+		tr, err := root.NewTrustedRootFromJSON(rootJSON)
+		if err != nil {
+			return nil, fmt.Errorf("parse trusted root: %w", err)
+		}
+		anchors = append(anchors, trustAnchor{material: tr, github: isGitHubInstance(tr)})
+	}
+	return anchors, nil
+}
+
+// isGitHubInstance reports whether every certificate authority of a trusted
+// root is GitHub's Fulcio. The URI comes from the CLI's own embedded root
+// file, so it is as trusted as the keys beside it.
+func isGitHubInstance(tr root.TrustedMaterial) bool {
+	cas := tr.FulcioCertificateAuthorities()
+	if len(cas) == 0 {
+		return false
+	}
+	for _, ca := range cas {
+		f, ok := ca.(*root.FulcioCertificateAuthority)
+		if !ok || f.URI != githubFulcioURI {
+			return false
+		}
+	}
+	return true
+}
+
+// parseBundle reads a Sigstore bundle's JSON.
+func parseBundle(bundleJSON []byte) (*bundle.Bundle, error) {
 	var b bundle.Bundle
 	if err := b.UnmarshalJSON(bytes.TrimSpace(bundleJSON)); err != nil {
 		return nil, fmt.Errorf("parse sigstore bundle: %w", err)
 	}
+	return &b, nil
+}
 
-	entries, err := b.TlogEntries()
+// verifyEntity verifies a signed entity against an artifact's SHA-256 under
+// one trust anchor and one identity policy: verify.WithCertificateIdentity,
+// or verify.WithoutIdentitiesUnsafe when the caller judges the identity
+// itself. Verification is offline: the timestamp or the transparency-log
+// inclusion proof travels inside the bundle.
+func verifyEntity(entity verify.SignedEntity, digest []byte, anchor trustAnchor, identity verify.PolicyOption) (*verify.VerificationResult, error) {
+	entries, err := entity.TlogEntries()
 	if err != nil {
 		return nil, fmt.Errorf("read transparency-log entries: %w", err)
 	}
-	hasTlog := len(entries) > 0
+
+	// Require the signature to be anchored in time by at least one trusted
+	// observer. Two bundle shapes reach here. A PRIVATE repository's
+	// GitHub attestation is signed by GitHub's own instance: a
+	// TSA-signed timestamp and no transparency-log entry. A PUBLIC
+	// repository's goes through Sigstore's Public Good instance: a Rekor
+	// entry and no TSA timestamp. A log entry's integrated time only
+	// counts as an observer timestamp once the entry itself is verified,
+	// so when the bundle carries entries they are verified too; without
+	// that, every public plugin's bundle failed ("integrated timestamps:
+	// 0 < 1"). Requiring a log entry unconditionally would instead reject
+	// every private-repo attestation. Identity + digest binding remain the
+	// load-bearing checks.
+	opts := []verify.VerifierOption{verify.WithObserverTimestamps(1)}
+	if len(entries) > 0 {
+		opts = append(opts, verify.WithTransparencyLog(1))
+	}
+	verifier, err := verify.NewVerifier(anchor.material, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("build verifier: %w", err)
+	}
+	return verifier.Verify(entity, verify.NewPolicy(verify.WithArtifactDigest("sha256", digest), identity))
+}
+
+// verifyBundle verifies a plugin's Sigstore bundle against an artifact digest
+// under any of the trust anchors (Sigstore Public Good and GitHub's
+// instance; the bundle's certificate decides which one applies).
+//
+// digestHex is the artifact's SHA-256 as lowercase hex.
+func verifyBundle(bundleJSON []byte, digestHex string, anchors []trustAnchor) (*SigstoreIdentity, error) {
+	digest, err := hex.DecodeString(strings.TrimSpace(digestHex))
+	if err != nil {
+		return nil, fmt.Errorf("artifact digest is not hex: %w", err)
+	}
+	b, err := parseBundle(bundleJSON)
+	if err != nil {
+		return nil, err
+	}
 
 	var lastErr error
-	for _, rootJSON := range trustedRootJSONs {
-		trustedRoot, err := root.NewTrustedRootFromJSON(rootJSON)
-		if err != nil {
-			lastErr = fmt.Errorf("parse trusted root: %w", err)
-			continue
-		}
-
-		// Require the signature to be anchored in time by at least one trusted
-		// observer. Two bundle shapes reach here. A PRIVATE repository's
-		// GitHub attestation is signed by GitHub's own instance: a
-		// TSA-signed timestamp and no transparency-log entry. A PUBLIC
-		// repository's goes through Sigstore's Public Good instance: a Rekor
-		// entry and no TSA timestamp. A log entry's integrated time only
-		// counts as an observer timestamp once the entry itself is verified,
-		// so when the bundle carries entries they are verified too; without
-		// that, every public plugin's bundle failed ("integrated timestamps:
-		// 0 < 1"). Requiring a log entry unconditionally would instead reject
-		// every private-repo attestation. Identity + digest binding remain the
-		// load-bearing checks.
-		opts := []verify.VerifierOption{verify.WithObserverTimestamps(1)}
-		if hasTlog {
-			opts = append(opts, verify.WithTransparencyLog(1))
-		}
-		verifier, err := verify.NewVerifier(trustedRoot, opts...)
-		if err != nil {
-			lastErr = fmt.Errorf("build verifier: %w", err)
-			continue
-		}
-
+	for _, anchor := range anchors {
 		// Identity POLICY is deliberately not enforced here (the unsafe-named
 		// option means "no identity constraint at verify time") — identity is
 		// extracted and returned; the install path matches it against the
 		// manifest's declared publisher and resolves the trust tier.
-		result, err := verifier.Verify(&b, verify.NewPolicy(
-			verify.WithArtifactDigest("sha256", digest),
-			verify.WithoutIdentitiesUnsafe(),
-		))
+		result, err := verifyEntity(b, digest, anchor, verify.WithoutIdentitiesUnsafe())
 		if err != nil {
 			lastErr = err
 			continue
 		}
-
-		id := &SigstoreIdentity{}
-		if result.Signature != nil && result.Signature.Certificate != nil {
-			cert := result.Signature.Certificate
-			id.SAN = cert.SubjectAlternativeName
-			id.SourceRepo = cert.SourceRepositoryURI // OID .1.12; empty for release-infra certs
-		}
-		if id.SAN == "" {
-			return nil, fmt.Errorf("bundle verified but certificate carries no subject identity")
-		}
-
-		// Prefer the cert's source-repo extension (build-provenance model);
-		// fall back to the in-toto statement predicate (release-attestation
-		// model). Both normalize to "owner/name".
-		id.RepoSlug = repoSlugFromURI(id.SourceRepo)
-		if result.Statement != nil {
-			if id.RepoSlug == "" {
-				id.RepoSlug = repoSlugFromStatement(result.Statement)
-			}
-		}
-		return id, nil
+		return identityOf(result, anchor)
 	}
 
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no trusted roots provided")
 	}
 	return nil, fmt.Errorf("bundle did not verify against any trusted root: %w", lastErr)
+}
+
+// identityOf reads who a verified bundle speaks for. RepoSlug comes only from
+// a source the signer cannot choose: the SourceRepositoryURI of a GitHub
+// Actions certificate (build provenance), or the release predicate of
+// GitHub's release signer on GitHub's own instance (release attestation).
+// Any other signer gets an empty RepoSlug, which matches no repository, so
+// the install fails closed.
+func identityOf(result *verify.VerificationResult, anchor trustAnchor) (*SigstoreIdentity, error) {
+	id := &SigstoreIdentity{}
+	issuer := ""
+	if result.Signature != nil && result.Signature.Certificate != nil {
+		cert := result.Signature.Certificate
+		id.SAN = cert.SubjectAlternativeName
+		id.SourceRepo = cert.SourceRepositoryURI // OID .1.12; empty for release-infra certs
+		issuer = cert.Issuer
+	}
+	if id.SAN == "" {
+		return nil, fmt.Errorf("bundle verified but certificate carries no subject identity")
+	}
+
+	switch {
+	case issuer == actionsIssuer:
+		id.RepoSlug = repoSlugFromURI(id.SourceRepo)
+	case id.SAN == releaseSignerSAN && anchor.github && result.Statement != nil:
+		id.RepoSlug = repoSlugFromStatement(result.Statement)
+	}
+	return id, nil
 }
 
 // repoSlugFromURI normalizes a "https://github.com/OWNER/REPO[/...]" URI to
@@ -171,7 +243,9 @@ func repoSlugFromURI(uri string) string {
 // repoSlugFromStatement pulls "owner/name" out of an in-toto statement — the
 // release-attestation path where the repo isn't in the cert. Tries the
 // predicate's `repository` field (GitHub release predicate), then falls back
-// to a `pkg:github/owner/name@...` subject PURI.
+// to a `pkg:github/owner/name@...` subject PURI. Only identityOf's
+// release-signer case may call it: for any other signer the statement says
+// whatever its author wrote.
 func repoSlugFromStatement(stmt interface {
 	GetPredicate() *structpb.Struct
 	GetSubject() []*intoto.ResourceDescriptor

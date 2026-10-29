@@ -36,14 +36,16 @@ import (
 //go:embed trusted_roots.jsonl
 var embeddedTrustedRoots string
 
-func trustedRoots() [][]byte {
+// trustAnchors is the embedded roots, parsed. TestEmbeddedTrustAnchors holds
+// that they parse and that exactly one is GitHub's instance.
+func trustAnchors() ([]trustAnchor, error) {
 	var roots [][]byte
 	for _, line := range strings.Split(strings.TrimSpace(embeddedTrustedRoots), "\n") {
 		if s := strings.TrimSpace(line); s != "" {
 			roots = append(roots, []byte(s))
 		}
 	}
-	return roots
+	return parseTrustAnchors(roots)
 }
 
 // AuthorAttestation is the outcome of verifying a release's Sigstore bundle.
@@ -73,13 +75,17 @@ func attestationAssetName(artifactName string) string {
 // resolved repo matches wantOwnerRepo ("owner/repo"). A missing bundle is a
 // soft outcome (Verified=false, no error) — unsigned plugins still install
 // under the restricted posture. A PRESENT-but-invalid bundle is a hard error:
-// a tampered or mis-signed artifact must never install as if unsigned.
+// a tampered or mis-signed artifact must never install as if unsigned. So is
+// a bundle whose signer names no repository it could not have chosen
+// (identityOf): a valid signature from an arbitrary identity is no
+// provenance.
 func verifyReleaseAttestation(
 	client *http.Client,
 	assets []ghAsset,
 	artifactName string,
 	artifactDigestHex string,
 	wantOwnerRepo string,
+	anchors []trustAnchor,
 ) (*AuthorAttestation, error) {
 	bundleName := attestationAssetName(artifactName)
 	var bundle *ghAsset
@@ -105,12 +111,17 @@ func verifyReleaseAttestation(
 	bundleJSON, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	id, err := verifyBundle(bundleJSON, artifactDigestHex, trustedRoots())
+	id, err := verifyBundle(bundleJSON, artifactDigestHex, anchors)
 	if err != nil {
 		// Present but unverifiable — fail closed.
 		return nil, fmt.Errorf("author attestation did not verify: %w", err)
 	}
 
+	if id.RepoSlug == "" {
+		return nil, fmt.Errorf(
+			"attestation identity mismatch: bundle is signed by %q, which attests no repository (only a GitHub Actions workflow or GitHub's release signer can), installing from %q",
+			id.SAN, wantOwnerRepo)
+	}
 	if !strings.EqualFold(id.RepoSlug, wantOwnerRepo) {
 		return nil, fmt.Errorf(
 			"attestation identity mismatch: bundle attests %q but installing from %q",

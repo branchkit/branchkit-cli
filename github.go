@@ -276,7 +276,11 @@ func downloadRelease(source ResolvedSource, destDir string) (string, string, *Au
 	// is a hard error (a tampered artifact must not install as if unsigned).
 	artifactDigest := fmt.Sprintf("%x", sha256.Sum256(bodyBytes))
 	wantRepo := fmt.Sprintf("%s/%s", source.Owner, source.Repo)
-	attestation, err := verifyReleaseAttestation(client, release.Assets, asset.Name, artifactDigest, wantRepo)
+	anchors, err := trustAnchors()
+	if err != nil {
+		return "", "", nil, err
+	}
+	attestation, err := verifyReleaseAttestation(client, release.Assets, asset.Name, artifactDigest, wantRepo, anchors)
 	if err != nil {
 		return "", "", nil, err
 	}

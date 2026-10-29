@@ -243,7 +243,11 @@ func checkArtifact(client *http.Client, assets []ghAsset, asset ghAsset, wantRep
 		return checkedArtifact{}, fmt.Errorf("checksum mismatch: published %s, downloaded %s", want, digest)
 	}
 
-	att, err := verifyReleaseAttestation(client, assets, asset.Name, digest, wantRepo)
+	anchors, err := trustAnchors()
+	if err != nil {
+		return checkedArtifact{}, err
+	}
+	att, err := verifyReleaseAttestation(client, assets, asset.Name, digest, wantRepo, anchors)
 	if err != nil {
 		return checkedArtifact{}, err
 	}

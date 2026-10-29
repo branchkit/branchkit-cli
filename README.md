@@ -159,7 +159,10 @@ name without its `branchkit-plugin-` prefix) and then:
 - verifies `<asset>.sha256` when the release publishes one;
 - verifies a Sigstore attestation when present and checks it names the
   repository the plugin's `publisher` field claims; a plugin whose attestation
-  contradicts its stated publisher is refused;
+  contradicts its stated publisher is refused. The repository is read only
+  from who signed: a GitHub Actions workflow's certificate, or GitHub's own
+  release signer. Any other signature names no repository, whatever the
+  signed statement says, and is refused;
 - for a catalog install, checks the registry's counter-signature over the
   manifest; a present but invalid signature is refused;
 - refuses sources on the registry blocklist unless `--force` is given.

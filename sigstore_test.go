@@ -27,7 +27,7 @@ import (
 	"testing"
 )
 
-func loadSigstoreFixtures(t *testing.T) (bundleJSON []byte, digestHex string, roots [][]byte) {
+func loadSigstoreFixtures(t *testing.T) (bundleJSON []byte, digestHex string, roots []trustAnchor) {
 	t.Helper()
 	raw, err := os.ReadFile("testdata/sigstore/bundle.jsonl")
 	if err != nil {
@@ -45,12 +45,34 @@ func loadSigstoreFixtures(t *testing.T) (bundleJSON []byte, digestHex string, ro
 	if err != nil {
 		t.Fatalf("read trusted roots fixture: %v", err)
 	}
+	var rootJSONs [][]byte
 	for _, line := range bytes.Split(bytes.TrimSpace(rootsRaw), []byte("\n")) {
 		if len(bytes.TrimSpace(line)) > 0 {
-			roots = append(roots, line)
+			rootJSONs = append(rootJSONs, line)
 		}
 	}
+	roots, err = parseTrustAnchors(rootJSONs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return
+}
+
+// The embedded roots parse, and the second one (GitHub's instance, the
+// order `gh attestation trusted-root` prints) is the only one the release
+// signer counts from.
+func TestEmbeddedTrustAnchors(t *testing.T) {
+	anchors, err := trustAnchors()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(anchors) != 2 || anchors[0].github || !anchors[1].github {
+		got := make([]bool, len(anchors))
+		for i, a := range anchors {
+			got[i] = a.github
+		}
+		t.Fatalf("GitHub-instance flags = %v, want [false true]", got)
+	}
 }
 
 func TestVerifyBundleAgainstRealAttestation(t *testing.T) {
@@ -67,6 +89,9 @@ func TestVerifyBundleAgainstRealAttestation(t *testing.T) {
 	// identity (source repo, OIDC issuer) is covered by the workflow fixture.
 	if id.SAN != "https://dotcom.releases.github.com" {
 		t.Errorf("SAN = %q, want the GitHub release signer identity", id.SAN)
+	}
+	if id.RepoSlug != "cli/cli" {
+		t.Errorf("RepoSlug = %q, want cli/cli (the release signer's predicate)", id.RepoSlug)
 	}
 }
 
@@ -171,5 +196,45 @@ func TestVerifyBundlePublicGoodTransparencyLog(t *testing.T) {
 	wrong := strings.Repeat("0", 64)
 	if _, err := verifyBundle(bytes.TrimSpace(bundleJSON), wrong, roots); err == nil {
 		t.Error("verified against the wrong digest")
+	}
+}
+
+// Who a verified bundle speaks for depends on who signed it, never on what
+// the signed statement claims: anyone can sign a statement naming any
+// repository. The statement's repository counts only from GitHub's release
+// signer on GitHub's own instance; a certificate's source repository only
+// from a GitHub Actions workflow.
+func TestVerifyBundleRepoComesFromTheSignerNotTheStatement(t *testing.T) {
+	fs := newFakeSigstore(t)
+	artifact := []byte("plugin tarball")
+	digest := sha256HexBytes(artifact)
+	claimsVictim := statement("plugin.tar.gz", digest, releasePredicateType, releasePredicate("victim/plugin", "v1.0.0"))
+
+	cases := []struct {
+		name   string
+		id     fakeIdentity
+		github bool // the anchor is GitHub's instance
+		want   string
+	}{
+		{"an email identity's predicate names no repo", emailIdentity, false, ""},
+		{"nor on GitHub's instance", emailIdentity, true, ""},
+		{"the release signer on another instance names none", signerOnly, false, ""},
+		{"the release signer on GitHub's instance names its predicate's", signerOnly, true, "victim/plugin"},
+		{"an Actions workflow names its own repo, whatever the predicate says",
+			actionsIdentity("mallory/fork", "release.yml@refs/tags/v1.0.0"), false, "mallory/fork"},
+		{"another issuer's source-repository extension names no repo",
+			fakeIdentity{SAN: "https://ci.example/pipelines/1", Issuer: "https://oidc.ci.example", SourceRepo: "https://github.com/victim/plugin"}, false, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			bundleJSON := fs.attest(t, c.id, claimsVictim)
+			id, err := verifyBundle(bundleJSON, digest, []trustAnchor{fs.anchor(c.github)})
+			if err != nil {
+				t.Fatalf("verifyBundle: %v", err)
+			}
+			if id.RepoSlug != c.want {
+				t.Errorf("RepoSlug = %q, want %q", id.RepoSlug, c.want)
+			}
+		})
 	}
 }
