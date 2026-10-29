@@ -26,12 +26,17 @@ import (
 // Sigstore trusted roots for offline verification, embedded so the install
 // path needs no network TUF fetch. This is `gh attestation trusted-root`
 // output: the Sigstore Public Good root plus GitHub's attestation instance
-// (one JSON per line). Refresh on trust-root key rotation with:
+// (one JSON per line). Refresh with:
 //
 //	gh attestation trusted-root > branchkit-cli/trusted_roots.jsonl
 //
-// (Rotation is rare and pre-announced; a stale root fails closed — verified
-// installs error rather than silently trusting — so this is safe to embed.)
+// It is a snapshot, and it ages: GitHub's instance has moved to a new
+// timestamp authority and Fulcio certificate about every six months since
+// 2023, and a bundle timestamped by an authority this file does not list
+// does not verify. That failure is closed (a verified install errors rather
+// than trusting), so a stale file refuses and never admits. `app download`
+// reads GitHub's current root over TUF instead (github_tuf.go); a plugin
+// install still reads only this file.
 //
 //go:embed trusted_roots.jsonl
 var embeddedTrustedRoots string

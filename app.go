@@ -16,15 +16,18 @@ import (
 // appEnv is everything an app command reads from outside its arguments, so a
 // test can run a whole command against a fake GitHub and a test Sigstore.
 type appEnv struct {
-	client     *http.Client
-	stall      time.Duration // a response that sends nothing for this long fails (0: appStallTimeout)
-	anchors    []trustAnchor
-	appSupport string
-	goos       string
-	goarch     string
-	getenv     func(string) string
-	stdout     io.Writer
-	stderr     io.Writer
+	client  *http.Client
+	stall   time.Duration // a response that sends nothing for this long fails (0: appStallTimeout)
+	anchors []trustAnchor
+	// freshGitHubRoot reads GitHub's current trusted root, which replaces
+	// the GitHub entry of anchors for a download (nil: anchors as given).
+	freshGitHubRoot func() (trustAnchor, error)
+	appSupport      string
+	goos            string
+	goarch          string
+	getenv          func(string) string
+	stdout          io.Writer
+	stderr          io.Writer
 }
 
 // appStallTimeout is how long a download may go without a byte. A release
@@ -41,12 +44,17 @@ func liveAppEnv() (appEnv, error) {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = appStallTimeout
+	// TUF metadata is small, so its requests may carry a total timeout.
+	tufClient := &http.Client{Transport: transport, Timeout: appStallTimeout}
 	return appEnv{
 		// No Client.Timeout: it would bound the whole body too (appGet
 		// guards stalls instead).
-		client:     &http.Client{Transport: transport},
-		stall:      appStallTimeout,
-		anchors:    anchors,
+		client:  &http.Client{Transport: transport},
+		stall:   appStallTimeout,
+		anchors: anchors,
+		freshGitHubRoot: func() (trustAnchor, error) {
+			return refreshGitHubAnchor(tufClient, githubTUFURL, githubTUFRoot)
+		},
 		appSupport: appSupportDir(),
 		goos:       runtime.GOOS,
 		goarch:     runtime.GOARCH,

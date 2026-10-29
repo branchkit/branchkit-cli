@@ -212,13 +212,27 @@ func TestVerifyAppAttestationRealCertificates(t *testing.T) {
 	}
 
 	// A real Actions certificate (the announcements plugin's release
-	// workflow, through Public Good) is not the release signer.
+	// workflow) is not the release signer. It was issued through Public
+	// Good, which verifyAppAttestation never reads, so on the embedded roots
+	// it fails before any identity is looked at. Handed Public Good as if it
+	// were GitHub's instance, it verifies, and the identity policy is what
+	// refuses it.
 	public, _ := os.ReadFile("testdata/sigstore/public_bundle.jsonl")
 	publicDigest, _ := os.ReadFile("testdata/sigstore/public_artifact.sha256")
 	d, _ := hex.DecodeString(strings.Fields(string(publicDigest))[0])
-	_, err = verifyAppAttestation(bytes.TrimSpace(public), d, "v0.2.0-rc.1", embeddedAnchors(t))
-	if err == nil || !strings.Contains(err.Error(), "is not GitHub's release attestation") {
-		t.Fatalf("error = %v, want the identity to refuse it", err)
+	var publicGood []trustAnchor
+	for _, a := range embeddedAnchors(t) {
+		if !a.github {
+			a.github = true
+			publicGood = append(publicGood, a)
+		}
+	}
+	_, err = verifyAppAttestation(bytes.TrimSpace(public), d, "v0.2.0-rc.1", publicGood)
+	if err == nil || !strings.Contains(err.Error(), "is not GitHub's release attestation") || !strings.Contains(err.Error(), releaseSignerSAN) {
+		t.Fatalf("error = %v, want the release-signer identity to refuse it", err)
+	}
+	if _, err := verifyAppAttestation(bytes.TrimSpace(public), d, "v0.2.0-rc.1", embeddedAnchors(t)); err == nil {
+		t.Fatal("an Actions bundle passed the app's policy on the embedded roots")
 	}
 }
 

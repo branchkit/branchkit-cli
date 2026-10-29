@@ -147,15 +147,19 @@ func TestReleaseAttestationForgedRepositoryIsHard(t *testing.T) {
 	})
 	defer srv.Close()
 
-	// GitHub's instance included: the email identity is not the release
-	// signer, so even there its predicate counts for nothing.
-	anchors := []trustAnchor{fs.anchor(false), fs.anchor(true)}
-	att, err := verifyReleaseAttestation(srv.Client(), assets, artifact, digest, "victim/plugin", anchors)
-	if err == nil {
-		t.Fatalf("a statement's own repository claim was accepted: %+v", att)
-	}
-	if !strings.Contains(err.Error(), "mismatch") {
-		t.Errorf("error should name the mismatch, got: %v", err)
+	// On either instance, GitHub's included: the email identity is not the
+	// release signer, so even there its predicate counts for nothing. Each
+	// anchor goes alone, since verification stops at the first that
+	// verifies.
+	for _, github := range []bool{false, true} {
+		anchors := []trustAnchor{fs.anchor(github)}
+		att, err := verifyReleaseAttestation(srv.Client(), assets, artifact, digest, "victim/plugin", anchors)
+		if err == nil {
+			t.Fatalf("github=%v: a statement's own repository claim was accepted: %+v", github, att)
+		}
+		if !strings.Contains(err.Error(), "mismatch") {
+			t.Errorf("github=%v: error should name the mismatch, got: %v", github, err)
+		}
 	}
 }
 

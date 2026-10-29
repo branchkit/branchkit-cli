@@ -93,6 +93,13 @@ fetched. The file is then kept only if it matches its line in `SHA256SUMS`,
 and its name carries the version, so another release's checksums cannot
 vouch for it. The checksums and the attestation are kept beside the file.
 
+GitHub's Sigstore instance moves to a new timestamp authority and signing
+certificate about every six months, so the trusted root built into the CLI
+ages. Before verifying, `app download` reads GitHub's current trusted root
+from its TUF repository (`tuf-repo.github.com`, the one `gh attestation`
+reads), checked by TUF from root metadata built into the CLI. If that read
+fails, the built-in root is used, and a release it cannot verify is refused.
+
 ### Authoring
 
 These need no running app.

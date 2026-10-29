@@ -163,6 +163,7 @@ func runAppDownload(args []string, env appEnv) error {
 		return err
 	}
 	fmt.Fprintf(env.stderr, "Verifying %s %s...\n", contract.Repository, release.TagName)
+	env.anchors = withFreshGitHubRoot(env.anchors, env.freshGitHubRoot, env.stderr)
 	sums, err := appFetch(env, sumsAsset, maxSumsBytes)
 	if err != nil {
 		return err
@@ -356,8 +357,11 @@ func checkNewer(version string, opts appDownloadOptions) error {
 // appUpdateDir is <app support>/updates/<version>, created owner-only. It is
 // the only place `app download` writes. A partial download a killed run left
 // anywhere under updates/ is removed first: a run that is stopped cannot
-// clean up after itself, and each run's temporary name is new. A concurrent
-// run whose file this removes fails at its rename and stages nothing.
+// clean up after itself, and each run's temporary name is new. On Unix a
+// concurrent run whose file this removes fails at its rename and stages
+// nothing; on Windows an open file cannot be removed, so the sweep skips it
+// and both runs stage the same verified file, the later rename replacing the
+// earlier.
 func appUpdateDir(appSupport, version string) (string, error) {
 	updates := filepath.Join(appSupport, "updates")
 	dir := filepath.Join(updates, version)
