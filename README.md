@@ -75,7 +75,7 @@ The app never downloads its own updates; it runs these.
 
 | Command | What it does |
 |---|---|
-| `app check-updates` | Ask GitHub whether a BranchKit release newer than `--current` (or `BRANCHKIT_APP_VERSION`) is out. Downloads nothing. Prints JSON: `current`, `latest`, `newer`, `notes_url`, `apply` (`self`, or `package-manager` for a Linux .deb or .rpm install, which apt or dnf updates) |
+| `app check-updates` | Ask GitHub whether a BranchKit release newer than `--current` (or `BRANCHKIT_APP_VERSION`) is out. Downloads nothing. Prints JSON: `current`, `latest`, `newer`, `notes_url`, `apply` (`self`, or `package-manager` for a Linux .deb or .rpm install, updated by installing the release's new package) |
 | `app download` | Download the latest BranchKit release's file for this computer into the app's `updates/<version>/` folder (owner-only) and verify it. Prints JSON: `version`, `tag`, `kind`, `path`, `sha256`, `identity`. Installs nothing |
 
 `app check-updates` reads only the latest release of `branchkit/releases`,

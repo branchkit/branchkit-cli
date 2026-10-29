@@ -119,9 +119,14 @@ func TestAppCheckUpdatesNoReleaseYetIsReached(t *testing.T) {
 
 func TestAppCheckUpdatesNeverSendsAToken(t *testing.T) {
 	for name, h := range map[string]http.HandlerFunc{
-		"found":        latestIs(`{"tag_name":"v0.2.0"}`),
-		"missing":      status(http.StatusNotFound),
-		"rate limited": status(http.StatusForbidden),
+		"found":   latestIs(`{"tag_name":"v0.2.0"}`),
+		"missing": status(http.StatusNotFound),
+		// A spent anonymous limit, as GitHub reports it: githubDo would
+		// retry this one with the person's token.
+		"rate limited": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.WriteHeader(http.StatusForbidden)
+		},
 	} {
 		run, _ := runCheck(t, "darwin", nil, h, "--current", "0.1.0")
 		for _, r := range run.requests {
