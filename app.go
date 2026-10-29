@@ -45,6 +45,7 @@ func liveAppEnv() (appEnv, error) {
 		// No Client.Timeout: it would bound the whole body too (appGet
 		// guards stalls instead).
 		client:     &http.Client{Transport: transport},
+		stall:      appStallTimeout,
 		anchors:    anchors,
 		appSupport: appSupportDir(),
 		goos:       runtime.GOOS,
