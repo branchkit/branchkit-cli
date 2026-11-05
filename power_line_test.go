@@ -85,6 +85,10 @@ func TestThePowerLineReadsEveryGrant(t *testing.T) {
 		`{"id":"x","requires":{"network":{"hosts":["LOCALHOST:5432"]}}}`,
 		`{"id":"x","requires":{"network":{"hosts":["localhost.:5432"]}}}`,
 		`{"id":"x","requires":{"network":{"hosts":["db.localhost:5432"]}}}`,
+		`{"id":"x","requires":{"network":{"hosts":["127.1:6379"]}}}`,
+		`{"id":"x","requires":{"network":{"hosts":["2130706433:6379"]}}}`,
+		`{"id":"x","requires":{"network":{"hosts":["0x7f000001:6379"]}}}`,
+		`{"id":"x","requires":{"network":{"hosts":["0:6379"]}}}`,
 		// Another program's local service.
 		`{"id":"x","requires":{"network":{"hosts":["localhost:8765"]}}}`,
 		`{"id":"x","requires":{"network":{"hosts":["localhost:8765","collect.example"]}}}`,
@@ -137,6 +141,29 @@ func TestEveryPrivilegeHasAReach(t *testing.T) {
 		case "acts", "reads", "neither":
 		default:
 			t.Errorf("privilege %q has no reach in manifest_vocabulary.json", p)
+		}
+	}
+}
+
+// The address forms the app's proxy reads as this computer, beyond what a
+// manifest entry can spell today: the registry must agree with it on each.
+func TestIsLoopbackMemberReadsEverySpelling(t *testing.T) {
+	for _, h := range []string{
+		"::ffff:127.0.0.1", "[::ffff:127.0.0.1]:6379", "::ffff:7f00:1",
+		"::127.0.0.1", "::ffff:0.0.0.0", "::", "[::]:80", "::1",
+		"127.255.255.254", "127.0.1", "0x7F.1", "0177.0.0.1", "0",
+	} {
+		if !isLoopbackMember(h) {
+			t.Errorf("%s is this computer", h)
+		}
+	}
+	for _, h := range []string{
+		"::ffff:192.0.2.1", "2001:db8::1", "64:ff9b::7f00:1", "192.0.2.1",
+		"0.1.2.3", "127.0.0.1.example.com", "127.attacker.com", "1.2.3.example",
+		"256.1", "1.2.3.4.5", "",
+	} {
+		if isLoopbackMember(h) {
+			t.Errorf("%s is not this computer", h)
 		}
 	}
 }

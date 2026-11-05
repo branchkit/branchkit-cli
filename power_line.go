@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -131,10 +132,12 @@ func crossesPowerLine(m PluginManifest) (bool, []string) {
 // isLoopbackMember reports whether a networkSet member reaches this
 // computer, by the same rule as the app's proxy (is_loopback_name in its
 // host proxy, which decides where a connection really goes): the localhost
-// preset, localhost or any *.localhost name, or a loopback or unspecified
-// address, case-insensitive, with or without a port or a trailing dot. A
-// name that merely starts with "127." (127.attacker.com) resolves wherever
-// its owner says, so it is not loopback.
+// preset, localhost or any *.localhost name, or an address of this computer
+// (isThisMachine) in any spelling the system resolver reads as one,
+// including the shorthand IPv4 forms (127.1, 2130706433, 0x7f000001);
+// case-insensitive, with or without a port or a trailing dot. A name that
+// merely starts with "127." (127.attacker.com) resolves wherever its owner
+// says, so it is not loopback.
 func isLoopbackMember(member string) bool {
 	if member == "preset:localhost" {
 		return true
@@ -147,8 +150,73 @@ func isLoopbackMember(member string) bool {
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && (ip.IsLoopback() || ip.IsUnspecified())
+	if ip := net.ParseIP(host); ip != nil {
+		return isThisMachine(ip)
+	}
+	ip, ok := numericIPv4(host)
+	return ok && isThisMachine(ip)
+}
+
+// isThisMachine reports whether a connection to ip reaches this computer:
+// a loopback or unspecified address, also when carried in an IPv4-mapped
+// (::ffff:127.0.0.1) or IPv4-compatible (::127.0.0.1) IPv6 address.
+func isThisMachine(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsUnspecified() {
+		return true
+	}
+	ip16 := ip.To16()
+	if ip16 == nil || ip.To4() != nil {
+		return false
+	}
+	for _, b := range ip16[:12] {
+		if b != 0 {
+			return false
+		}
+	}
+	v4 := net.IP(ip16[12:])
+	return v4[0] == 127 || v4.Equal(net.IPv4zero.To4())
+}
+
+// numericIPv4 reads the shorthand IPv4 forms the system resolver accepts:
+// one to four dot-separated parts, each decimal, 0x hex or leading-zero
+// octal, the last filling the remaining bytes (127.1, 2130706433 and
+// 0x7f000001 are all 127.0.0.1). host is lowercase.
+func numericIPv4(host string) (net.IP, bool) {
+	parts := strings.Split(host, ".")
+	if len(parts) > 4 {
+		return nil, false
+	}
+	nums := make([]uint64, len(parts))
+	for i, p := range parts {
+		var n uint64
+		var err error
+		switch {
+		case p == "0x":
+			n = 0
+		case strings.HasPrefix(p, "0x"):
+			n, err = strconv.ParseUint(p[2:], 16, 64)
+		case len(p) > 1 && p[0] == '0':
+			n, err = strconv.ParseUint(p[1:], 8, 64)
+		default:
+			n, err = strconv.ParseUint(p, 10, 64)
+		}
+		if err != nil {
+			return nil, false
+		}
+		nums[i] = n
+	}
+	last := len(nums) - 1
+	if nums[last] >= uint64(1)<<(8*(4-last)) {
+		return nil, false
+	}
+	v := nums[last]
+	for i, n := range nums[:last] {
+		if n > 255 {
+			return nil, false
+		}
+		v += n << (8 * (3 - i))
+	}
+	return net.IPv4(byte(v>>24), byte(v>>16), byte(v>>8), byte(v)), true
 }
 
 // cmdRegistryPowerLine prints, as JSON, whether the manifest at path crosses
