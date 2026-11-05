@@ -145,10 +145,13 @@ func TestEveryPrivilegeHasAReach(t *testing.T) {
 	}
 }
 
-// The address forms the app's proxy reads as this computer, beyond what a
-// manifest entry can spell today: the registry must agree with it on each.
+// Every address form the app's proxy reads as this computer, with and
+// without a port (unbracketed, as a manifest entry writes one): the
+// registry must agree with it on each.
 func TestIsLoopbackMemberReadsEverySpelling(t *testing.T) {
 	for _, h := range []string{
+		"::ffff:127.0.0.1:6379", "::7f00:1:6379", "::ffff:7f00:1:6379",
+		"::1:6379", ":::6379", "localhost..:6379", "127.1..:6379",
 		"::ffff:127.0.0.1", "[::ffff:127.0.0.1]:6379", "::ffff:7f00:1",
 		"::127.0.0.1", "::ffff:0.0.0.0", "::", "[::]:80", "::1",
 		"127.255.255.254", "127.0.1", "0x7F.1", "0177.0.0.1", "0",

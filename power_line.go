@@ -142,11 +142,28 @@ func isLoopbackMember(member string) bool {
 	if member == "preset:localhost" {
 		return true
 	}
-	host := strings.TrimSpace(member)
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
+	member = strings.TrimSpace(member)
+	// The app splits an entry at its last ':' when a port follows, so an
+	// unbracketed IPv6 address with a port (::ffff:127.0.0.1:6379, the only
+	// way a manifest can write one) is that address and port. Either
+	// reading of the member counts, so the line errs toward a review.
+	if isLoopbackHost(member) {
+		return true
 	}
-	host = strings.ToLower(strings.TrimSuffix(strings.Trim(host, "[]"), "."))
+	if h, _, err := net.SplitHostPort(member); err == nil {
+		return isLoopbackHost(h)
+	}
+	if i := strings.LastIndexByte(member, ':'); i >= 0 {
+		if _, err := strconv.ParseUint(member[i+1:], 10, 16); err == nil {
+			return isLoopbackHost(member[:i])
+		}
+	}
+	return false
+}
+
+// isLoopbackHost is isLoopbackMember for a host with no port.
+func isLoopbackHost(host string) bool {
+	host = strings.ToLower(strings.TrimRight(strings.Trim(host, "[]"), "."))
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true
 	}
