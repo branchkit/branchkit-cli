@@ -26,9 +26,9 @@ import (
 //   - Every part lands inside the model directory. `dest` is manifest-supplied,
 //     so it is confined here the same way the platform confines it.
 //
-// Layout: <app_support>/models/<plugin_id>/<model_name>. The plugin id
+// Layout: <app_support>/artifacts/<plugin_id>/<model_name>. The plugin id
 // namespace is what makes collisions impossible and what lets the platform hand
-// the stage `BRANCHKIT_MODELS_DIR=<...>/models/<plugin_id>` while granting the
+// the stage `BRANCHKIT_ARTIFACTS_DIR=<...>/artifacts/<plugin_id>` while granting the
 // sandbox exactly the one model the pipeline named.
 
 // receiptName is the sidecar recording what a model dir was provisioned from.
