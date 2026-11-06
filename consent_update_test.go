@@ -248,12 +248,22 @@ func TestCatalogTierMatchesSourceAndID(t *testing.T) {
 
 // TestMain keeps every test off this computer's catalog, its installed
 // plugins and the network: each test that needs a catalog or a claimant
-// stands one in.
+// stands one in. A test that leaves BRANCHKIT_APP_SUPPORT alone writes into
+// a scratch folder, not the person's; one that clears it to exercise the
+// default folder must redirect what that folder is built from on every OS
+// itself.
 func TestMain(m *testing.M) {
 	localCatalog = func() (catalog, bool) { return catalog{}, false }
 	remoteCatalog = func() (catalog, error) { return catalog{}, errors.New("no network in tests") }
 	collectionClaimants = func() map[string][]string { return nil }
-	os.Exit(m.Run())
+	support, err := os.MkdirTemp("", "branchkit-cli-test-support-")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("BRANCHKIT_APP_SUPPORT", support)
+	code := m.Run()
+	os.RemoveAll(support)
+	os.Exit(code)
 }
 
 // The answer follows the catalog the app reads, and only when the registry

@@ -63,6 +63,7 @@ func TestInstalledCopyDistinguishesCopyFromLink(t *testing.T) {
 }
 
 func TestSyncInstalledCopy(t *testing.T) {
+	t.Setenv("BRANCHKIT_APP_SUPPORT", t.TempDir())
 	src, dst := t.TempDir(), t.TempDir()
 	writeWatchFile(t, filepath.Join(src, "plugin.json"), watchManifest)
 	writeWatchFile(t, filepath.Join(src, "snippets-plugin"), "v1")
