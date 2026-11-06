@@ -434,10 +434,11 @@ func cmdDevSmoke(args []string) {
 	// the old owner's on-disk data (storage is keyed by name alone). The
 	// reconciliation pass in build_collections refuses the mismatch and
 	// classifies orphans against uninstall markers + grace. `refused` is the
-	// last reconciliation; `orphans` are surfaced-not-deleted; `quarantined`
-	// is the durable collection_logs/orphaned/ scan. Unmarked orphans are
-	// never auto-deleted: a missing uninstall marker can mean a crash, and a
-	// crash must never delete data.
+	// last reconciliation; `orphans` are surfaced-not-deleted. Files set aside
+	// instead of deleted (refused, corrupt, restored) are counted but are no
+	// finding: each is deleted 30 days after it was set aside. Unmarked
+	// orphans are never auto-deleted: a missing uninstall marker can mean a
+	// crash, and a crash must never delete data.
 	raw, status, err = devHTTP("GET", "/inspector/ownership", token, nil)
 	var ownership struct {
 		RefusedCount       int  `json:"refused_count"`
@@ -445,7 +446,7 @@ func cmdDevSmoke(args []string) {
 		OrphansReclaimable int  `json:"orphans_reclaimable"`
 		OrphansRetained    int  `json:"orphans_retained"`
 		OrphansUnmarked    int  `json:"orphans_unmarked"`
-		QuarantinedCount   int  `json:"quarantined_count"`
+		SetAsideCount      int  `json:"set_aside_count"`
 		UnownedGroupCount  int  `json:"unowned_group_count"`
 		GroupCount         int  `json:"group_count"`
 		UnattributedRecs   int  `json:"unattributed_records"`
@@ -466,8 +467,11 @@ func cmdDevSmoke(args []string) {
 		add("ownership", "fail", fmt.Sprintf("GET /inspector/ownership: status=%d err=%v", status, err))
 	} else if ownership.Clean {
 		detail := fmt.Sprintf(
-			"no cross-owner conflicts, orphans, quarantined data, or unowned record groups (%d group(s) inventoried)",
+			"no cross-owner conflicts, orphans, or unowned record groups (%d group(s) inventoried)",
 			ownership.GroupCount)
+		if ownership.SetAsideCount > 0 {
+			detail += fmt.Sprintf("; %d set-aside file(s), each deleted 30 days after it was set aside", ownership.SetAsideCount)
+		}
 		// Pre-Record.writer records: unreachable by any writer filter, but not
 		// a lost plugin. Reported so they stay visible as they age out.
 		if ownership.UnattributedRecs > 0 {
@@ -494,10 +498,10 @@ func cmdDevSmoke(args []string) {
 		// A cross-owner refusal is the guard working (data protected, not
 		// applied); orphans are surfaced-not-deleted per design. Warn so both
 		// are visible without failing the sweep.
-		detail := fmt.Sprintf("%d refused, %d orphan(s) [%d reclaimable / %d retained / %d unmarked], %d quarantined file(s), %d unowned group(s)",
+		detail := fmt.Sprintf("%d refused, %d orphan(s) [%d reclaimable / %d retained / %d unmarked], %d set-aside file(s), %d unowned group(s)",
 			ownership.RefusedCount, ownership.OrphanCount,
 			ownership.OrphansReclaimable, ownership.OrphansRetained, ownership.OrphansUnmarked,
-			ownership.QuarantinedCount, ownership.UnownedGroupCount)
+			ownership.SetAsideCount, ownership.UnownedGroupCount)
 		if len(sample) > 0 {
 			detail += ": " + strings.Join(sample, "; ")
 		}
