@@ -396,21 +396,15 @@ func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 	// this build (the release's source, tag and signing results) whenever
 	// the sync leaves plugin.json and its collection files as they were.
 	// The old record goes before any file is copied, so a sync that fails
-	// partway leaves none; the new one is written once the copy is done. A
-	// copy with no record is left with none.
+	// partway leaves none; the new one is written once a copy succeeds,
+	// whether or not one was there before (a failed sync removed it).
 	id := filepath.Base(dst)
-	_, recorded := readSourceMeta(id)
-	var record SourceMeta
-	var named []string
-	var recErr error
-	if recorded {
-		source := srcDir
-		if abs, err := filepath.Abs(srcDir); err == nil {
-			source = abs
-		}
-		record, named, recErr = installRecord(source, localSourcePrefix+source, "local", nil, false)
-		removeSourceMeta(id)
+	source := srcDir
+	if abs, err := filepath.Abs(srcDir); err == nil {
+		source = abs
 	}
+	record, named, recErr := installRecord(source, localSourcePrefix+source, "local", nil, false)
+	removeSourceMeta(id)
 	before, _ := os.ReadFile(filepath.Join(dst, "plugin.json"))
 	after, _ := os.ReadFile(filepath.Join(srcDir, "plugin.json"))
 	if err := safeCopyDir(srcDir, dst, 0); err != nil {
@@ -420,12 +414,10 @@ func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 	if newM.Run != "" {
 		setExecutable(dst, newM.Run)
 	}
-	if recorded {
-		if recErr == nil {
-			dropUnshipped(dst, named, record)
-		}
-		recordInstall(id, record, recErr)
+	if recErr == nil {
+		dropUnshipped(dst, named, record)
 	}
+	recordInstall(id, record, recErr)
 	return !bytes.Equal(before, after), nil
 }
 

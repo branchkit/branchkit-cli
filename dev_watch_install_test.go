@@ -157,7 +157,8 @@ func TestSyncRecordsTheDevelopersFolder(t *testing.T) {
 }
 
 // A sync that fails partway leaves no record: the release's would speak for
-// the developer's files already copied.
+// the developer's files already copied. The next one that succeeds records
+// the developer's folder.
 func TestAFailedSyncLeavesNoRecord(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs a symlink in the developer's folder")
@@ -183,6 +184,15 @@ func TestAFailedSyncLeavesNoRecord(t *testing.T) {
 	}
 	if _, ok := readSourceMeta("snippets"); ok {
 		t.Fatal("the release's record still speaks for a partly synced copy")
+	}
+	// The next sync that succeeds records the developer's folder.
+	os.Remove(filepath.Join(src, "b-link"))
+	if _, err := syncInstalledCopy(src, dst); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	srcAbs, _ := filepath.Abs(src)
+	if meta, ok := readSourceMeta("snippets"); !ok || meta.Source != localSourcePrefix+srcAbs {
+		t.Fatalf("after a failed sync, a good one recorded %+v (ok=%v)", meta, ok)
 	}
 }
 
