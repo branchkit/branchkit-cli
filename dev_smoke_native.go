@@ -24,8 +24,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
+	"slices"
 	"strings"
 )
+
+// smokeGOOS is the OS the probed app runs on: the CLI's own, since it
+// finds the app through a local address file. A variable so tests can set
+// it.
+var smokeGOOS = runtime.GOOS
 
 // nativeProbe is one read's result, reported per op.
 type nativeProbe struct {
@@ -49,10 +56,15 @@ type nativeLivenessOp struct {
 	// The split is taken per group.
 	group      string
 	mayBeEmpty bool
-	// emptyWith names another probe: when both answer empty, this one's
-	// empty is real (Linux on X11 lists the apps that have a window, so no
-	// window means no app).
-	emptyWith string
+	// emptyWith names another probe and emptyWithOS the OSes where, when
+	// both answer empty, this one's empty is real. Linux and Windows list
+	// the apps that have a window, so no window open means no app. Both
+	// reads come from one window list there, so a window list that stopped
+	// answering looks the same, and this check cannot tell them apart.
+	// macOS lists apps from the workspace, where an empty list is never
+	// real.
+	emptyWith   string
+	emptyWithOS []string
 	// judge reads a 200 body and returns (plausible, detail).
 	judge func(raw []byte) (bool, string)
 }
@@ -62,7 +74,7 @@ type nativeLivenessOp struct {
 // here touches contacts, calendars, location, camera, microphone or
 // Bluetooth).
 var nativeLivenessOps = []nativeLivenessOp{
-	{name: "running apps", path: "/v1/native/running-apps", group: "desktop", emptyWith: "window ids", judge: judgeList("apps", "app")},
+	{name: "running apps", path: "/v1/native/running-apps", group: "desktop", emptyWith: "window ids", emptyWithOS: []string{"linux", "windows"}, judge: judgeList("apps", "app")},
 	{name: "displays", path: "/v1/native/displays", group: "desktop", judge: judgeDisplays},
 	{name: "cursor", path: "/v1/native/cursor-info", group: "desktop", judge: judgeCursor},
 	{name: "input sources", path: "/v1/native/input-sources", group: "desktop", judge: judgeList("sources", "source")},
@@ -240,7 +252,8 @@ func nativeLivenessCheck(token string) smokeCheck {
 	var unsupported []string
 	for i, op := range nativeLivenessOps {
 		p := &probes[i]
-		if p.Status == "empty" && op.emptyWith != "" && status[op.emptyWith] == "empty" {
+		if p.Status == "empty" && op.emptyWith != "" && slices.Contains(op.emptyWithOS, smokeGOOS) &&
+			status[op.emptyWith] == "empty" {
 			p.MayBeEmpty = true
 			p.Detail += " (and no " + op.emptyWith + ")"
 		}
@@ -293,6 +306,12 @@ func nativeLivenessCheck(token string) smokeCheck {
 		c.Detail = fmt.Sprintf(
 			"no system read answered (%s) while other reads answered — an OS path has stopped answering%s",
 			strings.Join(system.dead, ", "), note)
+	case len(audio.dead) > 0:
+		// The volume is may-be-empty, so it is dead only when the call
+		// failed, which no machine state explains while others answer.
+		c.Status = "fail"
+		c.Detail = fmt.Sprintf(
+			"the volume read failed while other reads answered — an OS path has stopped answering%s", note)
 	case len(desktop.dead) > 0:
 		c.Status = "warn"
 		c.Detail = fmt.Sprintf(

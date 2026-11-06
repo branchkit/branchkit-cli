@@ -241,22 +241,62 @@ func TestNativeLivenessAmplifiedVolumeIsLive(t *testing.T) {
 	}
 }
 
-// Linux on X11 lists the apps that have a window, so a desktop with no
-// window open answers no apps, and that is real.
-func TestNativeLivenessNoAppsWithNoWindowsPasses(t *testing.T) {
+func onOS(t *testing.T, goos string) {
+	t.Helper()
+	old := smokeGOOS
+	smokeGOOS = goos
+	t.Cleanup(func() { smokeGOOS = old })
+}
+
+// Linux and Windows list the apps that have a window, so a desktop with
+// no window open answers no apps, and that is real.
+func TestNativeLivenessNoAppsWithNoWindowsPassesOffMac(t *testing.T) {
+	for _, goos := range []string{"linux", "windows"} {
+		t.Run(goos, func(t *testing.T) {
+			onOS(t, goos)
+			nativeServer(t, withBodies(liveNativeBodies, map[string]string{
+				"/v1/native/running-apps":  `{"apps":[]}`,
+				"/v1/native/windows/ids":   `{"window_ids":[]}`,
+				"/v1/native/frontmost-app": `{"app":null}`,
+			}), nil)
+			c := nativeLivenessCheck("tok")
+			if c.Status != "pass" {
+				t.Fatalf("status = %s (%s), want pass", c.Status, c.Detail)
+			}
+		})
+	}
+}
+
+// macOS lists apps from the workspace: no apps there is dead, windows or
+// not.
+func TestNativeLivenessNoAppsFailsOnMac(t *testing.T) {
+	onOS(t, "darwin")
 	nativeServer(t, withBodies(liveNativeBodies, map[string]string{
 		"/v1/native/running-apps":  `{"apps":[]}`,
 		"/v1/native/windows/ids":   `{"window_ids":[]}`,
 		"/v1/native/frontmost-app": `{"app":null}`,
 	}), nil)
 	c := nativeLivenessCheck("tok")
-	if c.Status != "pass" {
-		t.Fatalf("status = %s (%s), want pass", c.Status, c.Detail)
+	if c.Status != "fail" {
+		t.Fatalf("status = %s (%s), want fail", c.Status, c.Detail)
+	}
+}
+
+// A failed volume call is dead even in a group of one.
+func TestNativeLivenessVolumeErrorFails(t *testing.T) {
+	nativeServer(t, liveNativeBodies, map[string]int{"/v1/native/volume": 500})
+	c := nativeLivenessCheck("tok")
+	if c.Status != "fail" {
+		t.Fatalf("status = %s (%s), want fail", c.Status, c.Detail)
+	}
+	if got := probeStatus(c, "volume"); got != "error" {
+		t.Errorf("volume = %s, want error", got)
 	}
 }
 
 // No apps while windows are open is not that state: it is dead.
 func TestNativeLivenessNoAppsWithWindowsFails(t *testing.T) {
+	onOS(t, "linux")
 	nativeServer(t, withBodies(liveNativeBodies, map[string]string{
 		"/v1/native/running-apps": `{"apps":[]}`,
 	}), nil)
