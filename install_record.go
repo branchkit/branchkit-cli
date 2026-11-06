@@ -40,6 +40,59 @@ type SourceMeta struct {
 	// still has this digest, so a plugin that rewrites its own manifest (or
 	// another copy dropped in under the same id) carries no record.
 	ManifestSHA256 string `json:"manifest_sha256"`
+	// CollectionFilesSHA256 is the hex SHA-256 of every file the manifest
+	// names for a collection (see referencedFiles), keyed by the path exactly
+	// as the manifest writes it. They are part of the install as much as
+	// plugin.json is (a collection's declaration, the commands it
+	// contributes), so the app reads the record only while each still has its
+	// digest too.
+	CollectionFilesSHA256 map[string]string `json:"collection_files_sha256"`
+}
+
+// referencedFiles lists the files a manifest names for its collections: each
+// string value of collection_data and of provides.collections, as written.
+// The app computes the same set from the same JSON. An error when one is not
+// a plain relative path inside the plugin's folder: no record can speak for
+// such a manifest, and the app refuses to load it anyway.
+func referencedFiles(manifest []byte) ([]string, error) {
+	var m struct {
+		CollectionData map[string]json.RawMessage `json:"collection_data"`
+		Provides       struct {
+			Collections map[string]json.RawMessage `json:"collections"`
+		} `json:"provides"`
+	}
+	if err := json.Unmarshal(manifest, &m); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, group := range []map[string]json.RawMessage{m.CollectionData, m.Provides.Collections} {
+		for _, raw := range group {
+			var rel string
+			if json.Unmarshal(raw, &rel) != nil {
+				continue // inline data or an inline declaration
+			}
+			if !plainRelativePath(rel) {
+				return nil, fmt.Errorf("plugin.json names %q, which is not a path inside the plugin's folder", rel)
+			}
+			out = append(out, rel)
+		}
+	}
+	return out, nil
+}
+
+// plainRelativePath: not empty, not absolute or rooted on either separator,
+// no drive letter, no ".." component.
+func plainRelativePath(rel string) bool {
+	if rel == "" || filepath.IsAbs(rel) || strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, `\`) ||
+		(len(rel) >= 2 && rel[1] == ':') {
+		return false
+	}
+	for _, part := range strings.FieldsFunc(rel, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if part == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // installRecordsDirName is the folder under app support holding install
@@ -60,7 +113,8 @@ func sourceMetaPath(pluginID string) string {
 }
 
 // writeSourceMeta records pluginID's install, bound to the plugin.json now in
-// pluginDir. Through a temporary file, so the app never reads half a record.
+// pluginDir and the collection files it names. Through a temporary file, so
+// the app never reads half a record.
 // A record that cannot be written is reported: the plugin then reads as
 // installed from nowhere (no catalog tier, not author-verified).
 func writeSourceMeta(pluginID, pluginDir, source, tag string, attestation *AuthorAttestation, registrySigned bool) {
@@ -77,12 +131,28 @@ func writeSourceMeta(pluginID, pluginDir, source, tag string, attestation *Autho
 		warn(err)
 		return
 	}
+	files, err := referencedFiles(manifest)
+	if err != nil {
+		warn(err)
+		return
+	}
+	digests := make(map[string]string, len(files))
+	for _, rel := range files {
+		body, err := os.ReadFile(filepath.Join(pluginDir, filepath.FromSlash(rel)))
+		if err != nil {
+			warn(err)
+			return
+		}
+		sum := sha256.Sum256(body)
+		digests[rel] = hex.EncodeToString(sum[:])
+	}
 	digest := sha256.Sum256(manifest)
 	meta := SourceMeta{
-		Source:         source,
-		InstalledTag:   tag,
-		RegistrySigned: registrySigned,
-		ManifestSHA256: hex.EncodeToString(digest[:]),
+		Source:                source,
+		InstalledTag:          tag,
+		RegistrySigned:        registrySigned,
+		ManifestSHA256:        hex.EncodeToString(digest[:]),
+		CollectionFilesSHA256: digests,
 	}
 	if attestation != nil && attestation.Verified {
 		meta.AuthorVerified = true

@@ -46,6 +46,61 @@ func TestWriteReadSourceMeta(t *testing.T) {
 	}
 }
 
+// The record also binds every file the manifest names for a collection, by
+// the path the manifest writes, the way the app reads it; inline values name
+// no file. A manifest naming a file outside its folder gets no record.
+func TestSourceMetaBindsTheCollectionFilesTheManifestNames(t *testing.T) {
+	manifest := `{"id":"test","collection_data":{"voice_commands":"commands.json","keys":{"a":1}},` +
+		`"provides":{"collections":{"plugin.test.log":"collections/log.json","plugin.test.inline":{"description":"x"}}}}`
+	dir := installedDir(t, "test", manifest)
+	files := map[string]string{"commands.json": `[{"phrase":"go"}]`, "collections/log.json": `{"preset":"log"}`}
+	for rel, body := range files {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSourceMeta("test", dir, "x/y", "v1", nil, false)
+	meta, ok := readSourceMeta("test")
+	if !ok {
+		t.Fatal("no record")
+	}
+	if len(meta.CollectionFilesSHA256) != len(files) {
+		t.Errorf("digests %v, want one for each of %v", meta.CollectionFilesSHA256, files)
+	}
+	for rel, body := range files {
+		sum := sha256.Sum256([]byte(body))
+		if got := meta.CollectionFilesSHA256[rel]; got != hex.EncodeToString(sum[:]) {
+			t.Errorf("%s: digest %q, want the file's", rel, got)
+		}
+	}
+
+	removeSourceMeta("test")
+	escaping := `{"id":"test","collection_data":{"voice_commands":"../elsewhere.json"}}`
+	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(escaping), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSourceMeta("test", dir, "x/y", "v1", nil, false)
+	if _, ok := readSourceMeta("test"); ok {
+		t.Error("a manifest naming a file outside its folder got a record")
+	}
+}
+
+func TestPlainRelativePath(t *testing.T) {
+	for rel, want := range map[string]bool{
+		"commands.json": true, "collections/log.json": true, `collections\log.json`: true,
+		"": false, "/etc/passwd": false, `\x`: false, "C:x": false, `C:\x`: false,
+		"../x": false, "a/../../x": false, `a\..\x`: false,
+	} {
+		if got := plainRelativePath(rel); got != want {
+			t.Errorf("plainRelativePath(%q) = %v, want %v", rel, got, want)
+		}
+	}
+}
+
 // The record decides the app's trust tier, so it must sit where the plugin
 // cannot write: never inside the plugin's own (writable) install folder.
 func TestSourceMetaLivesOutsideThePluginFolder(t *testing.T) {
