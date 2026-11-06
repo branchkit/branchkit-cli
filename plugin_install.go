@@ -539,18 +539,9 @@ func printInstallInfo(manifest PluginManifest, source ResolvedSource, tag string
 func printConsentSummary(manifest PluginManifest) {
 	// One loop over the consent-axis registry — a new axis registers in
 	// consentAxes and this disclosure carries it without edits here.
-	for _, ax := range consentAxes {
-		values := ax.extract(manifest)
-		if len(values) == 0 {
-			continue
-		}
-		display := make([]string, len(values))
-		for i, v := range values {
-			display[i] = installDisplay(manifest, ax, v)
-		}
-		fmt.Print(ax.summary(display))
+	for _, e := range installEntries(manifest) {
+		fmt.Print(e.line)
 	}
-	fmt.Print(runSummary(manifest))
 	if manifest.Consumes == nil {
 		return
 	}

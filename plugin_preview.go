@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -95,9 +96,9 @@ type previewUpdate struct {
 	InstalledVersion string          `json:"installed_version"`
 	Added            []previewChange `json:"added"`
 	Removed          []previewChange `json:"removed"`
-	// Effects that are grants: those the app judged the plugin's own (it
-	// defines them) ask nothing and revoke nothing, so neither list has
-	// them.
+	// Effects that are grants. Those the app judged the plugin's own (it
+	// defines them) ask nothing and revoke nothing: they are note rows in
+	// Added and Removed instead.
 	AddedEffects   []previewEffect `json:"added_effects"`
 	RemovedEffects []string        `json:"removed_effects"`
 	RunChanged     bool            `json:"run_changed"`
@@ -116,45 +117,58 @@ type previewEffect struct {
 	Asserts     []string `json:"asserts"`
 }
 
-// previewDisclosures is the install disclosure as data: the same loop, the
-// same copy, as printConsentSummary.
-func previewDisclosures(m PluginManifest) []previewDisclosure {
-	out := []previewDisclosure{}
+// installEntry is one line of the install disclosure: the terminal's
+// line (printConsentSummary) and the panel's entry (previewDisclosures)
+// are both made from it, so the two cannot say different things.
+type installEntry struct {
+	axis  string
+	items []string // display-ready
+	line  string   // the terminal's line, indented, with its newline
+	kind  axisKind
+}
+
+// installEntries is the install disclosure, one entry per consent axis the
+// plugin declares anything on, in registry order, then its run command.
+// What the app judged the plugin's own on a grant axis (a read of its own
+// blob) is an entry of its own, a note: no switch decides it.
+func installEntries(m PluginManifest) []installEntry {
+	var out []installEntry
 	for _, ax := range consentAxes {
-		values := ax.extract(m)
-		if len(values) == 0 {
-			continue
+		var asked, own []string
+		for _, v := range ax.extract(m) {
+			if ax.kind == kindGrant && m.isOwn(ax.name, v) {
+				own = append(own, ax.display(v))
+			} else {
+				asked = append(asked, ax.display(v))
+			}
 		}
-		display := make([]string, len(values))
-		for i, v := range values {
-			display[i] = installDisplay(m, ax, v)
+		if len(asked) > 0 {
+			out = append(out, installEntry{ax.name, asked, ax.summary(asked), ax.kind})
 		}
-		out = append(out, previewDisclosure{
-			Axis:  ax.name,
-			Items: display,
-			Text:  disclosureText(ax.summary(display)),
-			Kind:  ax.kind,
-		})
+		if len(own) > 0 {
+			line := ownLine(fmt.Sprintf(ax.addFmt, strings.Join(own, ", ")))
+			out = append(out, installEntry{ax.name, own, strings.Replace(line, "+ ", "", 1), kindNote})
+		}
 	}
 	if line := runSummary(m); line != "" {
-		out = append(out, previewDisclosure{
-			Axis:  "run",
-			Items: []string{m.Run},
-			Text:  disclosureText(line),
-			Kind:  kindScope,
-		})
+		out = append(out, installEntry{"run", []string{m.Run}, line, kindScope})
 	}
 	return out
 }
 
-// installDisplay words one member of ax for the install disclosure: what
-// the app judged the plugin's own on a grant axis (a read of its own blob)
-// says it has no switch.
-func installDisplay(m PluginManifest, ax consentAxis, member string) string {
-	if ax.kind == kindGrant && m.isOwn(ax.name, member) {
-		return ax.display(member) + " (its own; no switch)"
+// previewDisclosures is the install disclosure as data: the same entries,
+// the same copy, as printConsentSummary.
+func previewDisclosures(m PluginManifest) []previewDisclosure {
+	out := []previewDisclosure{}
+	for _, e := range installEntries(m) {
+		out = append(out, previewDisclosure{
+			Axis:  e.axis,
+			Items: e.items,
+			Text:  disclosureText(e.line),
+			Kind:  e.kind,
+		})
 	}
-	return ax.display(member)
+	return out
 }
 
 func previewEffects(effects []EffectDeclaration) []previewEffect {
@@ -210,7 +224,26 @@ func previewDiff(oldM, newM PluginManifest, grantsOn bool) previewUpdate {
 			})
 		}
 	}
+	// The effects the app judged its own are told with the notes.
+	for _, label := range d.OwnAddedEffects {
+		up.Added = append(up.Added, ownEffectChange("+", label, boolPtr(false)))
+	}
+	for _, label := range d.OwnRemovedEffects {
+		up.Removed = append(up.Removed, ownEffectChange("-", label, nil))
+	}
 	return up
+}
+
+// ownEffectChange is the row for an effect the app judged the plugin's own:
+// a note, worded as the terminal words it.
+func ownEffectChange(marker, label string, expands *bool) previewChange {
+	return previewChange{
+		Axis:    "effects",
+		Item:    label,
+		Text:    disclosureText(ownLine(fmt.Sprintf("  %s effect: %s\n", marker, label))),
+		Kind:    kindNote,
+		Expands: expands,
+	}
 }
 
 func cmdPreview(source string) {

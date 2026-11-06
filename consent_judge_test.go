@@ -197,18 +197,34 @@ func TestItsOwnIsToldNotRevoked(t *testing.T) {
 	if strings.Contains(out, "will be revoked") || !strings.Contains(out, "notes/pages (its own; no switch)") || !strings.Contains(out, "effect: Pinned (its own; no switch)") {
 		t.Errorf("update output:\n%s", out)
 	}
+	// The panel files a note row with the notes, never as a revocation.
 	up := previewDiff(with, without, false)
-	if len(up.Removed) != 1 || up.Removed[0].Kind != kindNote || len(up.RemovedEffects) != 0 {
+	if len(up.Removed) != 2 || len(up.RemovedEffects) != 0 {
 		t.Errorf("removed rows: %+v, effects %v", up.Removed, up.RemovedEffects)
 	}
-	if add := diffConsent(without, with); len(add.AddedEffects) != 0 || len(add.OwnAddedEffects) != 1 || add.expands(true) {
+	for _, c := range up.Removed {
+		if c.Kind != kindNote || !strings.HasSuffix(c.Text, "(its own; no switch)") {
+			t.Errorf("removed row: %+v", c)
+		}
+	}
+	add := diffConsent(without, with)
+	if len(add.AddedEffects) != 0 || len(add.OwnAddedEffects) != 1 || add.expands(true) {
 		t.Errorf("adding its own effect asks nothing: %+v", add)
 	}
+	for _, c := range previewDiff(without, with, true).Added {
+		if c.Kind != kindNote || c.Expands == nil || *c.Expands {
+			t.Errorf("added row: %+v", c)
+		}
+	}
 
+	// At install, its own read is a note of its own, with no "allow" clause.
 	for _, disc := range previewDisclosures(with) {
-		if disc.Axis == "blobs" && !reflect.DeepEqual(disc.Items, []string{"notes/pages (its own; no switch)"}) {
+		if disc.Axis == "blobs" && (disc.Kind != kindNote || disc.Text != "reads shared data: notes/pages (its own; no switch)") {
 			t.Errorf("install disclosure: %+v", disc)
 		}
+	}
+	if out := captureStdout(t, func() { printConsentSummary(with) }); !strings.Contains(out, "  reads shared data: notes/pages (its own; no switch)\n") || strings.Contains(out, "allow") {
+		t.Errorf("install summary:\n%s", out)
 	}
 	// Unasked, the same read is a grant like any other.
 	unasked := parseManifest(t, `{"id": "notes", "consumes": {"blobs": ["notes/pages"]}}`)
