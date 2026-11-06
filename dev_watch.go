@@ -398,15 +398,15 @@ func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 	if newM.Run != "" {
 		setExecutable(dst, newM.Run)
 	}
-	// A copy the app seeded from its bundle is a developer's build now, as
-	// if installed from this folder: recorded so, or its "bundled" record
-	// would have the app put the bundle's copy back at the next launch. A
-	// copy installed from a local folder is recorded again for what this
-	// copied, so the next install's diff starts from it. One installed from
-	// a release keeps that release's record, which no longer speaks for
-	// the folder: a developer's build is not the release.
+	// The installed copy is a developer's build now, as if installed from
+	// this folder, and recorded so: a seeded copy's "bundled" record would
+	// have the app put the bundle's copy back at the next launch, and a
+	// release's record covers no binary, so it would go on speaking for
+	// this build (the release's source, tag and signing results) whenever
+	// the sync leaves plugin.json and its collection files as they were.
+	// A copy with no record is left with none.
 	if id := filepath.Base(dst); id != "" {
-		if meta, ok := readSourceMeta(id); ok && (meta.Source == bundledSource || strings.HasPrefix(meta.Source, localSourcePrefix)) {
+		if _, ok := readSourceMeta(id); ok {
 			source := srcDir
 			if abs, err := filepath.Abs(srcDir); err == nil {
 				source = abs

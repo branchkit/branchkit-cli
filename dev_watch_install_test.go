@@ -105,12 +105,12 @@ func TestSyncInstalledCopy(t *testing.T) {
 	}
 }
 
-// The app keeps a copy it seeded from its bundle equal to the bundle, so a
-// developer's build synced over one is recorded as installed from the
-// developer's folder: otherwise the next launch would put the bundle's copy
-// back. A folder install's record is written again for what was copied;
-// a release's record is kept.
-func TestSyncOverASeededCopyForgetsItsBundledRecord(t *testing.T) {
+// A developer's build synced over an installed copy is recorded as
+// installed from the developer's folder. The app keeps a copy it seeded
+// from its bundle equal to the bundle, so a "bundled" record would have the
+// next launch put the bundle's copy back; a release's record covers no
+// binary, so it would go on vouching for the developer's build.
+func TestSyncRecordsTheDevelopersFolder(t *testing.T) {
 	support := t.TempDir()
 	t.Setenv("BRANCHKIT_APP_SUPPORT", support)
 	src := t.TempDir()
@@ -124,24 +124,33 @@ func TestSyncOverASeededCopyForgetsItsBundledRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	srcAbs, _ := filepath.Abs(src)
-	for _, tc := range []struct{ source, after string }{
-		{bundledSource, localSourcePrefix + srcAbs},
-		{"acme/branchkit-plugin-snippets", "acme/branchkit-plugin-snippets"},
-		{localSourcePrefix + "/elsewhere", localSourcePrefix + srcAbs},
+	// The release case leaves plugin.json as it was: only the binary
+	// changes, which no record covers.
+	for _, tc := range []struct {
+		source       string
+		editManifest bool
+	}{
+		{bundledSource, true},
+		{"acme/branchkit-plugin-snippets", false},
+		{localSourcePrefix + "/elsewhere", true},
 	} {
-		writeSourceMeta("snippets", dst, tc.source, "v1", nil, false)
+		writeSourceMeta("snippets", dst, tc.source, "v1", &AuthorAttestation{Verified: true, SAN: "acme"}, true)
 		writeWatchFile(t, filepath.Join(src, "snippets-plugin"), "v2-"+tc.source)
-		writeWatchFile(t, filepath.Join(src, "plugin.json"),
-			strings.Replace(watchManifest, `"Snippets"`, `"Snippets `+tc.source+`"`, 1))
+		if tc.editManifest {
+			writeWatchFile(t, filepath.Join(src, "plugin.json"),
+				strings.Replace(watchManifest, `"Snippets"`, `"Snippets `+tc.source+`"`, 1))
+		}
 		if _, err := syncInstalledCopy(src, dst); err != nil {
 			t.Fatalf("sync: %v", err)
 		}
 		meta, _ := readSourceMeta("snippets")
-		if meta.Source != tc.after {
-			t.Errorf("synced over a %q copy: recorded %q, want %q", tc.source, meta.Source, tc.after)
+		if want := localSourcePrefix + srcAbs; meta.Source != want {
+			t.Errorf("synced over a %q copy: recorded %q, want %q", tc.source, meta.Source, want)
 		}
-		// A folder install is recorded again for what the sync copied.
-		if want, _, _ := installRecord(src, "", "", nil, false); tc.after != tc.source && meta.ManifestSHA256 != want.ManifestSHA256 {
+		if meta.AuthorVerified || meta.RegistrySigned {
+			t.Errorf("synced over a %q copy: the developer's build kept the signing results", tc.source)
+		}
+		if want, _, _ := installRecord(src, "", "", nil, false); meta.ManifestSHA256 != want.ManifestSHA256 {
 			t.Errorf("synced over a %q copy: the record is not for the synced manifest", tc.source)
 		}
 	}
