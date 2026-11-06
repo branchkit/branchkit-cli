@@ -31,7 +31,7 @@ func cmdUpdate(pluginID string) {
 		os.Exit(1)
 	}
 
-	meta, ok := readSourceMeta(found.ManifestDir)
+	meta, ok := readSourceMeta(found.Manifest.ID)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Error: plugin '%s' has no install source metadata — cannot determine update source\n", pluginID)
 		os.Exit(1)

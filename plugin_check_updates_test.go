@@ -1,18 +1,36 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
+// installedDir stands up an installed copy of id (its plugin.json) under a
+// scratch app support, as an install leaves it.
+func installedDir(t *testing.T, id, manifest string) string {
+	t.Helper()
+	t.Setenv("BRANCHKIT_APP_SUPPORT", t.TempDir())
+	dir := filepath.Join(userPluginsDir(), id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func TestWriteReadSourceMeta(t *testing.T) {
-	dir := tmpDir(t, "source-meta")
+	dir := installedDir(t, "test", `{"id":"test"}`)
 
-	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.2.3", nil, false)
+	writeSourceMeta("test", dir, "drew/branchkit-plugin-test", "v1.2.3", nil, false)
 
-	meta, ok := readSourceMeta(dir)
+	meta, ok := readSourceMeta("test")
 	if !ok {
 		t.Fatal("readSourceMeta returned false")
 	}
@@ -22,34 +40,77 @@ func TestWriteReadSourceMeta(t *testing.T) {
 	if meta.InstalledTag != "v1.2.3" {
 		t.Errorf("InstalledTag = %q, want v1.2.3", meta.InstalledTag)
 	}
+	sum := sha256.Sum256([]byte(`{"id":"test"}`))
+	if meta.ManifestSHA256 != hex.EncodeToString(sum[:]) {
+		t.Errorf("ManifestSHA256 = %q, want the installed plugin.json's digest", meta.ManifestSHA256)
+	}
+}
+
+// The record decides the app's trust tier, so it must sit where the plugin
+// cannot write: never inside the plugin's own (writable) install folder.
+func TestSourceMetaLivesOutsideThePluginFolder(t *testing.T) {
+	dir := installedDir(t, "voice", `{"id":"voice"}`)
+	writeSourceMeta("voice", dir, "branchkit/branchkit-plugin-voice", "v1", nil, false)
+
+	path := sourceMetaPath("voice")
+	if want := filepath.Join(appSupportDir(), "install-records", "voice.json"); path != want {
+		t.Errorf("record at %q, want %q", path, want)
+	}
+	if rel, err := filepath.Rel(dir, path); err == nil && !strings.HasPrefix(rel, "..") {
+		t.Errorf("record %q is inside the plugin folder %q", path, dir)
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.Name() != "plugin.json" {
+			t.Errorf("the install wrote %q into the plugin folder", e.Name())
+		}
+	}
+	// A record the plugin writes into its own folder is not read.
+	os.Remove(path)
+	os.WriteFile(filepath.Join(dir, ".branchkit-source.json"),
+		[]byte(`{"source":"branchkit/branchkit-plugin-voice"}`), 0o644)
+	if _, ok := readSourceMeta("voice"); ok {
+		t.Error("read a record from inside the plugin folder")
+	}
+}
+
+func TestSourceMetaPathRefusesNonIDs(t *testing.T) {
+	t.Setenv("BRANCHKIT_APP_SUPPORT", t.TempDir())
+	for _, id := range []string{"", ".", "..", "../x", `a\b`, "a/b", ".hidden"} {
+		if p := sourceMetaPath(id); p != "" {
+			t.Errorf("sourceMetaPath(%q) = %q, want none", id, p)
+		}
+	}
 }
 
 func TestReadSourceMetaMissing(t *testing.T) {
-	dir := tmpDir(t, "source-meta-missing")
+	t.Setenv("BRANCHKIT_APP_SUPPORT", t.TempDir())
 
-	_, ok := readSourceMeta(dir)
+	_, ok := readSourceMeta("nothing")
 	if ok {
 		t.Fatal("readSourceMeta returned true for missing file")
 	}
 }
 
 func TestReadSourceMetaBadJSON(t *testing.T) {
-	dir := tmpDir(t, "source-meta-bad")
-	os.WriteFile(filepath.Join(dir, sourceMetaFile), []byte("not json"), 0o644)
+	t.Setenv("BRANCHKIT_APP_SUPPORT", t.TempDir())
+	path := sourceMetaPath("bad")
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	os.WriteFile(path, []byte("not json"), 0o644)
 
-	_, ok := readSourceMeta(dir)
+	_, ok := readSourceMeta("bad")
 	if ok {
 		t.Fatal("readSourceMeta returned true for bad JSON")
 	}
 }
 
 func TestWriteSourceMetaOverwrites(t *testing.T) {
-	dir := tmpDir(t, "source-meta-overwrite")
+	dir := installedDir(t, "test", `{"id":"test"}`)
 
-	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v1.0.0", nil, false)
-	writeSourceMeta(dir, "drew/branchkit-plugin-test", "v2.0.0", nil, false)
+	writeSourceMeta("test", dir, "drew/branchkit-plugin-test", "v1.0.0", nil, false)
+	writeSourceMeta("test", dir, "drew/branchkit-plugin-test", "v2.0.0", nil, false)
 
-	meta, ok := readSourceMeta(dir)
+	meta, ok := readSourceMeta("test")
 	if !ok {
 		t.Fatal("readSourceMeta returned false")
 	}
@@ -58,10 +119,12 @@ func TestWriteSourceMetaOverwrites(t *testing.T) {
 	}
 }
 
-func TestSourceMetaFileIsHidden(t *testing.T) {
-	// .branchkit-source.json starts with dot — won't be picked up by plugin discovery
-	if sourceMetaFile[0] != '.' {
-		t.Errorf("sourceMetaFile = %q, should start with '.' to be hidden", sourceMetaFile)
+func TestRemoveSourceMeta(t *testing.T) {
+	dir := installedDir(t, "test", `{"id":"test"}`)
+	writeSourceMeta("test", dir, "x/y", "v1", nil, false)
+	removeSourceMeta("test")
+	if _, ok := readSourceMeta("test"); ok {
+		t.Error("record survived removal")
 	}
 }
 
@@ -99,10 +162,10 @@ func TestUpdateInfoEmptyArray(t *testing.T) {
 }
 
 func TestSourceMetaRecordsRegistrySigned(t *testing.T) {
-	dir := t.TempDir()
+	dir := installedDir(t, "x", `{"id":"x"}`)
 	att := &AuthorAttestation{Verified: true, SAN: "https://github.com/acme/x"}
-	writeSourceMeta(dir, "acme/x", "v1.0.0", att, true)
-	meta, ok := readSourceMeta(dir)
+	writeSourceMeta("x", dir, "acme/x", "v1.0.0", att, true)
+	meta, ok := readSourceMeta("x")
 	if !ok {
 		t.Fatal("source meta not written")
 	}
@@ -110,9 +173,8 @@ func TestSourceMetaRecordsRegistrySigned(t *testing.T) {
 		t.Errorf("author_verified=%v registry_signed=%v, want both true", meta.AuthorVerified, meta.RegistrySigned)
 	}
 	// Unsigned install records both false.
-	dir2 := t.TempDir()
-	writeSourceMeta(dir2, "x/y", "v1", nil, false)
-	m2, _ := readSourceMeta(dir2)
+	writeSourceMeta("x", dir, "x/y", "v1", nil, false)
+	m2, _ := readSourceMeta("x")
 	if m2.AuthorVerified || m2.RegistrySigned {
 		t.Errorf("unsigned should be false/false, got %v/%v", m2.AuthorVerified, m2.RegistrySigned)
 	}

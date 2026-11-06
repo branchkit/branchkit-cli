@@ -30,7 +30,7 @@ func checkUpdatesCounted() (updates []UpdateInfo, reached, unreached int) {
 		if dp.Source != SourceUser {
 			continue
 		}
-		meta, ok := readSourceMeta(dp.ManifestDir)
+		meta, ok := readSourceMeta(dp.Manifest.ID)
 		if !ok {
 			continue
 		}

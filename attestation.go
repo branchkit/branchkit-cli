@@ -11,7 +11,7 @@ package main
 // SHA-256 (integrity only) to real provenance (authenticity).
 //
 // This is the CLI half. The resolved AuthorVerified/Publisher get recorded
-// in .branchkit-source.json; the platform's trust-tier resolution
+// in the install record (install_record.go); the platform's trust-tier resolution
 // (resolve_trust_tier) reads them in a later step, and the registry
 // counter-signature (the fork moat) is step 5.
 

@@ -254,13 +254,13 @@ func TestLocalInstallRecordsItsOwnSource(t *testing.T) {
 	os.WriteFile(filepath.Join(src, "plugin.json"),
 		[]byte(`{"id":"voice","name":"Voice","version":"1.0.0"}`), 0o644)
 	// A folder claiming to be the first-party plugin's own install.
-	os.WriteFile(filepath.Join(src, sourceMetaFile),
+	os.WriteFile(filepath.Join(src, ".branchkit-source.json"),
 		[]byte(`{"source":"branchkit/voice","installed_tag":"v9"}`), 0o644)
 
 	if err := installFromLocal(src); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	meta, ok := readSourceMeta(filepath.Join(userPluginsDir(), "voice"))
+	meta, ok := readSourceMeta("voice")
 	if !ok {
 		t.Fatal("no source record written")
 	}

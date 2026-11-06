@@ -35,6 +35,7 @@ func cmdRemove(pluginID string) {
 		os.Exit(1)
 	}
 	removeBlobs(pluginID)
+	removeSourceMeta(pluginID)
 	fmt.Printf("Removed plugin '%s'.\n", pluginID)
 	notifyPlatform()
 }

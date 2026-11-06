@@ -124,14 +124,14 @@ func installFromLocal(source string) error {
 	if manifest.Run != "" {
 		setExecutable(targetDir, manifest.Run)
 	}
-	// Recorded after the copy, so a record the folder brought with it is
-	// replaced: the app grants a catalogued plugin's defaults only to a copy
-	// whose record names the catalog's own source, and a local folder is not
-	// that source even when it reuses a catalogued id.
+	// Recorded after the copy, replacing the record of whatever was here:
+	// the app grants a catalogued plugin's defaults only to a copy whose
+	// record names the catalog's own source, and a local folder is not that
+	// source even when it reuses a catalogued id.
 	if abs, err := filepath.Abs(source); err == nil {
 		source = abs
 	}
-	writeSourceMeta(targetDir, localSourcePrefix+source, "local", nil, false)
+	writeSourceMeta(manifest.ID, targetDir, localSourcePrefix+source, "local", nil, false)
 
 	fmt.Printf("Installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
 	notifyPlatform()
@@ -206,7 +206,7 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 	// without a word. Checked before the consent prompt, like the
 	// publisher claim: a security regression is not something to bundle
 	// into a diff question.
-	if prior, ok := readSourceMeta(filepath.Join(userPluginsDir(), manifest.ID)); ok {
+	if prior, ok := readSourceMeta(manifest.ID); ok {
 		if prior.AuthorVerified && (attestation == nil || !attestation.Verified) {
 			if err := confirmAttestationDowngrade(manifest.Name, os.Stdin, stdinIsTTY()); err != nil {
 				os.RemoveAll(tempDir)
@@ -284,15 +284,16 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 			os.Chmod(p, 0o755)
 		}
 	}
-	// Source metadata (update checking + the verified-author and
-	// registry-signed records the platform's trust-tier resolution reads)
-	// goes into the stage so the swap lands it atomically with the files.
-	writeSourceMeta(stageDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation, registrySigned)
 	if err := replaceDir(stageDir, targetDir); err != nil {
 		os.RemoveAll(stageDir)
 		os.RemoveAll(tempDir)
 		return fmt.Errorf("failed to move plugin into place: %w", err)
 	}
+	// The install record (update checking + the verified-author and
+	// registry-signed results the platform's trust-tier resolution reads),
+	// bound to the manifest now in place. Until it is written, the new files
+	// and the old record disagree and the app reads no record at all.
+	writeSourceMeta(manifest.ID, targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation, registrySigned)
 
 	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
 	printInstallInfo(manifest, parsed, tag)
@@ -433,7 +434,7 @@ func installFromSource(source string) error {
 	}
 
 	// Save source metadata for update checking
-	writeSourceMeta(targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build", nil, false)
+	writeSourceMeta(manifest.ID, targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build", nil, false)
 
 	fmt.Printf("Built and installed plugin '%s' v%s by github:%s\n", manifest.Name, manifest.Version, parsed.Owner)
 	printInstallInfo(manifest, parsed, "source-build")
@@ -632,56 +633,6 @@ func findManifest(dir string) (string, error) {
 	default:
 		return "", fmt.Errorf("found %d plugin.json files in archive — expected exactly one", len(found))
 	}
-}
-
-// SourceMeta records where a plugin was installed from (for update checking)
-// and the signing outcome at install time (for the platform's trust-tier
-// resolution: the platform never sees artifact bytes, so the CLI records the
-// outcome here).
-type SourceMeta struct {
-	Source       string `json:"source"`        // "owner/repo"
-	InstalledTag string `json:"installed_tag"` // e.g. "v3.0.0" or "source-build"
-	// AuthorVerified is true iff a Sigstore attestation was present and
-	// verified AND bound to Source at install time.
-	AuthorVerified bool `json:"author_verified"`
-	// AuthorIdentity is the verified signer identity (cert SAN) — display +
-	// audit. Empty when unverified.
-	AuthorIdentity string `json:"author_identity,omitempty"`
-	// RegistrySigned is true iff BranchKit's registry counter-signature over
-	// this exact listing verified — the canonical-listing signal that lets the
-	// platform resolve RegistrySigned rather than a catalog claim.
-	RegistrySigned bool `json:"registry_signed"`
-}
-
-const sourceMetaFile = ".branchkit-source.json"
-
-// localSourcePrefix marks a SourceMeta.Source recorded by a local-folder
-// install, followed by the folder's absolute path.
-const localSourcePrefix = "local:"
-
-func writeSourceMeta(pluginDir, source, tag string, attestation *AuthorAttestation, registrySigned bool) {
-	meta := SourceMeta{Source: source, InstalledTag: tag, RegistrySigned: registrySigned}
-	if attestation != nil && attestation.Verified {
-		meta.AuthorVerified = true
-		meta.AuthorIdentity = attestation.SAN
-	}
-	data, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return
-	}
-	os.WriteFile(filepath.Join(pluginDir, sourceMetaFile), data, 0o644)
-}
-
-func readSourceMeta(pluginDir string) (SourceMeta, bool) {
-	data, err := os.ReadFile(filepath.Join(pluginDir, sourceMetaFile))
-	if err != nil {
-		return SourceMeta{}, false
-	}
-	var meta SourceMeta
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return SourceMeta{}, false
-	}
-	return meta, true
 }
 
 // setExecutable marks the plugin's program executable. `run` is a command
