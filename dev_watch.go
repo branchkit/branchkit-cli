@@ -389,6 +389,28 @@ func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 			return false, fmt.Errorf("plugin.json now requests more than the installed copy — run `branchkit-cli plugin install .` to review the change, then save again")
 		}
 	}
+	// The installed copy becomes a developer's build, as if installed from
+	// this folder, and is recorded so: a seeded copy's "bundled" record
+	// would have the app put the bundle's copy back at the next launch, and
+	// a release's record covers no binary, so it would go on speaking for
+	// this build (the release's source, tag and signing results) whenever
+	// the sync leaves plugin.json and its collection files as they were.
+	// The old record goes before any file is copied, so a sync that fails
+	// partway leaves none; the new one is written once the copy is done. A
+	// copy with no record is left with none.
+	id := filepath.Base(dst)
+	_, recorded := readSourceMeta(id)
+	var record SourceMeta
+	var named []string
+	var recErr error
+	if recorded {
+		source := srcDir
+		if abs, err := filepath.Abs(srcDir); err == nil {
+			source = abs
+		}
+		record, named, recErr = installRecord(source, localSourcePrefix+source, "local", nil, false)
+		removeSourceMeta(id)
+	}
 	before, _ := os.ReadFile(filepath.Join(dst, "plugin.json"))
 	after, _ := os.ReadFile(filepath.Join(srcDir, "plugin.json"))
 	if err := safeCopyDir(srcDir, dst, 0); err != nil {
@@ -398,25 +420,11 @@ func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 	if newM.Run != "" {
 		setExecutable(dst, newM.Run)
 	}
-	// The installed copy is a developer's build now, as if installed from
-	// this folder, and recorded so: a seeded copy's "bundled" record would
-	// have the app put the bundle's copy back at the next launch, and a
-	// release's record covers no binary, so it would go on speaking for
-	// this build (the release's source, tag and signing results) whenever
-	// the sync leaves plugin.json and its collection files as they were.
-	// A copy with no record is left with none.
-	if id := filepath.Base(dst); id != "" {
-		if _, ok := readSourceMeta(id); ok {
-			source := srcDir
-			if abs, err := filepath.Abs(srcDir); err == nil {
-				source = abs
-			}
-			record, named, err := installRecord(source, localSourcePrefix+source, "local", nil, false)
-			if err == nil {
-				dropUnshipped(dst, named, record)
-			}
-			recordInstall(id, record, err)
+	if recorded {
+		if recErr == nil {
+			dropUnshipped(dst, named, record)
 		}
+		recordInstall(id, record, recErr)
 	}
 	return !bytes.Equal(before, after), nil
 }

@@ -156,6 +156,36 @@ func TestSyncRecordsTheDevelopersFolder(t *testing.T) {
 	}
 }
 
+// A sync that fails partway leaves no record: the release's would speak for
+// the developer's files already copied.
+func TestAFailedSyncLeavesNoRecord(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a symlink in the developer's folder")
+	}
+	support := t.TempDir()
+	t.Setenv("BRANCHKIT_APP_SUPPORT", support)
+	src := t.TempDir()
+	writeWatchFile(t, filepath.Join(src, "plugin.json"), watchManifest)
+	dst := filepath.Join(support, "plugins", "snippets")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := safeCopyDir(src, dst, 0); err != nil {
+		t.Fatal(err)
+	}
+	writeSourceMeta("snippets", dst, "acme/branchkit-plugin-snippets", "v1", &AuthorAttestation{Verified: true}, true)
+	writeWatchFile(t, filepath.Join(src, "a-plugin"), "the developer's build")
+	if err := os.Symlink("/nowhere", filepath.Join(src, "b-link")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := syncInstalledCopy(src, dst); err == nil {
+		t.Fatal("a folder holding a symlink was copied")
+	}
+	if _, ok := readSourceMeta("snippets"); ok {
+		t.Fatal("the release's record still speaks for a partly synced copy")
+	}
+}
+
 func TestWatchedSourceIncludesPython(t *testing.T) {
 	if !watchedSource("main.py") {
 		t.Fatal("a Python plugin's source must count as a change")
