@@ -73,9 +73,10 @@ Which requests arrive switched on, and which collections, events, blobs and
 effects are the plugin's own, is the running app's decision, so the CLI asks
 it over the app's operator socket. When BranchKit is not running, the CLI says
 so and takes the cautious view: nothing counts as the plugin's own, and every
-new request counts as switched on. In that view an install or update that adds
-a grant asks at a terminal and is refused otherwise, `--yes` included: start
-BranchKit and run it again, or run it at a terminal to be asked. What adds no
+new request counts as switched on. When the CLI cannot reach BranchKit at all,
+an install or update that adds a grant asks at a terminal and is refused
+otherwise, `--yes` included: start BranchKit and run it again, or run it at a
+terminal to be asked. What adds no
 grant (a run command, a dropped request) goes ahead as before.
 
 ### BranchKit itself

@@ -2,6 +2,9 @@ package main
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -129,6 +132,55 @@ func TestWhenTheAppAnswersYesProceeds(t *testing.T) {
 		}
 		if err := confirmQuietly(t, s, "", true, false); err != nil {
 			t.Errorf("%s: --yes refused though the app answered: %v", name, err)
+		}
+	}
+}
+
+// An address file whose operator socket nobody answers on is an app that
+// cannot be reached, refused like no app at all.
+func TestAnUnansweredSocketIsRefusedLikeNoApp(t *testing.T) {
+	support := t.TempDir()
+	t.Setenv("BRANCHKIT_APP_SUPPORT", support)
+	sdir, err := os.MkdirTemp("/tmp", "bk-judge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sdir) })
+	run := filepath.Join(support, "run")
+	if err := os.MkdirAll(run, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	addr := `{"v":1,"pid":` + strconv.Itoa(os.Getpid()) + `,"ui":{"port":1},"operator":{"socket":"` + filepath.Join(sdir, "gone.sock") + `"}}`
+	if err := os.WriteFile(filepath.Join(run, "address.json"), []byte(addr), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := subjectFor(t, notesManifest, nil)
+	if !appUnreached(s.unjudged) {
+		t.Fatalf("a socket nobody answers on reached the app: %v", s.unjudged)
+	}
+	if err := confirmQuietly(t, s, "", true, false); err == nil || !strings.Contains(err.Error(), "could not be reached") {
+		t.Errorf("--yes went ahead with the app unreachable: %v", err)
+	}
+}
+
+// A running app that answers and declines to judge (a manifest over its
+// size limit, an installed copy's manifest it no longer reads) leaves the
+// safe view shown, and --yes stands: Settings showed that view and passes
+// --yes, and the app is running, so "start BranchKit" would be wrong.
+func TestAnAppThatDeclinesToJudgeKeepsYes(t *testing.T) {
+	fakeApp(t, func(judgeRequest) (int, any) {
+		return http.StatusBadRequest, "consent.judge: the manifest does not parse"
+	})
+	old := oldNotes
+	for name, s := range map[string]consentSubject{
+		"install": subjectFor(t, notesManifest, nil),
+		"update":  subjectFor(t, newNotes, &old),
+	} {
+		if s.unjudged == nil || appUnreached(s.unjudged) || s.next.judgement != nil {
+			t.Fatalf("%s: want an answered refusal in the safe view, got %v", name, s.unjudged)
+		}
+		if err := confirmQuietly(t, s, "", true, false); err != nil {
+			t.Errorf("%s: --yes refused though the app is running: %v", name, err)
 		}
 	}
 }

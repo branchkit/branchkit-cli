@@ -58,6 +58,21 @@ const judgeTimeout = 5 * time.Second
 // the only endpoint that answers a caller with no token.
 var errNoOperatorEndpoint = errors.New("the app offers no operator socket")
 
+// unreachedError is a question that never reached the app: no address file
+// (BranchKit is not running), a stale one, no operator endpoint, or no
+// answer on it. An app that answered and declined to judge (a manifest it
+// will not read) is a running app, and its error is a plain one.
+type unreachedError struct{ err error }
+
+func (e unreachedError) Error() string { return e.err.Error() }
+func (e unreachedError) Unwrap() error { return e.err }
+
+// appUnreached reports whether err is a question that never reached the app.
+func appUnreached(err error) bool {
+	var u unreachedError
+	return errors.As(err, &u)
+}
+
 // askJudgement asks the running app what it will do with m if installed
 // from source (what the install record will say: `owner/repo`,
 // `local:<path>`, or `bundled`). It sends the manifest as written, not as
@@ -66,10 +81,10 @@ var errNoOperatorEndpoint = errors.New("the app offers no operator socket")
 // file mode admits only this user, and the operation writes nothing.
 func askJudgement(m PluginManifest, source string) (*judgement, error) {
 	if err := resolveDevBaseURL(); err != nil {
-		return nil, err
+		return nil, unreachedError{err}
 	}
 	if devUnixSocket == "" && devPipe == "" {
-		return nil, errNoOperatorEndpoint
+		return nil, unreachedError{errNoOperatorEndpoint}
 	}
 	manifest := m.raw
 	if len(manifest) == 0 {
@@ -87,7 +102,7 @@ func askJudgement(m PluginManifest, source string) (*judgement, error) {
 	}
 	resp, err := devClient(judgeTimeout).Post(devBaseURL+"/v1/consent/judge", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, unreachedError{err}
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -180,17 +195,21 @@ func (m PluginManifest) isOwn(axis, member string) bool {
 	return ok && kind == kindNote
 }
 
-// refuseUnasked fails closed when the app could not be asked and nobody
-// will be: a run with --yes, or with no person at the terminal, that would
-// add a grant. In the safe view every grant counts as arriving switched on,
+// refuseUnasked fails closed when the app could not be reached and nobody
+// will be asked: a run with --yes, or with no person at the terminal, that
+// would add a grant. In the safe view every grant counts as arriving switched on,
 // so going ahead would take for granted what only the app can say: that a
 // community plugin's new grants wait, off, on its page. At a terminal the
 // person is asked instead (confirmInstall, confirmUpdate). A run the app
 // answered keeps --yes: Settings passes it, having shown the app's answer.
 // What adds no grant (a scope, a note, a run command) goes on as before:
-// none of it depends on the app's answer.
+// none of it depends on the app's answer. A running app that answered and
+// declined to judge (a manifest over its size limit, an installed copy's
+// manifest it no longer reads) leaves the safe view shown, and --yes
+// stands: the person approved that view in Settings (--expect-consent),
+// and telling them to start a running app would be wrong.
 func refuseUnasked(s consentSubject, assumeYes, tty bool) error {
-	if s.unjudged == nil || (tty && !assumeYes) {
+	if !appUnreached(s.unjudged) || (tty && !assumeYes) {
 		return nil
 	}
 	added := grantsAdded(s)
@@ -209,7 +228,7 @@ func refuseUnasked(s consentSubject, assumeYes, tty bool) error {
 		how = "with nobody at the terminal to ask"
 	}
 	return fmt.Errorf(
-		"refusing to %s '%s' %s: it adds %s, and BranchKit could not be asked whether those arrive switched on (%v). "+
+		"refusing to %s '%s' %s: it adds %s, and BranchKit could not be reached to ask whether those arrive switched on (%v). "+
 			"Start BranchKit and run this again, or run it at a terminal without --yes to be asked",
 		verb, s.next.ID, how, strings.Join(added, ", "), s.unjudged,
 	)
@@ -218,7 +237,7 @@ func refuseUnasked(s consentSubject, assumeYes, tty bool) error {
 // grantsAdded names what the install or update adds on a grant axis, and
 // each effect it newly asserts, as the plugin's page would word them.
 // Nothing counts as the plugin's own here: refuseUnasked asks only when
-// the app was not asked, and the safe view judges nothing its own.
+// the app was not reached, and the safe view judges nothing its own.
 func grantsAdded(s consentSubject) []string {
 	old := s.old
 	if !s.installed {
