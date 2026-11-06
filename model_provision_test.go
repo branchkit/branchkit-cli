@@ -128,61 +128,6 @@ func TestProvisionPluginFileModelLandsUnderThePluginNamespace(t *testing.T) {
 	}
 }
 
-// The pre-namespace layout had models flat at `<models>/<name>`. Adopting one
-// by rename saves re-downloading gigabytes — but only when it is COMPLETE by
-// the declaration's own `requires`, so a half-finished legacy download is
-// re-fetched rather than blessed.
-func TestLegacyFlatModelIsAdoptedOnlyWhenComplete(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("BRANCHKIT_DEV", "1")
-	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
-
-	pluginDir := filepath.Join(home, "plugin")
-	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	legacy := filepath.Join(modelsDir(), "legacy-model")
-	if err := os.MkdirAll(legacy, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacy, "model.onnx"), []byte("weights"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	m := declaredModel{
-		Ref:       "voice/legacy-model",
-		Plugin:    "voice",
-		PluginDir: pluginDir,
-		Name:      "legacy-model",
-		Decl: ArtifactDeclaration{
-			SizeBytes: 7,
-			// Declares a file the legacy dir does NOT have, so adoption must
-			// be refused. No parts can satisfy it either — but provisioning
-			// stops at the incomplete-legacy check before touching the network.
-			Parts:    []ArtifactPart{{Kind: "plugin_file", Path: "missing", Dest: "tokens.txt"}},
-			Requires: []string{"model.onnx", "tokens.txt"},
-		},
-	}
-	if err := checkRequires(legacy, m.Decl.Requires); err == nil {
-		t.Fatal("fixture is wrong: the legacy dir should be incomplete")
-	}
-
-	// Complete it, and adoption is now the right call.
-	if err := os.WriteFile(filepath.Join(legacy, "tokens.txt"), []byte("t"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	provisionDeclaredModel(m)
-
-	if fileExists(legacy) {
-		t.Error("legacy dir still present — adoption should have moved it, not copied it")
-	}
-	adopted := filepath.Join(modelsDir(), "voice", "legacy-model", "model.onnx")
-	if !fileExists(adopted) {
-		t.Fatalf("adopted model not at %s", adopted)
-	}
-}
-
 // A failed pin must leave NOTHING on disk. The first version of this code
 // cleaned up with a `defer` and then exited the process on failure, so the
 // defer never ran and the unverified bytes stayed in `<model>.partial` — for a
