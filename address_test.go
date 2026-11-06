@@ -11,8 +11,7 @@ import (
 )
 
 func TestAddressFileResolvesTheUIPort(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	isolateHome(t)
 	t.Setenv("BRANCHKIT_DEV", "")
 	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 	dir := filepath.Join(appSupportDir(), "run")
@@ -32,8 +31,7 @@ func TestAddressFileResolvesTheUIPort(t *testing.T) {
 }
 
 func TestAddressFileFromADeadPidIsStale(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	isolateHome(t)
 	t.Setenv("BRANCHKIT_DEV", "")
 	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 	dir := filepath.Join(appSupportDir(), "run")
@@ -46,7 +44,7 @@ func TestAddressFileFromADeadPidIsStale(t *testing.T) {
 }
 
 func TestNoAddressFileIsAClearError(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	isolateHome(t)
 	t.Setenv("BRANCHKIT_DEV", "")
 	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 	if err := resolveDevBaseURL(); err != errNoAddress {
@@ -67,8 +65,7 @@ func itoa(n int) string {
 }
 
 func TestOperatorSocketIsPreferredAndDialed(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	isolateHome(t)
 	t.Setenv("BRANCHKIT_DEV", "")
 	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 	dir := filepath.Join(appSupportDir(), "run")

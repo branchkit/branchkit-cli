@@ -49,13 +49,25 @@ func TestUsageFor(t *testing.T) {
 	}
 }
 
+// isolateHome points every variable the default app-support folder is built
+// from (HOME, USERPROFILE, XDG_DATA_HOME, APPDATA) at a scratch folder, for
+// a test that clears BRANCHKIT_APP_SUPPORT to exercise the default: without
+// it, that test writes the person's own folder on Windows, and on Linux
+// with XDG_DATA_HOME set.
+func isolateHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("APPDATA", "")
+	return home
+}
+
 // The folder the app passes always wins; by hand the CLI targets the release
 // install, and --dev / BRANCHKIT_DEV pick the development build's folder.
 func TestAppSupportDirPrecedence(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_DATA_HOME", "")
-	t.Setenv("APPDATA", "")
+	home := isolateHome(t)
 	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 	t.Setenv("BRANCHKIT_DEV", "")
 	defer func() { devFolder = false }()

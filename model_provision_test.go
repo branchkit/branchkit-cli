@@ -77,8 +77,7 @@ func TestPartsDigestTracksThePins(t *testing.T) {
 // End to end over the one part kind that needs no network: the model dir lands
 // under the OWNING PLUGIN's namespace, and the receipt records the recipe.
 func TestProvisionPluginFileModelLandsUnderThePluginNamespace(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := isolateHome(t)
 	t.Setenv("BRANCHKIT_DEV", "1")
 	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 
@@ -133,8 +132,7 @@ func TestProvisionPluginFileModelLandsUnderThePluginNamespace(t *testing.T) {
 // defer never ran and the unverified bytes stayed in `<model>.partial` — for a
 // large model, gigabytes of them.
 func TestFailedAssemblyLeavesNoStagingBehind(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := isolateHome(t)
 	t.Setenv("BRANCHKIT_DEV", "1")
 	t.Setenv("BRANCHKIT_APP_SUPPORT", "")
 
