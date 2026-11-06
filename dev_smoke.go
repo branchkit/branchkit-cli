@@ -129,6 +129,10 @@ type smokeCheck struct {
 	Name   string `json:"name"`
 	Status string `json:"status"` // pass | warn | fail
 	Detail string `json:"detail"`
+	// The native check's per-op results and what it deliberately did not
+	// ask (dev_smoke_native.go).
+	Probes     []nativeProbe `json:"probes,omitempty"`
+	NotCovered []string      `json:"not_covered,omitempty"`
 }
 
 func cmdDevSmoke(args []string) {
@@ -614,6 +618,17 @@ func cmdDevSmoke(args []string) {
 				len(dead), len(shapes), strings.Join(dead, ", ")))
 		default:
 			add("capture", "pass", fmt.Sprintf("all %d capture shapes returned an image", len(shapes)))
+		}
+	}
+
+	// --- Native liveness: the other reads, asked the same way ---
+	{
+		c := nativeLivenessCheck(token)
+		add(c.Name, c.Status, c.Detail)
+		checks[len(checks)-1].Probes = c.Probes
+		checks[len(checks)-1].NotCovered = c.NotCovered
+		if !jsonOutput {
+			printNativeProbes(c)
 		}
 	}
 
