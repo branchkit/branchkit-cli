@@ -179,3 +179,65 @@ func (m PluginManifest) isOwn(axis, member string) bool {
 	kind, ok := m.judgedAs(axis, member)
 	return ok && kind == kindNote
 }
+
+// refuseUnasked fails closed when the app could not be asked and nobody
+// will be: a run with --yes, or with no person at the terminal, that would
+// add a grant. In the safe view every grant counts as arriving switched on,
+// so going ahead would take for granted what only the app can say: that a
+// community plugin's new grants wait, off, on its page. At a terminal the
+// person is asked instead (confirmInstall, confirmUpdate). A run the app
+// answered keeps --yes: Settings passes it, having shown the app's answer.
+// What adds no grant (a scope, a note, a run command) goes on as before:
+// none of it depends on the app's answer.
+func refuseUnasked(s consentSubject, assumeYes, tty bool) error {
+	if s.unjudged == nil || (tty && !assumeYes) {
+		return nil
+	}
+	added := grantsAdded(s)
+	if len(added) == 0 {
+		return nil
+	}
+	verb := "install"
+	if s.installed {
+		verb = "update"
+	}
+	if len(added) > 3 {
+		added = append(added[:3:3], fmt.Sprintf("%d more", len(added)-3))
+	}
+	how := "with --yes"
+	if !assumeYes {
+		how = "with nobody at the terminal to ask"
+	}
+	return fmt.Errorf(
+		"refusing to %s '%s' %s: it adds %s, and BranchKit could not be asked whether those arrive switched on (%v). "+
+			"Start BranchKit and run this again, or run it at a terminal without --yes to be asked",
+		verb, s.next.ID, how, strings.Join(added, ", "), s.unjudged,
+	)
+}
+
+// grantsAdded names what the install or update adds on a grant axis, and
+// each effect it newly asserts, as the plugin's page would word them.
+// Nothing counts as the plugin's own here: refuseUnasked asks only when
+// the app was not asked, and the safe view judges nothing its own.
+func grantsAdded(s consentSubject) []string {
+	old := s.old
+	if !s.installed {
+		old = PluginManifest{ID: s.next.ID}
+	}
+	d := diffConsent(old, s.next)
+	var out []string
+	for _, ax := range consentAxes {
+		if ax.kind != kindGrant {
+			continue
+		}
+		for _, m := range d.axis(ax.name).Added {
+			if !d.ownAdded(ax, m) {
+				out = append(out, ax.display(m))
+			}
+		}
+	}
+	for _, e := range d.AddedEffects {
+		out = append(out, "effect "+effectLabel(e))
+	}
+	return out
+}

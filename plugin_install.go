@@ -494,11 +494,22 @@ func judgeInstall(manifest PluginManifest, source string) consentSubject {
 // confirmConsent is the consent moment: a fresh install discloses
 // everything and asks at a terminal; an update asks about its diff.
 func confirmConsent(s consentSubject) error {
+	return confirmConsentWith(s, os.Stdin, installAssumeYes, stdinIsTTY())
+}
+
+// confirmConsentWith is confirmConsent with its answers, --yes and whether
+// a person is at the terminal given. When the app could not be asked, a
+// run that would add a grant is asked at a terminal and refused otherwise
+// (refuseUnasked).
+func confirmConsentWith(s consentSubject, in io.Reader, assumeYes, tty bool) error {
 	noteUnjudged(s.next, s.unjudged)
-	if s.installed {
-		return confirmUpdate(s.next, s.old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(s.next))
+	if err := refuseUnasked(s, assumeYes, tty); err != nil {
+		return err
 	}
-	return confirmInstall(s.next, os.Stdin, !installAssumeYes && stdinIsTTY())
+	if s.installed {
+		return confirmUpdate(s.next, s.old, in, assumeYes, tty, grantsArriveOn(s.next))
+	}
+	return confirmInstall(s.next, in, !assumeYes && tty)
 }
 
 func readManifest(path string) (PluginManifest, error) {
