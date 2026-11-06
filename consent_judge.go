@@ -59,9 +59,11 @@ const judgeTimeout = 5 * time.Second
 var errNoOperatorEndpoint = errors.New("the app offers no operator socket")
 
 // unreachedError is a question that never reached the app: no address file
-// (BranchKit is not running), a stale one, no operator endpoint, or no
-// answer on it. An app that answered and declined to judge (a manifest it
-// will not read) is a running app, and its error is a plain one.
+// (BranchKit is not running), a stale one, or no answer on its operator
+// endpoint. Two errors are a running app's, and plain: an app that answered
+// and declined to judge (a manifest it will not read), and a live address
+// file naming no operator endpoint (the app runs, but its socket or pipe
+// did not bind, and only that endpoint answers a caller with no token).
 type unreachedError struct{ err error }
 
 func (e unreachedError) Error() string { return e.err.Error() }
@@ -84,7 +86,7 @@ func askJudgement(m PluginManifest, source string) (*judgement, error) {
 		return nil, unreachedError{err}
 	}
 	if devUnixSocket == "" && devPipe == "" {
-		return nil, unreachedError{errNoOperatorEndpoint}
+		return nil, errNoOperatorEndpoint
 	}
 	manifest := m.raw
 	if len(manifest) == 0 {
@@ -197,17 +199,20 @@ func (m PluginManifest) isOwn(axis, member string) bool {
 
 // refuseUnasked fails closed when the app could not be reached and nobody
 // will be asked: a run with --yes, or with no person at the terminal, that
-// would add a grant. In the safe view every grant counts as arriving switched on,
-// so going ahead would take for granted what only the app can say: that a
-// community plugin's new grants wait, off, on its page. At a terminal the
-// person is asked instead (confirmInstall, confirmUpdate). A run the app
-// answered keeps --yes: Settings passes it, having shown the app's answer.
-// What adds no grant (a scope, a note, a run command) goes on as before:
-// none of it depends on the app's answer. A running app that answered and
-// declined to judge (a manifest over its size limit, an installed copy's
-// manifest it no longer reads) leaves the safe view shown, and --yes
-// stands: the person approved that view in Settings (--expect-consent),
-// and telling them to start a running app would be wrong.
+// would add a grant. In the safe view every grant counts as arriving
+// switched on, so going ahead would take for granted what only the app can
+// say: that a community plugin's new grants wait, off, on its page. At a
+// terminal the person is asked instead (confirmInstall, confirmUpdate). A
+// run the app answered keeps --yes: Settings passes it, having shown the
+// app's answer. What adds no grant (a scope, a note, a run command) goes
+// on as before: none of it depends on the app's answer.
+//
+// A running app that could not judge (it declined: a manifest over its
+// size limit, an installed copy's manifest it no longer reads; or it runs
+// with no operator endpoint to ask on) leaves the safe view shown, and
+// --yes stands: the person approved that view in Settings
+// (--expect-consent), and telling them to start a running app would be
+// wrong.
 func refuseUnasked(s consentSubject, assumeYes, tty bool) error {
 	if !appUnreached(s.unjudged) || (tty && !assumeYes) {
 		return nil

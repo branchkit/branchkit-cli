@@ -184,3 +184,26 @@ func TestAnAppThatDeclinesToJudgeKeepsYes(t *testing.T) {
 		}
 	}
 }
+
+// A live address file naming no operator endpoint is a running app whose
+// socket did not bind: it cannot be asked, but it is running, so --yes
+// stands as for an app that declined to judge.
+func TestARunningAppWithNoOperatorEndpointKeepsYes(t *testing.T) {
+	support := t.TempDir()
+	t.Setenv("BRANCHKIT_APP_SUPPORT", support)
+	run := filepath.Join(support, "run")
+	if err := os.MkdirAll(run, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	addr := `{"v":1,"pid":` + strconv.Itoa(os.Getpid()) + `,"ui":{"port":1}}`
+	if err := os.WriteFile(filepath.Join(run, "address.json"), []byte(addr), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := subjectFor(t, notesManifest, nil)
+	if s.unjudged == nil || appUnreached(s.unjudged) {
+		t.Fatalf("want a running app that could not be asked, got %v", s.unjudged)
+	}
+	if err := confirmQuietly(t, s, "", true, false); err != nil {
+		t.Errorf("--yes refused though the app is running: %v", err)
+	}
+}
