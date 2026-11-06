@@ -87,10 +87,28 @@ const goldenNewManifest = `{
 	}
 }`
 
+// goldenJudgement is the app's answer for the golden manifests, as a
+// community plugin's: which subscriptions reach it with no switch, which
+// collection, blob read and effect are its own.
+func goldenJudgement(m PluginManifest) PluginManifest {
+	return withJudgement(m, false,
+		answered("events", "tempo.**", kindGrant),
+		answered("events", "tempo.**:metronome", kindGrant),
+		answered("events", "voice.*:voice", kindGrant),
+		answered("always_events", "_platform.window.**", kindScope),
+		answered("always_events", "golden.*", kindScope),
+		answered("collection_reads", "apps", kindGrant),
+		answered("collection_writes", "snippets", kindGrant),
+		answered("collection_writes", "notes", kindGrant),
+		answered("own_collections", "golden_notes", kindNote),
+		answered("blobs", "camera/frames", kindGrant),
+		answered("effects", "suppress_notifications", kindGrant))
+}
+
 func TestPreviewGolden(t *testing.T) {
-	oldM := parseManifest(t, goldenOldManifest)
-	newM := parseManifest(t, goldenNewManifest)
-	up := previewDiff(oldM, newM, false)
+	oldM := goldenJudgement(parseManifest(t, goldenOldManifest))
+	newM := goldenJudgement(parseManifest(t, goldenNewManifest))
+	up := previewDiff(oldM, newM, grantsArriveOn(newM))
 	result := previewResult{
 		PreviewFormat: previewFormat,
 		ID:            newM.ID,

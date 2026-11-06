@@ -383,9 +383,12 @@ func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 		return false, err
 	}
 	if oldM, err := readManifest(filepath.Join(dst, "plugin.json")); err == nil {
-		// Counted as if its grants arrive on: the stricter answer, and a
-		// rebuild is no moment to fetch the catalog.
-		if diffConsent(oldM, newM).expands(true) {
+		// Counted as if its grants arrive on: the stricter answer. Which
+		// collections, blobs and effects are its own is the running app's
+		// answer, asked as for an install from this folder; when it cannot
+		// be asked, none is (consent_judge.go).
+		newJ, oldJ, _ := judgedUpdate(newM, oldM, localSourcePrefix+srcDir)
+		if diffConsent(oldJ, newJ).expands(true) {
 			return false, fmt.Errorf("plugin.json now requests more than the installed copy — run `branchkit-cli plugin install .` to review the change, then save again")
 		}
 	}

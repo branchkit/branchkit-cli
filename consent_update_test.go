@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -88,11 +86,12 @@ func TestConsumesGrantsAskOnlyWhenTheyArriveOn(t *testing.T) {
 // passes it without a grant and gives it no switch, so it is told, never
 // counted as a grant, and gaining or losing one asks and revokes nothing.
 func TestOwnCollectionsAreNotGrants(t *testing.T) {
-	m := parseManifest(t, `{
+	own := answered("own_collections", "notes", kindNote)
+	m := withJudgement(parseManifest(t, `{
 		"id": "notes",
 		"provides": {"collections": {"notes": {}}},
 		"consumes": {"collections": ["notes", "alphabet"], "writes": ["notes"]}
-	}`)
+	}`), false, own, answered("collection_reads", "alphabet", kindGrant))
 	got := map[string][]string{}
 	for _, d := range previewDisclosures(m) {
 		got[d.Axis] = d.Items
@@ -110,7 +109,7 @@ func TestOwnCollectionsAreNotGrants(t *testing.T) {
 		t.Errorf("own: %v", got["own_collections"])
 	}
 
-	bare := parseManifest(t, `{"id": "notes", "provides": {"collections": {"notes": {}}}}`)
+	bare := withJudgement(parseManifest(t, `{"id": "notes", "provides": {"collections": {"notes": {}}}}`), false)
 	if d := diffConsent(bare, m); !reflect.DeepEqual(d.axis("own_collections").Added, []string{"notes"}) {
 		t.Errorf("own collection not shown as new: %+v", d)
 	}
@@ -121,7 +120,7 @@ func TestOwnCollectionsAreNotGrants(t *testing.T) {
 	if d := diffConsent(m, bare); d.axis("own_collections").Removed == nil {
 		t.Error("dropping an own collection is still shown")
 	}
-	ownOnly := parseManifest(t, `{"id": "notes", "provides": {"collections": {"notes": {}}}, "consumes": {"writes": ["notes"]}}`)
+	ownOnly := withJudgement(parseManifest(t, `{"id": "notes", "provides": {"collections": {"notes": {}}}, "consumes": {"writes": ["notes"]}}`), false, own)
 	if d := diffConsent(bare, ownOnly); d.expands(true) || d.contracts() {
 		t.Errorf("its own collection asks and revokes nothing: %+v", d)
 	}
@@ -182,40 +181,6 @@ func TestReasonsAndDownloadsAreToldNotAsked(t *testing.T) {
 	}
 }
 
-// The app switches a plugin's grants on only for a first-party catalog
-// entry in the branchkit organisation, installed from the repository the
-// catalog names.
-func TestCatalogGrantsOn(t *testing.T) {
-	cat := catalog{Plugins: []catalogEntry{
-		{ID: "voice", Source: "github:branchkit/branchkit-plugin-voice", Tier: "first-party"},
-		{ID: "fake", Source: "github:someone/branchkit-plugin-fake", Tier: "first-party"},
-		{ID: "snip", Source: "github:branchkit/branchkit-plugin-snip", Tier: "community"},
-		{ID: "bare", Source: "branchkit/branchkit-plugin-bare", Tier: "first-party"},
-	}}
-	cases := []struct {
-		id, repo string
-		want     bool
-	}{
-		// The app reads only a github: source as the entry's repository.
-		{"bare", "branchkit/branchkit-plugin-bare", false},
-		{"voice", "branchkit/branchkit-plugin-voice", true},
-		{"voice", "BranchKit/Branchkit-Plugin-Voice", true},
-		{"voice", "github:branchkit/branchkit-plugin-voice", true},
-		{"voice", "someone/branchkit-plugin-voice", false},
-		{"fake", "someone/branchkit-plugin-fake", false},
-		{"snip", "branchkit/branchkit-plugin-snip", false},
-		{"unlisted", "branchkit/branchkit-plugin-unlisted", false},
-	}
-	for _, c := range cases {
-		if got := catalogGrantsOn(cat, c.id, c.repo); got != c.want {
-			t.Errorf("%s from %s: %v, want %v", c.id, c.repo, got, c.want)
-		}
-	}
-	if grantsArriveOn("voice", "") {
-		t.Error("a local folder's grants never arrive on")
-	}
-}
-
 // The tier shown at install and preview is the entry for THIS repo: a
 // lookalike repo whose plugin.json declares a catalogued id gets no tier,
 // never the real plugin's First-party.
@@ -246,16 +211,12 @@ func TestCatalogTierMatchesSourceAndID(t *testing.T) {
 	}
 }
 
-// TestMain keeps every test off this computer's catalog, its installed
-// plugins and the network: each test that needs a catalog or a claimant
-// stands one in. A test that leaves BRANCHKIT_APP_SUPPORT alone writes into
-// a scratch folder, not the person's; one that clears it to exercise the
-// default folder must redirect what that folder is built from on every OS
-// itself.
+// TestMain keeps every test off this computer's running app and installed
+// plugins: a test that leaves BRANCHKIT_APP_SUPPORT alone writes into a
+// scratch folder, not the person's, and finds no app there to ask; one
+// that clears it to exercise the default folder must redirect what that
+// folder is built from on every OS itself.
 func TestMain(m *testing.M) {
-	localCatalog = func() (catalog, bool) { return catalog{}, false }
-	remoteCatalog = func() (catalog, error) { return catalog{}, errors.New("no network in tests") }
-	collectionClaimants = func() map[string][]string { return nil }
 	support, err := os.MkdirTemp("", "branchkit-cli-test-support-")
 	if err != nil {
 		panic(err)
@@ -264,91 +225,6 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	os.RemoveAll(support)
 	os.Exit(code)
-}
-
-// The answer follows the catalog the app reads, and only when the registry
-// online agrees with it: a disagreement either way, or either one
-// unreadable, asks.
-func TestGrantsArriveOnFollowsTheAppsCatalog(t *testing.T) {
-	savedLocal, savedRemote := localCatalog, remoteCatalog
-	defer func() { localCatalog, remoteCatalog = savedLocal, savedRemote }()
-	cat := func(tier string) catalog {
-		return catalog{Plugins: []catalogEntry{{ID: "voice", Source: "github:branchkit/branchkit-plugin-voice", Tier: tier}}}
-	}
-	const repo = "branchkit/branchkit-plugin-voice"
-	cases := []struct {
-		name          string
-		local, remote string // "" = unreadable
-		want          bool
-	}{
-		{"both first-party", "first-party", "first-party", true},
-		{"both community", "community", "community", false},
-		{"app first-party, online community", "first-party", "community", true},
-		{"app community, online first-party", "community", "first-party", true},
-		{"app catalog unreadable", "", "community", true},
-		{"online catalog unreachable", "community", "", true},
-	}
-	for _, c := range cases {
-		localCatalog = func() (catalog, bool) { return cat(c.local), c.local != "" }
-		remoteCatalog = func() (catalog, error) {
-			if c.remote == "" {
-				return catalog{}, errors.New("unreachable")
-			}
-			return cat(c.remote), nil
-		}
-		if got := grantsArriveOn("voice", repo); got != c.want {
-			t.Errorf("%s: %v, want %v", c.name, got, c.want)
-		}
-	}
-}
-
-// The app gives a collection name two plugins declare to the one that had it
-// first; the other needs a grant to write it. A name another plugin also
-// claims, in the catalog or installed here, is not counted as the plugin's
-// own: it stays a grant, and is asked about.
-func TestAContestedCollectionIsNotOwn(t *testing.T) {
-	saved := collectionClaimants
-	defer func() { collectionClaimants = saved }()
-	m := parseManifest(t, `{
-		"id": "notes",
-		"provides": {"collections": {"snippets": {}, "notes": {}}},
-		"consumes": {"writes": ["snippets", "notes"]}
-	}`)
-	collectionClaimants = func() map[string][]string {
-		return map[string][]string{"snippets": {"snippets", "notes"}, "notes": {"notes"}}
-	}
-	got := map[string][]string{}
-	for _, d := range previewDisclosures(m) {
-		got[d.Axis] = d.Items
-	}
-	if !reflect.DeepEqual(got["collection_writes"], []string{"snippets"}) {
-		t.Errorf("a contested name must stay a grant: %v", got["collection_writes"])
-	}
-	if !reflect.DeepEqual(got["own_collections"], []string{"notes"}) {
-		t.Errorf("only an uncontested name is its own: %v", got["own_collections"])
-	}
-}
-
-// The places the app reads its catalog from, in its order: its app-support
-// copy first.
-func TestLocalCatalogPathsStartWithAppSupport(t *testing.T) {
-	t.Setenv("BRANCHKIT_APP_SUPPORT", t.TempDir())
-	t.Setenv("BRANCHKIT_RESOURCES", filepath.Join(t.TempDir(), "res"))
-	paths := localCatalogPaths()
-	if len(paths) < 2 || paths[0] != filepath.Join(os.Getenv("BRANCHKIT_APP_SUPPORT"), "catalog.yaml") ||
-		paths[1] != filepath.Join(os.Getenv("BRANCHKIT_RESOURCES"), "catalog.yaml") {
-		t.Fatalf("paths: %v", paths)
-	}
-	if err := os.WriteFile(paths[1], nil, 0o644); err == nil {
-		t.Fatal("resources dir should not exist")
-	}
-	if err := os.WriteFile(paths[0], []byte("plugins:\n  - id: voice\n    source: github:branchkit/branchkit-plugin-voice\n    tier: first-party\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cat, ok := readLocalCatalog()
-	if !ok || len(cat.Plugins) != 1 || cat.Plugins[0].Tier != "first-party" {
-		t.Fatalf("read %+v ok=%v", cat, ok)
-	}
 }
 
 // The axes are the app's: every one its registry publishes has a reader

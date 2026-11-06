@@ -172,12 +172,16 @@ func previewDiff(oldM, newM PluginManifest, grantsOn bool) previewUpdate {
 	}
 	for _, ax := range consentAxes {
 		for _, m := range d.axis(ax.name).Added {
+			line, kind := fmt.Sprintf(ax.addFmt, ax.display(m)), ax.kind
+			if d.ownAdded(ax, m) {
+				line, kind = ownAddLine(line), kindNote
+			}
 			up.Added = append(up.Added, previewChange{
 				Axis:    ax.name,
 				Item:    ax.display(m),
-				Text:    disclosureText(fmt.Sprintf(ax.addFmt, ax.display(m))),
-				Kind:    ax.kind,
-				Expands: boolPtr(ax.addExpands(grantsOn)),
+				Text:    disclosureText(line),
+				Kind:    kind,
+				Expands: boolPtr(d.addedExpands(ax, m, grantsOn)),
 			})
 		}
 		for _, m := range d.axis(ax.name).Removed {
@@ -223,6 +227,17 @@ func cmdPreview(source string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	repo := parsed.Owner + "/" + parsed.Repo
+	// What the app will do with each request, asked of the running app; the
+	// safe view when it cannot be asked (consent_judge.go). The install that
+	// follows asks the same question of the same manifest, so its consent
+	// digest matches this one.
+	old, installed, _ := approvedManifest(manifest.ID, filepath.Join(userPluginsDir(), manifest.ID))
+	if installed {
+		manifest, old, _ = judgedUpdate(manifest, old, repo)
+	} else {
+		manifest, _ = judged(manifest, repo)
+	}
 
 	// Check blocklist
 	bl := fetchBlocklist()
@@ -243,7 +258,7 @@ func cmdPreview(source string) {
 
 	// Check catalog tier: this repo's entry, never another repo's that
 	// shares the manifest's id.
-	tier := lookupCatalogTier(manifest.ID, parsed.Owner+"/"+parsed.Repo)
+	tier := lookupCatalogTier(manifest.ID, repo)
 
 	result := previewResult{
 		PreviewFormat: previewFormat,
@@ -267,8 +282,8 @@ func cmdPreview(source string) {
 	// Already installed → attach the consent diff, same basis as the
 	// install path's confirmUpdate: the manifest the person approved for
 	// the copy at the swap target (approvedManifest).
-	if old, installed, _ := approvedManifest(manifest.ID, filepath.Join(userPluginsDir(), manifest.ID)); installed {
-		up := previewDiff(old, manifest, grantsArriveOn(manifest.ID, parsed.Owner+"/"+parsed.Repo))
+	if installed {
+		up := previewDiff(old, manifest, grantsArriveOn(manifest))
 		result.Update = &up
 	}
 

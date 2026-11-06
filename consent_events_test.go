@@ -35,43 +35,22 @@ func TestEventSourceIsPartOfTheGrant(t *testing.T) {
 }
 
 // Only subscriptions the app gives a switch are disclosed as grants:
-// platform events and those only the plugin itself can send are always
-// delivered, so they are disclosed with the scope.
+// platform events and those only the plugin itself can send reach it with
+// no switch, by the app's answer. Unasked, every subscription is a switch.
 func TestOnlySwitchedSubscriptionsAreGrants(t *testing.T) {
-	cases := []struct {
-		pattern string
-		source  string // "" = none
-		grant   bool
-	}{
-		{"_platform.window.**", "", false},
-		{"_platform.window.**", "voice", false},
-		{"drummer.*", "", false},
-		{"drummer.**", "", false},
-		{"x.y", "drummer", false},
-		{"ext.acme.*", "drummer.gaze", false},
-		{"voice.*", "", true},
-		{"*.focused", "", true},
-		{"**", "", true},
-		{"drummer.*", "voice", true},
-		{"drummerx.a", "", true},
-		{"x.y", "drummerx.gaze", true},
+	m := eventsManifest(t, "drummer", `[{"pattern":"_platform.window.**"},{"pattern":"drummer.*"},{"pattern":"voice.*"},{"pattern":"x.y","source":"drummer"}]`)
+	if got := subscriptionKeys(m, true); len(got) != 4 {
+		t.Fatalf("unasked, every subscription is a switch: %v", got)
 	}
-	for _, c := range cases {
-		e := SubscriptionDecl{Pattern: c.pattern}
-		if c.source != "" {
-			src := c.source
-			e.Source = &src
-		}
-		if got := subscriptionIsGrant(e, "drummer"); got != c.grant {
-			t.Errorf("%s from %q: grant = %v, want %v", c.pattern, c.source, got, c.grant)
-		}
-	}
-
-	m := eventsManifest(t, "drummer", `[{"pattern":"_platform.window.**"},{"pattern":"drummer.*"},{"pattern":"voice.*"}]`)
+	m = withJudgement(m, false,
+		answered("events", "voice.*", kindGrant),
+		answered("always_events", "_platform.window.**", kindScope),
+		answered("always_events", "drummer.*", kindScope),
+		answered("always_events", "x.y (from drummer)", kindScope))
 	if got := subscriptionKeys(m, true); len(got) != 1 || got[0] != "voice.*" {
 		t.Fatalf("grant members: %v", got)
 	}
-	if got := subscriptionKeys(m, false); len(got) != 2 {
+	if got := subscriptionKeys(m, false); len(got) != 3 {
 		t.Fatalf("always-delivered members: %v", got)
 	}
 	for _, ax := range consentAxes {

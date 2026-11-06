@@ -33,6 +33,25 @@ type PluginManifest struct {
 	// install panel and the signing chain read the same subtree instead of
 	// each rebuilding the list.
 	Requires RequiresCfg `json:"requires,omitempty"`
+
+	// raw is the manifest as written, kept so the app is asked about every
+	// field and not only the ones this CLI reads (askJudgement).
+	raw json.RawMessage
+	// judgement is the running app's answer for this manifest, or nil when
+	// it was not asked (the safe view: consent_judge.go).
+	judgement *judgement
+}
+
+// UnmarshalJSON keeps the bytes it parsed (raw).
+func (m *PluginManifest) UnmarshalJSON(b []byte) error {
+	type plain PluginManifest
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*m = PluginManifest(p)
+	m.raw = append(json.RawMessage(nil), b...)
+	return nil
 }
 
 // actionTypeDecl is the part of an `action_types` entry a caller needs.

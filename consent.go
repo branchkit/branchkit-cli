@@ -10,7 +10,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 )
 
 // installAssumeYes suppresses the interactive consent question (--yes). The
@@ -681,56 +680,23 @@ func joinAxes(published []publishedAxis, readers []consentAxis) []consentAxis {
 	return out
 }
 
-// ownCollections is the set of collections the plugin introduces itself.
-//
-// Not every name it declares: the app gives a name two plugins declare to
-// the one that had it first, and the other joins that collection and needs
-// a grant to write it. This CLI cannot see who was first, so a name another
-// plugin also claims — in the catalog, or installed here — is not counted
-// as its own and stays on the grant axes, where it is asked about.
+// ownCollections is the set of collections the app gives the plugin as
+// its own, by its ownership ledger: a name two plugins declare belongs to
+// one of them, and the other needs a grant to write it, which only the app
+// can tell. Empty when the app was not asked (the safe view): every
+// collection is then another plugin's, and asked about.
 func ownCollections(m PluginManifest) map[string]bool {
 	out := map[string]bool{}
-	if m.Provides == nil {
+	if m.judgement == nil {
 		return out
 	}
-	claims := collectionClaimants()
-	for name := range m.Provides.Collections {
-		contested := false
-		for _, id := range claims[name] {
-			if id != m.ID {
-				contested = true
-			}
-		}
-		if !contested {
-			out[name] = true
+	for _, jm := range m.judgement.Members {
+		if jm.Axis == "own_collections" {
+			out[jm.Member] = true
 		}
 	}
 	return out
 }
-
-// collectionClaimants maps each collection name to the plugins that claim
-// it: the catalog the app reads (each entry's `collections`) and the
-// plugins installed here (their provides.collections). Read once per run; a
-// variable so tests can stand in.
-var collectionClaimants = sync.OnceValue(func() map[string][]string {
-	out := map[string][]string{}
-	if cat, ok := localCatalog(); ok {
-		for _, e := range cat.Plugins {
-			for _, name := range e.Collections {
-				out[name] = append(out[name], e.ID)
-			}
-		}
-	}
-	for _, p := range discoverPlugins() {
-		if p.Manifest.Provides == nil {
-			continue
-		}
-		for name := range p.Manifest.Provides.Collections {
-			out[name] = append(out[name], p.Manifest.ID)
-		}
-	}
-	return out
-})
 
 // othersCollections drops the plugin's own collections from names.
 func othersCollections(m PluginManifest, names []string) []string {
@@ -873,23 +839,16 @@ func subscriptionDisplay(key string) string {
 	return key
 }
 
-// subscriptionIsGrant reports whether the app gives a subscription a switch
-// on the plugin's page, by the app's rules: never for a platform event
-// (`_platform.*`, always delivered), and never for one only the plugin
-// itself can satisfy — its source is the plugin or one of its stages
-// (`<id>.<stage>`), or, with no source, the pattern's first segment is the
-// plugin's id, the only namespace it may emit under.
-func subscriptionIsGrant(e SubscriptionDecl, owner string) bool {
-	if strings.HasPrefix(e.Pattern, "_platform.") {
-		return false
+// subscriptionIsGrant reports whether a subscription has a switch on the
+// plugin's page. No only when the app said it reaches the plugin with no
+// switch (a platform event, or one only the plugin itself can send); yes
+// when the app was not asked, or did not name it.
+func subscriptionIsGrant(m PluginManifest, e SubscriptionDecl) bool {
+	if _, switched := m.judgedAs("events", subscriptionKey(e)); switched {
+		return true
 	}
-	if e.Source != nil {
-		src := *e.Source
-		stageOwner, _, isStage := strings.Cut(src, ".")
-		return src != owner && !(isStage && stageOwner == owner)
-	}
-	first, _, _ := strings.Cut(e.Pattern, ".")
-	return first != owner
+	_, always := m.judgedAs("always_events", subscriptionDisplay(subscriptionKey(e)))
+	return !always
 }
 
 // subscriptionKeys is the manifest's subscriptions that do (grants true) or
@@ -900,7 +859,7 @@ func subscriptionKeys(m PluginManifest, grants bool) []string {
 	}
 	out := make([]string, 0, len(m.Consumes.Events))
 	for _, e := range m.Consumes.Events {
-		if subscriptionIsGrant(e, m.ID) == grants {
+		if subscriptionIsGrant(m, e) == grants {
 			out = append(out, subscriptionKey(e))
 		}
 	}
@@ -1023,6 +982,41 @@ type consentDiff struct {
 	RunChanged     bool
 	RunOld         string
 	RunNew         string
+	// next is the manifest the update installs, carrying the app's
+	// judgement when it was asked: which added members are the plugin's
+	// own (ownAdded).
+	next PluginManifest
+}
+
+// ownAdded reports whether the app judged an added member of a grant axis
+// the plugin's own (a read of its own blob), which no switch decides and
+// so asks nothing. Never in the safe view.
+func (d consentDiff) ownAdded(ax consentAxis, member string) bool {
+	return ax.kind == kindGrant && d.next.isOwn(ax.name, member)
+}
+
+// addedExpands reports whether one member the update adds to ax needs a
+// fresh yes, given whether the plugin's new grants arrive on.
+func (d consentDiff) addedExpands(ax consentAxis, member string, grantsOn bool) bool {
+	return ax.addExpands(grantsOn) && !d.ownAdded(ax, member)
+}
+
+// ownEffect reports whether the app judged every effect e asserts the
+// plugin's own: one it defines itself passes the check with no switch.
+func (d consentDiff) ownEffect(e EffectDeclaration) bool {
+	names := e.AssertNames()
+	for _, n := range names {
+		if !d.next.isOwn("effects", n) {
+			return false
+		}
+	}
+	return len(names) > 0
+}
+
+// effectExpands reports whether an effect the update adds needs a fresh
+// yes: one another plugin defines is a grant like any other.
+func (d consentDiff) effectExpands(e EffectDeclaration, grantsOn bool) bool {
+	return grantsOn && !d.ownEffect(e)
 }
 
 // expands reports whether the update asks for anything the installed version
@@ -1030,14 +1024,22 @@ type consentDiff struct {
 // the plugin's new grants would arrive switched on (grantsArriveOn): a new
 // grant that arrives off widens nothing until the person allows it. An
 // effect is such a grant too (the app offers it on only for a plugin that
-// ships with BranchKit); a changed run command always asks.
+// ships with BranchKit); what the app judged the plugin's own asks nothing;
+// a changed run command always asks.
 func (d consentDiff) expands(grantsOn bool) bool {
 	for _, ax := range consentAxes {
-		if len(d.Axes[ax.name].Added) > 0 && ax.addExpands(grantsOn) {
+		for _, m := range d.Axes[ax.name].Added {
+			if d.addedExpands(ax, m, grantsOn) {
+				return true
+			}
+		}
+	}
+	for _, e := range d.AddedEffects {
+		if d.effectExpands(e, grantsOn) {
 			return true
 		}
 	}
-	return (len(d.AddedEffects) > 0 && grantsOn) || d.RunChanged
+	return d.RunChanged
 }
 
 // contracts reports whether the update drops anything whose grant the app
@@ -1053,6 +1055,13 @@ func (d consentDiff) contracts() bool {
 
 // axis returns one axis's diff by registry name (empty if none).
 func (d consentDiff) axis(name string) axisDiff { return d.Axes[name] }
+
+// ownAddLine words a "+" line for something the app judged the plugin's
+// own, whose "allow it" clause would name a switch there is none of.
+func ownAddLine(line string) string {
+	line = strings.Replace(line, " (allow it on the plugin's page)", "", 1)
+	return strings.TrimSuffix(line, "\n") + " (its own; no switch)\n"
+}
 
 // effectAddLine is the "+" line for an effect an update adds.
 func effectAddLine(e EffectDeclaration) string {
@@ -1107,7 +1116,7 @@ func manifestEffects(m PluginManifest) []EffectDeclaration {
 }
 
 func diffConsent(oldM, newM PluginManifest) consentDiff {
-	d := consentDiff{Axes: map[string]axisDiff{}}
+	d := consentDiff{Axes: map[string]axisDiff{}, next: newM}
 	for _, ax := range consentAxes {
 		added, removed := diffStrings(ax.extract(oldM), ax.extract(newM))
 		if len(added) > 0 || len(removed) > 0 {
@@ -1153,7 +1162,8 @@ func diffConsent(oldM, newM PluginManifest) consentDiff {
 // grantsOn is whether the plugin's new grants arrive switched on
 // (grantsArriveOn). When they do not, a new grant on an
 // updateExpandsWhenGrantedOn axis is printed as arriving off and asks
-// nothing here: the plugin's page asks.
+// nothing here: the plugin's page asks. What the app judged the plugin's
+// own is told, not asked.
 func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, grantsOn bool) error {
 	d := diffConsent(oldM, newM)
 	fmt.Printf("\nUpdating %s v%s → v%s\n", newM.Name, oldM.Version, newM.Version)
@@ -1173,8 +1183,8 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, gran
 		}
 	}
 
-	// Told, not asked: what changed on the note axes, and new grants that
-	// arrive off.
+	// Told, not asked: what changed on the note axes, what the app judged
+	// the plugin's own, and new grants that arrive off.
 	var arriveOff, notes []string
 	for _, ax := range consentAxes {
 		ad := d.axis(ax.name)
@@ -1185,14 +1195,22 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, gran
 			for _, m := range ad.Removed {
 				notes = append(notes, fmt.Sprintf(ax.delFmt, ax.display(m)))
 			}
-		} else if !ax.addExpands(grantsOn) {
-			for _, m := range ad.Added {
+			continue
+		}
+		for _, m := range ad.Added {
+			switch {
+			case d.ownAdded(ax, m):
+				notes = append(notes, ownAddLine(fmt.Sprintf(ax.addFmt, ax.display(m))))
+			case !d.addedExpands(ax, m, grantsOn):
 				arriveOff = append(arriveOff, fmt.Sprintf(ax.addFmt, ax.display(m)))
 			}
 		}
 	}
-	if !grantsOn {
-		for _, e := range d.AddedEffects {
+	for _, e := range d.AddedEffects {
+		switch {
+		case d.ownEffect(e):
+			notes = append(notes, ownAddLine(effectAddLine(e)))
+		case !d.effectExpands(e, grantsOn):
 			arriveOff = append(arriveOff, effectAddLine(e))
 		}
 	}
@@ -1216,15 +1234,14 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, gran
 
 	fmt.Println("This update NEWLY requests:")
 	for _, ax := range consentAxes {
-		if !ax.addExpands(grantsOn) {
-			continue
-		}
 		for _, m := range d.axis(ax.name).Added {
-			fmt.Printf(ax.addFmt, ax.display(m))
+			if d.addedExpands(ax, m, grantsOn) {
+				fmt.Printf(ax.addFmt, ax.display(m))
+			}
 		}
 	}
-	if grantsOn {
-		for _, e := range d.AddedEffects {
+	for _, e := range d.AddedEffects {
+		if d.effectExpands(e, grantsOn) {
 			fmt.Print(effectAddLine(e))
 		}
 	}

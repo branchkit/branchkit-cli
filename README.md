@@ -69,6 +69,12 @@ widens what the plugin can do needs a fresh yes, and without a terminal or
 (any plugin that does not ship with BranchKit asking for another plugin's
 events, actions or collections) is shown and does not stop it.
 
+Which requests arrive switched on, and which collections, events, blobs and
+effects are the plugin's own, is the running app's decision, so the CLI asks
+it over the app's operator socket. When BranchKit is not running, the CLI says
+so and takes the cautious view: nothing counts as the plugin's own, and every
+new request counts as switched on.
+
 ### BranchKit itself
 
 The app never downloads its own updates; it runs these.

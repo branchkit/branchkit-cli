@@ -124,6 +124,10 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 			"writes": ["snippets"]
 		}
 	}`)
+	// Which subscriptions have a switch is the app's answer.
+	m = withJudgement(m, false,
+		answered("events", "tempo.**:metronome", kindGrant),
+		answered("always_events", "_platform.window.**", kindScope))
 
 	got := map[string][]string{}
 	for _, d := range previewDisclosures(m) {

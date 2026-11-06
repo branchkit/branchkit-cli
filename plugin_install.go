@@ -103,22 +103,17 @@ func installFromLocal(source string) error {
 	// disclosure printed after, with no question even on a TTY. A local
 	// re-install over an existing version asks about the diff, like any
 	// other update.
-	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
-	if old, installed := installedForUpdate(manifest.ID, targetDir); installed {
-		// A copy from a local folder is never first-party to the app
-		// (grantsArriveOn), so its new grants arrive off.
-		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(manifest.ID, "")); err != nil {
-			return err
-		}
-	} else if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
-		return err
-	}
-
+	//
 	// The app grants a catalogued plugin's defaults only to a copy whose
 	// record names the catalog's own source, and a local folder is not that
-	// source even when it reuses a catalogued id.
+	// source even when it reuses a catalogued id: the app is asked with the
+	// source the record will name.
 	if abs, err := filepath.Abs(source); err == nil {
 		source = abs
+	}
+	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
+	if err := confirmConsent(judgeInstall(manifest, localSourcePrefix+source)); err != nil {
+		return err
 	}
 	// Computed from the folder being copied, not from the copy: see
 	// installRecord.
@@ -220,9 +215,13 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		return err
 	}
 
+	// Asked of the app before the digest is compared: the preview the
+	// person approved showed the app's answer for the same question.
+	subject := judgeInstall(manifest, parsed.Owner+"/"+parsed.Repo)
+
 	// The person agreed to what a preview showed: refuse a release whose
 	// manifest would show something else (checkExpectedConsent).
-	if err := checkExpectedConsent(manifest, installExpectConsent); err != nil {
+	if err := checkExpectedConsent(subject.next, installExpectConsent); err != nil {
 		os.RemoveAll(tempDir)
 		return err
 	}
@@ -231,12 +230,7 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 	// update asks only about the DIFF against the manifest the person
 	// approved for the copy it will replace (approvedManifest) — nothing
 	// new means no question, an expansion needs a fresh yes.
-	if old, installed := installedForUpdate(manifest.ID, filepath.Join(userPluginsDir(), manifest.ID)); installed {
-		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(manifest.ID, parsed.Owner+"/"+parsed.Repo)); err != nil {
-			os.RemoveAll(tempDir)
-			return err
-		}
-	} else if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
+	if err := confirmConsent(subject); err != nil {
 		os.RemoveAll(tempDir)
 		return err
 	}
@@ -401,12 +395,7 @@ func installFromSource(source string) error {
 	// plugins directory. This path used to install without ever printing
 	// the disclosure, let alone asking.
 	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
-	if old, installed := installedForUpdate(manifest.ID, targetDir); installed {
-		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(manifest.ID, parsed.Owner+"/"+parsed.Repo)); err != nil {
-			os.RemoveAll(tempDir)
-			return err
-		}
-	} else if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
+	if err := confirmConsent(judgeInstall(manifest, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo))); err != nil {
 		os.RemoveAll(tempDir)
 		return err
 	}
@@ -478,6 +467,39 @@ func installFromSource(source string) error {
 }
 
 // --- Helpers ---
+
+// consentSubject is what one install or update's consent moment is about:
+// the manifest it installs and, for an update, the one it replaces, each
+// carrying the app's judgement when it could be asked.
+type consentSubject struct {
+	next, old PluginManifest
+	installed bool
+	// unjudged is why the app could not be asked; nil when it answered.
+	unjudged error
+}
+
+// judgeInstall asks the app about manifest, installed from source (what
+// its install record will name), and about the copy it would replace.
+func judgeInstall(manifest PluginManifest, source string) consentSubject {
+	s := consentSubject{}
+	s.old, s.installed = installedForUpdate(manifest.ID, filepath.Join(userPluginsDir(), manifest.ID))
+	if s.installed {
+		s.next, s.old, s.unjudged = judgedUpdate(manifest, s.old, source)
+	} else {
+		s.next, s.unjudged = judged(manifest, source)
+	}
+	return s
+}
+
+// confirmConsent is the consent moment: a fresh install discloses
+// everything and asks at a terminal; an update asks about its diff.
+func confirmConsent(s consentSubject) error {
+	noteUnjudged(s.next, s.unjudged)
+	if s.installed {
+		return confirmUpdate(s.next, s.old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(s.next))
+	}
+	return confirmInstall(s.next, os.Stdin, !installAssumeYes && stdinIsTTY())
+}
 
 func readManifest(path string) (PluginManifest, error) {
 	data, err := os.ReadFile(path)
