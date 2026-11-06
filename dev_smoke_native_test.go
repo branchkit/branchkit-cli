@@ -199,12 +199,15 @@ func TestNativeLivenessImplausibleAnswersAreEmpty(t *testing.T) {
 }
 
 // A machine with no desktop session (SSH, a VM with no seat): every
-// desktop read answers nothing while uptime and the computer name still
-// answer. That is the machine's state, not an obsoleted API, so it warns.
+// desktop read answers nothing while uptime, the computer name and the
+// volume (Linux reads it from the audio server, which runs without a
+// desktop) still answer. That is the machine's state, not an obsoleted
+// API, so it warns.
 func TestNativeLivenessNoDesktopWarns(t *testing.T) {
 	nativeServer(t, withBodies(emptyNativeBodies, map[string]string{
 		"/v1/native/uptime-seconds": `{"seconds":120}`,
 		"/v1/native/computer-name":  `{"name":"a computer"}`,
+		"/v1/native/volume":         `{"volume":0.4,"is_muted":false}`,
 	}), nil)
 	c := nativeLivenessCheck("tok")
 	if c.Status != "warn" {
@@ -235,5 +238,30 @@ func TestNativeLivenessAmplifiedVolumeIsLive(t *testing.T) {
 	c := nativeLivenessCheck("tok")
 	if got := probeStatus(c, "volume"); got != "live" {
 		t.Errorf("volume = %s, want live", got)
+	}
+}
+
+// Linux on X11 lists the apps that have a window, so a desktop with no
+// window open answers no apps, and that is real.
+func TestNativeLivenessNoAppsWithNoWindowsPasses(t *testing.T) {
+	nativeServer(t, withBodies(liveNativeBodies, map[string]string{
+		"/v1/native/running-apps":  `{"apps":[]}`,
+		"/v1/native/windows/ids":   `{"window_ids":[]}`,
+		"/v1/native/frontmost-app": `{"app":null}`,
+	}), nil)
+	c := nativeLivenessCheck("tok")
+	if c.Status != "pass" {
+		t.Fatalf("status = %s (%s), want pass", c.Status, c.Detail)
+	}
+}
+
+// No apps while windows are open is not that state: it is dead.
+func TestNativeLivenessNoAppsWithWindowsFails(t *testing.T) {
+	nativeServer(t, withBodies(liveNativeBodies, map[string]string{
+		"/v1/native/running-apps": `{"apps":[]}`,
+	}), nil)
+	c := nativeLivenessCheck("tok")
+	if c.Status != "fail" {
+		t.Fatalf("status = %s (%s), want fail", c.Status, c.Detail)
 	}
 }

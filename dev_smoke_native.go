@@ -14,7 +14,8 @@ package main
 // The signal is the capture check's split, taken within each group of
 // reads that share a precondition. The desktop reads (apps, displays,
 // cursor, input sources, windows) all need a desktop session; the system
-// reads (uptime, computer name) answer without one. A whole group dead is
+// reads (uptime, computer name) answer without one, and so may the volume
+// (Linux reads it from the audio server), which is a group of its own. A whole group dead is
 // the machine's state (no desktop session; a build with no OS behind it),
 // so it warns, except the system reads dying under a working desktop,
 // which no machine state explains. Some reads of one group answering and
@@ -44,9 +45,14 @@ type nativeLivenessOp struct {
 	name string
 	path string
 	// group is the precondition the read shares with others: "desktop"
-	// (a desktop session) or "system" (none). The split is taken per group.
+	// (a desktop session), "audio" (an audio service) or "system" (none).
+	// The split is taken per group.
 	group      string
 	mayBeEmpty bool
+	// emptyWith names another probe: when both answer empty, this one's
+	// empty is real (Linux on X11 lists the apps that have a window, so no
+	// window means no app).
+	emptyWith string
 	// judge reads a 200 body and returns (plausible, detail).
 	judge func(raw []byte) (bool, string)
 }
@@ -56,12 +62,12 @@ type nativeLivenessOp struct {
 // here touches contacts, calendars, location, camera, microphone or
 // Bluetooth).
 var nativeLivenessOps = []nativeLivenessOp{
-	{name: "running apps", path: "/v1/native/running-apps", group: "desktop", judge: judgeList("apps", "app")},
+	{name: "running apps", path: "/v1/native/running-apps", group: "desktop", emptyWith: "window ids", judge: judgeList("apps", "app")},
 	{name: "displays", path: "/v1/native/displays", group: "desktop", judge: judgeDisplays},
 	{name: "cursor", path: "/v1/native/cursor-info", group: "desktop", judge: judgeCursor},
 	{name: "input sources", path: "/v1/native/input-sources", group: "desktop", judge: judgeList("sources", "source")},
 	{name: "frontmost app", path: "/v1/native/frontmost-app", group: "desktop", mayBeEmpty: true, judge: judgeFrontmost},
-	{name: "volume", path: "/v1/native/volume", group: "desktop", mayBeEmpty: true, judge: judgeVolume},
+	{name: "volume", path: "/v1/native/volume", group: "audio", mayBeEmpty: true, judge: judgeVolume},
 	{name: "window ids", path: "/v1/native/windows/ids", group: "desktop", mayBeEmpty: true, judge: judgeList("window_ids", "window")},
 	{name: "uptime", path: "/v1/native/uptime-seconds", group: "system", judge: judgeUptime},
 	{name: "computer name", path: "/v1/native/computer-name", group: "system", judge: judgeNonEmptyString("name")},
@@ -223,12 +229,21 @@ func nativeLivenessCheck(token string) smokeCheck {
 		live int
 		dead []string
 	}
-	groups := map[string]*tally{"desktop": {}, "system": {}}
+	groups := map[string]*tally{"desktop": {}, "audio": {}, "system": {}}
 	var probes []nativeProbe
-	var unsupported []string
+	status := map[string]string{}
 	for _, op := range nativeLivenessOps {
 		p := probeNative(token, op)
 		probes = append(probes, p)
+		status[op.name] = p.Status
+	}
+	var unsupported []string
+	for i, op := range nativeLivenessOps {
+		p := &probes[i]
+		if p.Status == "empty" && op.emptyWith != "" && status[op.emptyWith] == "empty" {
+			p.MayBeEmpty = true
+			p.Detail += " (and no " + op.emptyWith + ")"
+		}
 		g := groups[op.group]
 		switch {
 		case p.Status == "live":
@@ -241,7 +256,7 @@ func nativeLivenessCheck(token string) smokeCheck {
 			g.dead = append(g.dead, p.Name)
 		}
 	}
-	desktop, system := groups["desktop"], groups["system"]
+	desktop, audio, system := groups["desktop"], groups["audio"], groups["system"]
 
 	c := smokeCheck{Name: "native", Probes: probes, NotCovered: nativeNotProbed}
 	note := ""
@@ -251,38 +266,38 @@ func nativeLivenessCheck(token string) smokeCheck {
 	// Within one group, some answering and some not.
 	var split []string
 	splitTotal := 0
-	for _, g := range []*tally{desktop, system} {
+	for _, g := range []*tally{desktop, audio, system} {
 		if g.live > 0 && len(g.dead) > 0 {
 			split = append(split, g.dead...)
 			splitTotal += g.live + len(g.dead)
 		}
 	}
-	live := desktop.live + system.live
+	live := desktop.live + audio.live + system.live
 	switch {
 	case len(split) > 0:
 		c.Status = "fail"
 		c.Detail = fmt.Sprintf(
 			"%d of %d read-only ops returned nothing while others needing the same answered (%s) — an OS path has stopped answering%s",
 			len(split), splitTotal, strings.Join(split, ", "), note)
-	case live == 0 && len(desktop.dead)+len(system.dead) == 0:
+	case live == 0 && len(desktop.dead)+len(audio.dead)+len(system.dead) == 0:
 		c.Status = "warn"
 		c.Detail = "no read-only op could be judged" + note
 	case live == 0:
 		c.Status = "warn"
 		c.Detail = fmt.Sprintf(
 			"no read-only op answered (%s) — the native layer is not answering at all%s",
-			strings.Join(append(desktop.dead, system.dead...), ", "), note)
+			strings.Join(append(append(desktop.dead, audio.dead...), system.dead...), ", "), note)
+	case len(system.dead) > 0:
+		// No machine state explains this one: other reads answer, uptime does not.
+		c.Status = "fail"
+		c.Detail = fmt.Sprintf(
+			"no system read answered (%s) while other reads answered — an OS path has stopped answering%s",
+			strings.Join(system.dead, ", "), note)
 	case len(desktop.dead) > 0:
 		c.Status = "warn"
 		c.Detail = fmt.Sprintf(
 			"no desktop read answered (%s) while the system reads did — no desktop session?%s",
 			strings.Join(desktop.dead, ", "), note)
-	case len(system.dead) > 0:
-		// No machine state explains this one: a desktop with no uptime.
-		c.Status = "fail"
-		c.Detail = fmt.Sprintf(
-			"no system read answered (%s) while the desktop reads did — an OS path has stopped answering%s",
-			strings.Join(system.dead, ", "), note)
 	default:
 		c.Status = "pass"
 		c.Detail = fmt.Sprintf("all %d judged read-only ops answered%s", live, note)
