@@ -397,12 +397,16 @@ func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 	if newM.Run != "" {
 		setExecutable(dst, newM.Run)
 	}
-	// A copy the app seeded from its bundle is a developer's build now: its
-	// "bundled" install record goes, or the app would put the bundle's copy
-	// back over it at the next launch.
+	// A copy the app seeded from its bundle is a developer's build now, as
+	// if installed from this folder: recorded so, or its "bundled" record
+	// would have the app put the bundle's copy back at the next launch.
 	if id := filepath.Base(dst); id != "" {
 		if meta, ok := readSourceMeta(id); ok && meta.Source == bundledSource {
-			removeSourceMeta(id)
+			source := srcDir
+			if abs, err := filepath.Abs(srcDir); err == nil {
+				source = abs
+			}
+			writeSourceMeta(id, dst, localSourcePrefix+source, "local", nil, false)
 		}
 	}
 	return !bytes.Equal(before, after), nil

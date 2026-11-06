@@ -220,6 +220,30 @@ func readSourceMeta(pluginID string) (SourceMeta, bool) {
 	return meta, true
 }
 
+// withoutSourceMeta runs swap, which replaces pluginID's installed files,
+// with its install record moved aside: while the files change, no record
+// speaks for them, so the app never reads the old install's record for the
+// new files (and a crash meanwhile leaves no record, granted nothing by
+// default). If swap fails the old files are still there and the record is
+// put back; if it succeeds the record is gone, for the caller to write anew.
+func withoutSourceMeta(pluginID string, swap func() error) error {
+	path := sourceMetaPath(pluginID)
+	if path == "" {
+		return swap()
+	}
+	aside := path + ".aside"
+	setAside := os.Rename(path, aside) == nil
+	err := swap()
+	if setAside {
+		if err != nil {
+			os.Rename(aside, path)
+		} else {
+			os.Remove(aside)
+		}
+	}
+	return err
+}
+
 // removeSourceMeta forgets pluginID's install record, on uninstall.
 func removeSourceMeta(pluginID string) {
 	if path := sourceMetaPath(pluginID); path != "" {

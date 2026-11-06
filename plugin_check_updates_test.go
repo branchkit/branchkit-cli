@@ -135,6 +135,34 @@ func TestAFailedRecordRemovesTheOldOne(t *testing.T) {
 	}
 }
 
+// A swap that fails leaves the old copy, and its record comes back; one
+// that succeeds leaves no record for the caller to write over.
+func TestWithoutSourceMetaRestoresTheRecordWhenTheSwapFails(t *testing.T) {
+	dir := installedDir(t, "test", `{"id":"test"}`)
+	writeSourceMeta("test", dir, "x/y", "v1", nil, false)
+	err := withoutSourceMeta("test", func() error {
+		if _, ok := readSourceMeta("test"); ok {
+			t.Error("the record was readable during the swap")
+		}
+		return os.ErrPermission
+	})
+	if err != os.ErrPermission {
+		t.Fatalf("err = %v", err)
+	}
+	if meta, ok := readSourceMeta("test"); !ok || meta.InstalledTag != "v1" {
+		t.Errorf("record after a failed swap: %+v, %v", meta, ok)
+	}
+	if err := withoutSourceMeta("test", func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := readSourceMeta("test"); ok {
+		t.Error("a record survived a swap that succeeded")
+	}
+	if _, err := os.Stat(sourceMetaPath("test") + ".aside"); !os.IsNotExist(err) {
+		t.Errorf("the set-aside record was left behind: %v", err)
+	}
+}
+
 // The record decides the app's trust tier, so it must sit where the plugin
 // cannot write: never inside the plugin's own (writable) install folder.
 func TestSourceMetaLivesOutsideThePluginFolder(t *testing.T) {

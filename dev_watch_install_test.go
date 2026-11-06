@@ -106,8 +106,9 @@ func TestSyncInstalledCopy(t *testing.T) {
 }
 
 // The app keeps a copy it seeded from its bundle equal to the bundle, so a
-// developer's build synced over one forgets the seeded record: otherwise the
-// next launch would put the bundle's copy back. Another record is kept.
+// developer's build synced over one is recorded as installed from the
+// developer's folder: otherwise the next launch would put the bundle's copy
+// back. Another install's record is kept.
 func TestSyncOverASeededCopyForgetsItsBundledRecord(t *testing.T) {
 	support := t.TempDir()
 	t.Setenv("BRANCHKIT_APP_SUPPORT", support)
@@ -121,17 +122,18 @@ func TestSyncOverASeededCopyForgetsItsBundledRecord(t *testing.T) {
 	if err := safeCopyDir(src, dst, 0); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct {
-		source string
-		kept   bool
-	}{{bundledSource, false}, {"acme/branchkit-plugin-snippets", true}} {
+	srcAbs, _ := filepath.Abs(src)
+	for _, tc := range []struct{ source, after string }{
+		{bundledSource, localSourcePrefix + srcAbs},
+		{"acme/branchkit-plugin-snippets", "acme/branchkit-plugin-snippets"},
+	} {
 		writeSourceMeta("snippets", dst, tc.source, "v1", nil, false)
 		writeWatchFile(t, filepath.Join(src, "snippets-plugin"), "v2-"+tc.source)
 		if _, err := syncInstalledCopy(src, dst); err != nil {
 			t.Fatalf("sync: %v", err)
 		}
-		if _, ok := readSourceMeta("snippets"); ok != tc.kept {
-			t.Errorf("source %q: record kept = %v, want %v", tc.source, ok, tc.kept)
+		if meta, _ := readSourceMeta("snippets"); meta.Source != tc.after {
+			t.Errorf("synced over a %q copy: recorded %q, want %q", tc.source, meta.Source, tc.after)
 		}
 	}
 }

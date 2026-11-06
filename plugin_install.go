@@ -289,11 +289,11 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 			os.Chmod(p, 0o755)
 		}
 	}
-	// The old install's record goes before the swap (see installFromLocal):
-	// a crash between the two then leaves a copy with no record, which the
-	// app grants nothing by default and never replaces as its own.
-	removeSourceMeta(manifest.ID)
-	if err := replaceDir(stageDir, targetDir); err != nil {
+	// The old install's record is set aside for the swap (see
+	// installFromLocal): a crash during it leaves a copy with no record,
+	// which the app grants nothing by default. A swap that fails leaves the
+	// old copy in place, and its record comes back with it.
+	if err := withoutSourceMeta(manifest.ID, func() error { return replaceDir(stageDir, targetDir) }); err != nil {
 		os.RemoveAll(stageDir)
 		os.RemoveAll(tempDir)
 		return fmt.Errorf("failed to move plugin into place: %w", err)
