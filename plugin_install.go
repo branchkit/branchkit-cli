@@ -114,6 +114,11 @@ func installFromLocal(source string) error {
 		return err
 	}
 
+	// The record of whatever was here goes before its files are touched:
+	// were it left while the new files land, the app could read it for them
+	// (a seeded copy's "bundled" record is one the app refreshes from its
+	// bundle). Written again below, once the copy is in place.
+	removeSourceMeta(manifest.ID)
 	os.MkdirAll(targetDir, 0o755)
 
 	if err := safeCopyDir(source, targetDir, 0); err != nil {
@@ -284,6 +289,10 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 			os.Chmod(p, 0o755)
 		}
 	}
+	// The old install's record goes before the swap (see installFromLocal):
+	// a crash between the two then leaves a copy with no record, which the
+	// app grants nothing by default and never replaces as its own.
+	removeSourceMeta(manifest.ID)
 	if err := replaceDir(stageDir, targetDir); err != nil {
 		os.RemoveAll(stageDir)
 		os.RemoveAll(tempDir)
@@ -399,6 +408,7 @@ func installFromSource(source string) error {
 		return err
 	}
 
+	removeSourceMeta(manifest.ID) // before the files change (see installFromLocal)
 	os.MkdirAll(targetDir, 0o755)
 
 	// Copy plugin.json

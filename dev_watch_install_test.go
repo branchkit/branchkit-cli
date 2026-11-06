@@ -105,6 +105,37 @@ func TestSyncInstalledCopy(t *testing.T) {
 	}
 }
 
+// The app keeps a copy it seeded from its bundle equal to the bundle, so a
+// developer's build synced over one forgets the seeded record: otherwise the
+// next launch would put the bundle's copy back. Another record is kept.
+func TestSyncOverASeededCopyForgetsItsBundledRecord(t *testing.T) {
+	support := t.TempDir()
+	t.Setenv("BRANCHKIT_APP_SUPPORT", support)
+	src := t.TempDir()
+	writeWatchFile(t, filepath.Join(src, "plugin.json"), watchManifest)
+	writeWatchFile(t, filepath.Join(src, "snippets-plugin"), "v1")
+	dst := filepath.Join(support, "plugins", "snippets")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := safeCopyDir(src, dst, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		source string
+		kept   bool
+	}{{bundledSource, false}, {"acme/branchkit-plugin-snippets", true}} {
+		writeSourceMeta("snippets", dst, tc.source, "v1", nil, false)
+		writeWatchFile(t, filepath.Join(src, "snippets-plugin"), "v2-"+tc.source)
+		if _, err := syncInstalledCopy(src, dst); err != nil {
+			t.Fatalf("sync: %v", err)
+		}
+		if _, ok := readSourceMeta("snippets"); ok != tc.kept {
+			t.Errorf("source %q: record kept = %v, want %v", tc.source, ok, tc.kept)
+		}
+	}
+}
+
 func TestWatchedSourceIncludesPython(t *testing.T) {
 	if !watchedSource("main.py") {
 		t.Fatal("a Python plugin's source must count as a change")

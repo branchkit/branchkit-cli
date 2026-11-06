@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -90,14 +91,47 @@ func TestSourceMetaBindsTheCollectionFilesTheManifestNames(t *testing.T) {
 }
 
 func TestPlainRelativePath(t *testing.T) {
+	windows := runtime.GOOS == "windows"
 	for rel, want := range map[string]bool{
 		"commands.json": true, "collections/log.json": true, `collections\log.json`: true,
-		"": false, "/etc/passwd": false, `\x`: false, "C:x": false, `C:\x`: false,
-		"../x": false, "a/../../x": false, `a\..\x`: false,
+		"": false, "/etc/passwd": false, "../x": false, "a/../../x": false,
+		// Read as the app reads them on this OS: only Windows takes "\\" as
+		// a separator and "C:" as a drive.
+		`\x`: !windows, "C:x": !windows, `a\..\x`: !windows, "a:b.json": !windows,
 	} {
 		if got := plainRelativePath(rel); got != want {
 			t.Errorf("plainRelativePath(%q) = %v, want %v", rel, got, want)
 		}
+	}
+}
+
+// A named collection file the install does not ship gets no digest (the app
+// loads the rest), and a null collection_data value names no file.
+func TestSourceMetaSkipsAbsentAndNullNamedFiles(t *testing.T) {
+	dir := installedDir(t, "test",
+		`{"id":"test","collection_data":{"voice_commands":"commands.json","other":null}}`)
+	writeSourceMeta("test", dir, "x/y", "v1", nil, false)
+	meta, ok := readSourceMeta("test")
+	if !ok {
+		t.Fatal("no record")
+	}
+	if len(meta.CollectionFilesSHA256) != 0 {
+		t.Errorf("digests %v, want none", meta.CollectionFilesSHA256)
+	}
+}
+
+// A record that cannot be written takes the one it would replace with it:
+// the old install's source, tag and trust must not be read for new files.
+func TestAFailedRecordRemovesTheOldOne(t *testing.T) {
+	dir := installedDir(t, "test", `{"id":"test"}`)
+	writeSourceMeta("test", dir, bundledSource, "v1", nil, false)
+	if err := os.WriteFile(filepath.Join(dir, "plugin.json"),
+		[]byte(`{"id":"test","collection_data":{"c":"../outside.json"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSourceMeta("test", dir, "x/y", "v2", nil, false)
+	if meta, ok := readSourceMeta("test"); ok {
+		t.Errorf("the old record survived a failed write: %+v", meta)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -42,7 +43,7 @@ type SourceMeta struct {
 	ManifestSHA256 string `json:"manifest_sha256"`
 	// CollectionFilesSHA256 is the hex SHA-256 of every file the manifest
 	// names for a collection (see referencedFiles), keyed by the path exactly
-	// as the manifest writes it. They are part of the install as much as
+	// as the manifest writes it; no entry for one that was not installed. They are part of the install as much as
 	// plugin.json is (a collection's declaration, the commands it
 	// contributes), so the app reads the record only while each still has its
 	// digest too.
@@ -67,9 +68,13 @@ func referencedFiles(manifest []byte) ([]string, error) {
 	var out []string
 	for _, group := range []map[string]json.RawMessage{m.CollectionData, m.Provides.Collections} {
 		for _, raw := range group {
-			var rel string
-			if json.Unmarshal(raw, &rel) != nil {
-				continue // inline data or an inline declaration
+			var value any
+			if json.Unmarshal(raw, &value) != nil {
+				return nil, fmt.Errorf("plugin.json: %s is not JSON", raw)
+			}
+			rel, named := value.(string)
+			if !named {
+				continue // inline data or an inline declaration (null too)
 			}
 			if !plainRelativePath(rel) {
 				return nil, fmt.Errorf("plugin.json names %q, which is not a path inside the plugin's folder", rel)
@@ -80,14 +85,18 @@ func referencedFiles(manifest []byte) ([]string, error) {
 	return out, nil
 }
 
-// plainRelativePath: not empty, not absolute or rooted on either separator,
-// no drive letter, no ".." component.
+// plainRelativePath: not empty, not absolute, not rooted, no volume or
+// drive, no ".." component, read as the app reads a path on this OS (on
+// Windows "\\" separates components too, and "C:x" names a drive).
 func plainRelativePath(rel string) bool {
-	if rel == "" || filepath.IsAbs(rel) || strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, `\`) ||
-		(len(rel) >= 2 && rel[1] == ':') {
+	if rel == "" || filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" || strings.HasPrefix(rel, "/") {
 		return false
 	}
-	for _, part := range strings.FieldsFunc(rel, func(r rune) bool { return r == '/' || r == '\\' }) {
+	windows := runtime.GOOS == "windows"
+	if windows && strings.HasPrefix(rel, `\`) {
+		return false
+	}
+	for _, part := range strings.FieldsFunc(rel, func(r rune) bool { return r == '/' || (windows && r == '\\') }) {
 		if part == ".." {
 			return false
 		}
@@ -98,6 +107,11 @@ func plainRelativePath(rel string) bool {
 // installRecordsDirName is the folder under app support holding install
 // records; the platform names it INSTALL_RECORDS_DIR_NAME.
 const installRecordsDirName = "install-records"
+
+// bundledSource is the source the app records for a copy it seeded from its
+// bundle (its BUNDLED_SOURCE). The app keeps such a copy equal to the
+// bundle, so whatever puts other files there forgets that record first.
+const bundledSource = "bundled"
 
 // localSourcePrefix marks a SourceMeta.Source recorded by a local-folder
 // install, followed by the folder's absolute path.
@@ -115,11 +129,14 @@ func sourceMetaPath(pluginID string) string {
 // writeSourceMeta records pluginID's install, bound to the plugin.json now in
 // pluginDir and the collection files it names. Through a temporary file, so
 // the app never reads half a record.
-// A record that cannot be written is reported: the plugin then reads as
-// installed from nowhere (no catalog tier, not author-verified).
+// A record that cannot be written is reported, and the one it would have
+// replaced is removed: the plugin then reads as installed from nowhere (no
+// catalog tier, not author-verified), and nothing reads the old install's
+// source, tag or "bundled" for the new files.
 func writeSourceMeta(pluginID, pluginDir, source, tag string, attestation *AuthorAttestation, registrySigned bool) {
 	warn := func(err error) {
 		fmt.Fprintf(os.Stderr, "  WARN: could not record where '%s' was installed from: %v\n", pluginID, err)
+		removeSourceMeta(pluginID)
 	}
 	path := sourceMetaPath(pluginID)
 	if path == "" {
@@ -139,6 +156,12 @@ func writeSourceMeta(pluginID, pluginDir, source, tag string, attestation *Autho
 	digests := make(map[string]string, len(files))
 	for _, rel := range files {
 		body, err := os.ReadFile(filepath.Join(pluginDir, filepath.FromSlash(rel)))
+		if os.IsNotExist(err) {
+			// Named but not shipped (the app warns and loads the rest):
+			// no digest, and the app reads the record only while it stays
+			// away.
+			continue
+		}
 		if err != nil {
 			warn(err)
 			return
