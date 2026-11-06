@@ -265,8 +265,9 @@ func cmdPreview(source string) {
 	}
 
 	// Already installed → attach the consent diff, same basis as the
-	// install path's confirmUpdate: the manifest at the swap target.
-	if old, err := readManifest(filepath.Join(userPluginsDir(), manifest.ID, "plugin.json")); err == nil {
+	// install path's confirmUpdate: the manifest the person approved for
+	// the copy at the swap target (approvedManifest).
+	if old, installed, _ := approvedManifest(manifest.ID, filepath.Join(userPluginsDir(), manifest.ID)); installed {
 		up := previewDiff(old, manifest, grantsArriveOn(manifest.ID, parsed.Owner+"/"+parsed.Repo))
 		result.Update = &up
 	}

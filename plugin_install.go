@@ -104,7 +104,7 @@ func installFromLocal(source string) error {
 	// re-install over an existing version asks about the diff, like any
 	// other update.
 	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
-	if old, rerr := readManifest(filepath.Join(targetDir, "plugin.json")); rerr == nil {
+	if old, installed := installedForUpdate(manifest.ID, targetDir); installed {
 		// A copy from a local folder is never first-party to the app
 		// (grantsArriveOn), so its new grants arrive off.
 		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(manifest.ID, "")); err != nil {
@@ -113,6 +113,16 @@ func installFromLocal(source string) error {
 	} else if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
 		return err
 	}
+
+	// The app grants a catalogued plugin's defaults only to a copy whose
+	// record names the catalog's own source, and a local folder is not that
+	// source even when it reuses a catalogued id.
+	if abs, err := filepath.Abs(source); err == nil {
+		source = abs
+	}
+	// Computed from the folder being copied, not from the copy: see
+	// installRecord.
+	meta, named, recErr := installRecord(source, localSourcePrefix+source, "local", nil, false)
 
 	// The record of whatever was here goes before its files are touched:
 	// were it left while the new files land, the app could read it for them
@@ -125,18 +135,15 @@ func installFromLocal(source string) error {
 		os.RemoveAll(targetDir)
 		return fmt.Errorf("failed to copy plugin: %w", err)
 	}
+	os.Remove(filepath.Join(targetDir, legacySourceFile))
+	if recErr == nil {
+		dropUnshipped(targetDir, named, meta)
+	}
 
 	if manifest.Run != "" {
 		setExecutable(targetDir, manifest.Run)
 	}
-	// Recorded after the copy, replacing the record of whatever was here:
-	// the app grants a catalogued plugin's defaults only to a copy whose
-	// record names the catalog's own source, and a local folder is not that
-	// source even when it reuses a catalogued id.
-	if abs, err := filepath.Abs(source); err == nil {
-		source = abs
-	}
-	writeSourceMeta(manifest.ID, targetDir, localSourcePrefix+source, "local", nil, false)
+	recordInstall(manifest.ID, meta, recErr)
 
 	fmt.Printf("Installed plugin '%s' v%s\n", manifest.Name, manifest.Version)
 	notifyPlatform()
@@ -205,19 +212,12 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		return err
 	}
 
-	// Attestation downgrade gate: an update whose predecessor was
-	// author-verified must not quietly become unverified — writeSourceMeta
-	// would record author_verified:false and the trust tier would drop
-	// without a word. Checked before the consent prompt, like the
-	// publisher claim: a security regression is not something to bundle
+	// Attestation downgrade gate, checked before the consent prompt like
+	// the publisher claim: a security regression is not something to bundle
 	// into a diff question.
-	if prior, ok := readSourceMeta(manifest.ID); ok {
-		if prior.AuthorVerified && (attestation == nil || !attestation.Verified) {
-			if err := confirmAttestationDowngrade(manifest.Name, os.Stdin, stdinIsTTY()); err != nil {
-				os.RemoveAll(tempDir)
-				return err
-			}
-		}
+	if err := checkAttestationDowngrade(manifest.ID, manifest.Name, attestation, os.Stdin, stdinIsTTY()); err != nil {
+		os.RemoveAll(tempDir)
+		return err
 	}
 
 	// The person agreed to what a preview showed: refuse a release whose
@@ -228,10 +228,10 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 	}
 
 	// Consent moment. A fresh install discloses everything and asks; an
-	// update asks only about the DIFF against the manifest it will replace
-	// (the old plugin.json is sitting right at the swap target) — nothing
+	// update asks only about the DIFF against the manifest the person
+	// approved for the copy it will replace (approvedManifest) — nothing
 	// new means no question, an expansion needs a fresh yes.
-	if old, rerr := readManifest(filepath.Join(userPluginsDir(), manifest.ID, "plugin.json")); rerr == nil {
+	if old, installed := installedForUpdate(manifest.ID, filepath.Join(userPluginsDir(), manifest.ID)); installed {
 		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(manifest.ID, parsed.Owner+"/"+parsed.Repo)); err != nil {
 			os.RemoveAll(tempDir)
 			return err
@@ -289,6 +289,11 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 			os.Chmod(p, 0o755)
 		}
 	}
+	os.Remove(filepath.Join(stageDir, legacySourceFile))
+	// The install record (update checking + the verified-author and
+	// registry-signed results the platform's trust-tier resolution reads),
+	// computed from the staged files: see installRecord.
+	meta, _, recErr := installRecord(stageDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation, registrySigned)
 	// The old install's record is set aside for the swap (see
 	// installFromLocal): a crash during it leaves a copy with no record,
 	// which the app grants nothing by default. A swap that fails leaves the
@@ -298,11 +303,9 @@ func installFromGitHub(source string, catalog *catalogEntry) error {
 		os.RemoveAll(tempDir)
 		return fmt.Errorf("failed to move plugin into place: %w", err)
 	}
-	// The install record (update checking + the verified-author and
-	// registry-signed results the platform's trust-tier resolution reads),
-	// bound to the manifest now in place. Until it is written, the new files
-	// and the old record disagree and the app reads no record at all.
-	writeSourceMeta(manifest.ID, targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), tag, attestation, registrySigned)
+	// Written once the swap is done. Until then the new files have no
+	// record, and the app grants them nothing by default.
+	recordInstall(manifest.ID, meta, recErr)
 
 	fmt.Printf("Installed plugin '%s' v%s (%s) by github:%s\n", manifest.Name, manifest.Version, tag, parsed.Owner)
 	printInstallInfo(manifest, parsed, tag)
@@ -398,7 +401,7 @@ func installFromSource(source string) error {
 	// plugins directory. This path used to install without ever printing
 	// the disclosure, let alone asking.
 	targetDir := filepath.Join(userPluginsDir(), manifest.ID)
-	if old, rerr := readManifest(filepath.Join(targetDir, "plugin.json")); rerr == nil {
+	if old, installed := installedForUpdate(manifest.ID, targetDir); installed {
 		if err := confirmUpdate(manifest, old, os.Stdin, installAssumeYes, stdinIsTTY(), grantsArriveOn(manifest.ID, parsed.Owner+"/"+parsed.Repo)); err != nil {
 			os.RemoveAll(tempDir)
 			return err
@@ -406,6 +409,14 @@ func installFromSource(source string) error {
 	} else if err := confirmInstall(manifest, os.Stdin, !installAssumeYes && stdinIsTTY()); err != nil {
 		os.RemoveAll(tempDir)
 		return err
+	}
+
+	// Computed from the build, which is what gets copied: see installRecord.
+	// The collection files the manifest names are copied with it.
+	meta, named, recErr := installRecord(tempDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build", nil, false)
+	if recErr != nil {
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("plugin.json: %w", recErr)
 	}
 
 	removeSourceMeta(manifest.ID) // before the files change (see installFromLocal)
@@ -443,8 +454,21 @@ func installFromSource(source string) error {
 		}
 	}
 
-	// Save source metadata for update checking
-	writeSourceMeta(manifest.ID, targetDir, fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo), "source-build", nil, false)
+	for rel := range meta.CollectionFilesSHA256 {
+		dest := filepath.Join(targetDir, filepath.FromSlash(rel))
+		err := os.MkdirAll(filepath.Dir(dest), 0o755)
+		if err == nil {
+			err = copyFile(filepath.Join(tempDir, filepath.FromSlash(rel)), dest, 0o644)
+		}
+		if err != nil {
+			os.RemoveAll(tempDir)
+			return fmt.Errorf("failed to copy %s: %w", rel, err)
+		}
+	}
+	dropUnshipped(targetDir, named, meta)
+
+	// The install record, for update checking.
+	recordInstall(manifest.ID, meta, nil)
 
 	fmt.Printf("Built and installed plugin '%s' v%s by github:%s\n", manifest.Name, manifest.Version, parsed.Owner)
 	printInstallInfo(manifest, parsed, "source-build")

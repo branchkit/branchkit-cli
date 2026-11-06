@@ -190,11 +190,14 @@ func TestCatalogGrantsOn(t *testing.T) {
 		{ID: "voice", Source: "github:branchkit/branchkit-plugin-voice", Tier: "first-party"},
 		{ID: "fake", Source: "github:someone/branchkit-plugin-fake", Tier: "first-party"},
 		{ID: "snip", Source: "github:branchkit/branchkit-plugin-snip", Tier: "community"},
+		{ID: "bare", Source: "branchkit/branchkit-plugin-bare", Tier: "first-party"},
 	}}
 	cases := []struct {
 		id, repo string
 		want     bool
 	}{
+		// The app reads only a github: source as the entry's repository.
+		{"bare", "branchkit/branchkit-plugin-bare", false},
 		{"voice", "branchkit/branchkit-plugin-voice", true},
 		{"voice", "BranchKit/Branchkit-Plugin-Voice", true},
 		{"voice", "github:branchkit/branchkit-plugin-voice", true},

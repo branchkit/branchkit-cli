@@ -168,7 +168,9 @@ func findCatalogEntryBySource(source string) *catalogEntry {
 // entry, in the branchkit organisation, installed from the repository the
 // catalog names. Every other plugin's grants arrive off on its page and wait
 // for the person there. repo is the `owner/repo` being installed; "" for a
-// local folder, which the app never treats as first-party.
+// local folder, which the app never treats as first-party. It is the source
+// the install records, and the app's rule reads that record: a catalogued id
+// is first-party only while its record names the entry's own repository.
 //
 // The app decides from the catalog file it reads (localCatalog), not the
 // registry online, so that is the answer — and only when the registry online
@@ -255,9 +257,12 @@ func catalogGrantsOn(cat catalog, pluginID, repo string) bool {
 		if e.ID != pluginID {
 			continue
 		}
-		listed := strings.TrimPrefix(e.Source, "github:")
+		// The app reads a catalog source only in its github: form, both for
+		// the first-party organisation and for the repository the install
+		// record must name.
+		listed, ok := strings.CutPrefix(e.Source, "github:")
 		owner, _, _ := strings.Cut(listed, "/")
-		return e.Tier == "first-party" &&
+		return ok && e.Tier == "first-party" &&
 			strings.EqualFold(owner, "branchkit") &&
 			strings.EqualFold(listed, strings.TrimPrefix(repo, "github:"))
 	}

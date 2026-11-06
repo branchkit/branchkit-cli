@@ -394,19 +394,28 @@ func syncInstalledCopy(srcDir, dst string) (changed bool, err error) {
 	if err := safeCopyDir(srcDir, dst, 0); err != nil {
 		return false, fmt.Errorf("copying into %s: %w", dst, err)
 	}
+	os.Remove(filepath.Join(dst, legacySourceFile))
 	if newM.Run != "" {
 		setExecutable(dst, newM.Run)
 	}
 	// A copy the app seeded from its bundle is a developer's build now, as
 	// if installed from this folder: recorded so, or its "bundled" record
-	// would have the app put the bundle's copy back at the next launch.
+	// would have the app put the bundle's copy back at the next launch. A
+	// copy installed from a local folder is recorded again for what this
+	// copied, so the next install's diff starts from it. One installed from
+	// a release keeps that release's record, which no longer speaks for
+	// the folder: a developer's build is not the release.
 	if id := filepath.Base(dst); id != "" {
-		if meta, ok := readSourceMeta(id); ok && meta.Source == bundledSource {
+		if meta, ok := readSourceMeta(id); ok && (meta.Source == bundledSource || strings.HasPrefix(meta.Source, localSourcePrefix)) {
 			source := srcDir
 			if abs, err := filepath.Abs(srcDir); err == nil {
 				source = abs
 			}
-			writeSourceMeta(id, dst, localSourcePrefix+source, "local", nil, false)
+			record, named, err := installRecord(source, localSourcePrefix+source, "local", nil, false)
+			if err == nil {
+				dropUnshipped(dst, named, record)
+			}
+			recordInstall(id, record, err)
 		}
 	}
 	return !bytes.Equal(before, after), nil

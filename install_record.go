@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -23,6 +24,10 @@ import (
 // first-party plugin's default grants. No sandbox grant names the
 // install-records folder. The app writes the same path for the plugins it
 // seeds from its bundle.
+//
+// The app reads exactly this JSON, and its reader documents the shape both
+// writers share: change a field here and there together. Fields one side
+// does not know are ignored by the other.
 type SourceMeta struct {
 	Source       string `json:"source"`        // "owner/repo"
 	InstalledTag string `json:"installed_tag"` // e.g. "v3.0.0" or "source-build"
@@ -126,36 +131,29 @@ func sourceMetaPath(pluginID string) string {
 	return filepath.Join(appSupportDir(), installRecordsDirName, pluginID+".json")
 }
 
-// writeSourceMeta records pluginID's install, bound to the plugin.json now in
-// pluginDir and the collection files it names. Through a temporary file, so
-// the app never reads half a record.
-// A record that cannot be written is reported, and the one it would have
-// replaced is removed: the plugin then reads as installed from nowhere (no
-// catalog tier, not author-verified), and nothing reads the old install's
-// source, tag or "bundled" for the new files.
-func writeSourceMeta(pluginID, pluginDir, source, tag string, attestation *AuthorAttestation, registrySigned bool) {
-	warn := func(err error) {
-		fmt.Fprintf(os.Stderr, "  WARN: could not record where '%s' was installed from: %v\n", pluginID, err)
-		removeSourceMeta(pluginID)
-	}
-	path := sourceMetaPath(pluginID)
-	if path == "" {
-		warn(fmt.Errorf("not a plugin id"))
-		return
-	}
-	manifest, err := os.ReadFile(filepath.Join(pluginDir, "plugin.json"))
+// installRecord computes the install record for the plugin in dir: the
+// digests of its plugin.json and of every collection file that manifest
+// names, with source, tag and the signing results. named is every file the
+// manifest names, shipped or not (a name with no digest was not shipped).
+//
+// An installer computes it from the files it verified and staged, before
+// they reach the plugin's folder, never by reading that folder back
+// afterwards: a plugin still running from the folder can write it, and
+// whatever it put there between the copy and the record would be recorded
+// as installed. A difference that arrives that way leaves a record that
+// does not speak for the folder, which the app reads as no record.
+func installRecord(dir, source, tag string, attestation *AuthorAttestation, registrySigned bool) (meta SourceMeta, named []string, err error) {
+	manifest, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
 	if err != nil {
-		warn(err)
-		return
+		return SourceMeta{}, nil, err
 	}
-	files, err := referencedFiles(manifest)
+	named, err = referencedFiles(manifest)
 	if err != nil {
-		warn(err)
-		return
+		return SourceMeta{}, nil, err
 	}
-	digests := make(map[string]string, len(files))
-	for _, rel := range files {
-		body, err := os.ReadFile(filepath.Join(pluginDir, filepath.FromSlash(rel)))
+	digests := make(map[string]string, len(named))
+	for _, rel := range named {
+		body, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
 		if os.IsNotExist(err) {
 			// Named but not shipped (the app warns and loads the rest):
 			// no digest, and the app reads the record only while it stays
@@ -163,14 +161,13 @@ func writeSourceMeta(pluginID, pluginDir, source, tag string, attestation *Autho
 			continue
 		}
 		if err != nil {
-			warn(err)
-			return
+			return SourceMeta{}, nil, err
 		}
 		sum := sha256.Sum256(body)
 		digests[rel] = hex.EncodeToString(sum[:])
 	}
 	digest := sha256.Sum256(manifest)
-	meta := SourceMeta{
+	meta = SourceMeta{
 		Source:                source,
 		InstalledTag:          tag,
 		RegistrySigned:        registrySigned,
@@ -181,24 +178,153 @@ func writeSourceMeta(pluginID, pluginDir, source, tag string, attestation *Autho
 		meta.AuthorVerified = true
 		meta.AuthorIdentity = attestation.SAN
 	}
+	return meta, named, nil
+}
+
+// recordInstall writes meta as pluginID's install record, once the files it
+// was computed from are in place; err is installRecord's. Written through a
+// temporary file beside it and renamed into place, so the app reads the old
+// record or the new one, never half of one.
+// A record that cannot be computed or written is reported, and the one it
+// would have replaced is removed: the plugin then reads as installed from
+// nowhere (no catalog tier, not author-verified), and nothing reads the old
+// install's source, tag or "bundled" for the new files.
+func recordInstall(pluginID string, meta SourceMeta, err error) {
+	if err == nil {
+		err = saveSourceMeta(pluginID, meta)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  WARN: could not record where '%s' was installed from: %v\n", pluginID, err)
+		removeSourceMeta(pluginID)
+	}
+}
+
+func saveSourceMeta(pluginID string, meta SourceMeta) error {
+	path := sourceMetaPath(pluginID)
+	if path == "" {
+		return fmt.Errorf("not a plugin id")
+	}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
-		warn(err)
-		return
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		warn(err)
-		return
+		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		warn(err)
-		return
+	tmp, err := os.CreateTemp(filepath.Dir(path), pluginID+".json.tmp-*")
+	if err != nil {
+		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		warn(err)
+	_, err = tmp.Write(data)
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
 	}
+	if err == nil {
+		err = os.Chmod(tmp.Name(), 0o644)
+	}
+	if err == nil {
+		err = os.Rename(tmp.Name(), path)
+	}
+	if err != nil {
+		os.Remove(tmp.Name())
+	}
+	return err
+}
+
+// writeSourceMeta records the plugin now in pluginDir as pluginID's install.
+// Only for a copy the CLI itself just made from a folder the plugin cannot
+// write (dev sync); an installer records from its staged files
+// (installRecord, recordInstall).
+func writeSourceMeta(pluginID, pluginDir, source, tag string, attestation *AuthorAttestation, registrySigned bool) {
+	meta, _, err := installRecord(pluginDir, source, tag, attestation, registrySigned)
+	recordInstall(pluginID, meta, err)
+}
+
+// dropUnshipped removes from the plugin folder dir each file the manifest
+// names that the install did not ship (named, with no digest in meta). A
+// copy made over an earlier install keeps that install's files; one the
+// manifest still names would stand where the record says there is none,
+// and the record would not speak for the folder.
+func dropUnshipped(dir string, named []string, meta SourceMeta) {
+	for _, rel := range named {
+		if _, shipped := meta.CollectionFilesSHA256[rel]; !shipped {
+			os.Remove(filepath.Join(dir, filepath.FromSlash(rel)))
+		}
+	}
+}
+
+// legacySourceFile is where installs once kept their record, inside the
+// plugin's own folder. Nothing reads it; a folder copied in that still has
+// one loses it, so no older reader takes it for this install's record.
+const legacySourceFile = ".branchkit-source.json"
+
+// approvedManifest is the update diff's "before": the manifest the person
+// approved when the copy in dir was installed. It is read from dir, and
+// counts only while its SHA-256 is the one pluginID's install record holds:
+// every sandbox lets a plugin write its own folder, and a plugin that added
+// a permission to its plugin.json there would otherwise see that permission
+// pass as already granted when the next version asks for it.
+//
+// installed is false only when nothing is installed under the id (no folder
+// and no record): a fresh install. A manifest the record does not name (no
+// record, a manifest changed or removed since) gives one that requests
+// nothing, so everything the new version requests is shown, and asked
+// about, as new; unapproved then says why, for the person.
+func approvedManifest(pluginID, dir string) (old PluginManifest, installed bool, unapproved string) {
+	meta, recorded := readSourceMeta(pluginID)
+	_, statErr := os.Lstat(dir)
+	if !recorded && os.IsNotExist(statErr) {
+		return PluginManifest{}, false, ""
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
+	if err == nil && recorded {
+		sum := sha256.Sum256(data)
+		if strings.EqualFold(meta.ManifestSHA256, hex.EncodeToString(sum[:])) {
+			if json.Unmarshal(data, &old) == nil {
+				return old, true, ""
+			}
+		}
+	}
+	// Name and version only, to say what is being replaced.
+	var shown PluginManifest
+	json.Unmarshal(data, &shown)
+	old = PluginManifest{ID: pluginID, Name: shown.Name, Version: shown.Version}
+	if old.Name == "" {
+		old.Name = pluginID
+	}
+	if old.Version == "" {
+		old.Version = "?"
+	}
+	why := "has no install record"
+	if recorded {
+		why = "has a plugin.json that is not the one installed"
+	}
+	return old, true, fmt.Sprintf("The installed '%s' %s, so everything this version requests is shown as new.", pluginID, why)
+}
+
+// installedForUpdate is approvedManifest for an installer, which tells the
+// person when the diff starts from nothing.
+func installedForUpdate(pluginID, dir string) (PluginManifest, bool) {
+	old, installed, unapproved := approvedManifest(pluginID, dir)
+	if unapproved != "" {
+		fmt.Printf("\n%s\n", unapproved)
+	}
+	return old, installed
+}
+
+// checkAttestationDowngrade asks before an update whose predecessor was
+// author-verified installs without a verified attestation: recording
+// author_verified false would drop its trust tier without a word. The
+// predecessor's result comes from its install record, which the plugin
+// cannot write, never from its folder; and the record is read whether or
+// not it still speaks for the folder, so a plugin that changed its own
+// files cannot make the question go away.
+func checkAttestationDowngrade(pluginID, name string, attestation *AuthorAttestation, in io.Reader, tty bool) error {
+	prior, ok := readSourceMeta(pluginID)
+	if !ok || !prior.AuthorVerified || (attestation != nil && attestation.Verified) {
+		return nil
+	}
+	return confirmAttestationDowngrade(name, in, tty)
 }
 
 // readSourceMeta reads pluginID's install record. It does not check the
