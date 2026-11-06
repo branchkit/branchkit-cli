@@ -546,7 +546,7 @@ func printConsentSummary(manifest PluginManifest) {
 		}
 		display := make([]string, len(values))
 		for i, v := range values {
-			display[i] = ax.display(v)
+			display[i] = installDisplay(manifest, ax, v)
 		}
 		fmt.Print(ax.summary(display))
 	}

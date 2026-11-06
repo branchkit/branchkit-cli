@@ -95,10 +95,13 @@ type previewUpdate struct {
 	InstalledVersion string          `json:"installed_version"`
 	Added            []previewChange `json:"added"`
 	Removed          []previewChange `json:"removed"`
-	AddedEffects     []previewEffect `json:"added_effects"`
-	RemovedEffects   []string        `json:"removed_effects"`
-	RunChanged       bool            `json:"run_changed"`
-	Expands          bool            `json:"expands"`
+	// Effects that are grants: those the app judged the plugin's own (it
+	// defines them) ask nothing and revoke nothing, so neither list has
+	// them.
+	AddedEffects   []previewEffect `json:"added_effects"`
+	RemovedEffects []string        `json:"removed_effects"`
+	RunChanged     bool            `json:"run_changed"`
+	Expands        bool            `json:"expands"`
 	// GrantsArriveOn: the app switches this plugin's new grants on without
 	// asking (a plugin that ships with BranchKit). Otherwise each arrives
 	// off on the plugin's page.
@@ -124,7 +127,7 @@ func previewDisclosures(m PluginManifest) []previewDisclosure {
 		}
 		display := make([]string, len(values))
 		for i, v := range values {
-			display[i] = ax.display(v)
+			display[i] = installDisplay(m, ax, v)
 		}
 		out = append(out, previewDisclosure{
 			Axis:  ax.name,
@@ -142,6 +145,16 @@ func previewDisclosures(m PluginManifest) []previewDisclosure {
 		})
 	}
 	return out
+}
+
+// installDisplay words one member of ax for the install disclosure: what
+// the app judged the plugin's own on a grant axis (a read of its own blob)
+// says it has no switch.
+func installDisplay(m PluginManifest, ax consentAxis, member string) string {
+	if ax.kind == kindGrant && m.isOwn(ax.name, member) {
+		return ax.display(member) + " (its own; no switch)"
+	}
+	return ax.display(member)
 }
 
 func previewEffects(effects []EffectDeclaration) []previewEffect {
@@ -174,7 +187,7 @@ func previewDiff(oldM, newM PluginManifest, grantsOn bool) previewUpdate {
 		for _, m := range d.axis(ax.name).Added {
 			line, kind := fmt.Sprintf(ax.addFmt, ax.display(m)), ax.kind
 			if d.ownAdded(ax, m) {
-				line, kind = ownAddLine(line), kindNote
+				line, kind = ownLine(line), kindNote
 			}
 			up.Added = append(up.Added, previewChange{
 				Axis:    ax.name,
@@ -185,11 +198,15 @@ func previewDiff(oldM, newM PluginManifest, grantsOn bool) previewUpdate {
 			})
 		}
 		for _, m := range d.axis(ax.name).Removed {
+			line, kind := fmt.Sprintf(ax.delFmt, ax.display(m)), ax.kind
+			if d.ownRemoved(ax, m) {
+				line, kind = ownLine(line), kindNote
+			}
 			up.Removed = append(up.Removed, previewChange{
 				Axis: ax.name,
 				Item: ax.display(m),
-				Text: disclosureText(fmt.Sprintf(ax.delFmt, ax.display(m))),
-				Kind: ax.kind,
+				Text: disclosureText(line),
+				Kind: kind,
 			})
 		}
 	}

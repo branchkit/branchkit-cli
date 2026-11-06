@@ -171,6 +171,54 @@ func TestTheAppIsAskedAndItsAnswerShown(t *testing.T) {
 	}
 }
 
+// What the app judged the plugin's own is told, never asked about or
+// revoked: dropped in an update, it is not listed as a revoked grant; at a
+// fresh install it says it has no switch; and an effect it defines is not
+// one of the update's effect requests.
+func TestItsOwnIsToldNotRevoked(t *testing.T) {
+	ownJudged := func(m PluginManifest) PluginManifest {
+		return withJudgement(m, false,
+			answered("blobs", "notes/pages", kindNote),
+			answered("effects", "notes.pinned", kindNote))
+	}
+	with := ownJudged(parseManifest(t, `{"id": "notes", "name": "Notes", "version": "1.0.0", "consumes": {
+		"blobs": ["notes/pages"], "effects": [{"asserts": ["notes.pinned"], "user_visible_name": "Pinned"}]}}`))
+	without := ownJudged(parseManifest(t, `{"id": "notes", "name": "Notes", "version": "2.0.0"}`))
+
+	d := diffConsent(with, without)
+	if d.contracts() || len(d.RemovedEffects) != 0 || !reflect.DeepEqual(d.OwnRemovedEffects, []string{"Pinned"}) {
+		t.Errorf("dropping its own blob read and effect revokes nothing: %+v", d)
+	}
+	out := captureStdout(t, func() {
+		if err := confirmUpdate(without, with, strings.NewReader(""), false, false, false); err != nil {
+			t.Error(err)
+		}
+	})
+	if strings.Contains(out, "will be revoked") || !strings.Contains(out, "notes/pages (its own; no switch)") || !strings.Contains(out, "effect: Pinned (its own; no switch)") {
+		t.Errorf("update output:\n%s", out)
+	}
+	up := previewDiff(with, without, false)
+	if len(up.Removed) != 1 || up.Removed[0].Kind != kindNote || len(up.RemovedEffects) != 0 {
+		t.Errorf("removed rows: %+v, effects %v", up.Removed, up.RemovedEffects)
+	}
+	if add := diffConsent(without, with); len(add.AddedEffects) != 0 || len(add.OwnAddedEffects) != 1 || add.expands(true) {
+		t.Errorf("adding its own effect asks nothing: %+v", add)
+	}
+
+	for _, disc := range previewDisclosures(with) {
+		if disc.Axis == "blobs" && !reflect.DeepEqual(disc.Items, []string{"notes/pages (its own; no switch)"}) {
+			t.Errorf("install disclosure: %+v", disc)
+		}
+	}
+	// Unasked, the same read is a grant like any other.
+	unasked := parseManifest(t, `{"id": "notes", "consumes": {"blobs": ["notes/pages"]}}`)
+	for _, disc := range previewDisclosures(unasked) {
+		if disc.Axis == "blobs" && !reflect.DeepEqual(disc.Items, []string{"notes/pages"}) {
+			t.Errorf("unasked install disclosure: %+v", disc)
+		}
+	}
+}
+
 // With no app to ask, nothing is the plugin's own and every new request
 // counts as switched on: the view can only ask more often than the app.
 func TestWithNoAppEveryRequestCountsAsOn(t *testing.T) {

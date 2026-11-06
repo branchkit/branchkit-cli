@@ -976,16 +976,22 @@ type axisDiff struct {
 // and the one an update wants to put in its place. Everything else about an
 // update is the author's business.
 type consentDiff struct {
-	Axes           map[string]axisDiff
+	Axes map[string]axisDiff
+	// The effects an update adds and drops that are grants: another
+	// plugin's, or any in the safe view.
 	AddedEffects   []EffectDeclaration
 	RemovedEffects []string // display labels
-	RunChanged     bool
-	RunOld         string
-	RunNew         string
-	// next is the manifest the update installs, carrying the app's
-	// judgement when it was asked: which added members are the plugin's
-	// own (ownAdded).
-	next PluginManifest
+	// The effects it adds and drops that the app judged the plugin's own
+	// (it defines them): told, never asked about or revoked. Display labels.
+	OwnAddedEffects   []string
+	OwnRemovedEffects []string
+	RunChanged        bool
+	RunOld            string
+	RunNew            string
+	// prev and next are the manifests the update replaces and installs,
+	// each carrying the app's judgement when it was asked: which members
+	// are the plugin's own (ownAdded, ownRemoved).
+	prev, next PluginManifest
 }
 
 // ownAdded reports whether the app judged an added member of a grant axis
@@ -993,6 +999,12 @@ type consentDiff struct {
 // so asks nothing. Never in the safe view.
 func (d consentDiff) ownAdded(ax consentAxis, member string) bool {
 	return ax.kind == kindGrant && d.next.isOwn(ax.name, member)
+}
+
+// ownRemoved is ownAdded for a member the update drops: no grant record
+// held it, so none is revoked.
+func (d consentDiff) ownRemoved(ax consentAxis, member string) bool {
+	return ax.kind == kindGrant && d.prev.isOwn(ax.name, member)
 }
 
 // addedExpands reports whether one member the update adds to ax needs a
@@ -1003,20 +1015,14 @@ func (d consentDiff) addedExpands(ax consentAxis, member string, grantsOn bool) 
 
 // ownEffect reports whether the app judged every effect e asserts the
 // plugin's own: one it defines itself passes the check with no switch.
-func (d consentDiff) ownEffect(e EffectDeclaration) bool {
+func ownEffect(m PluginManifest, e EffectDeclaration) bool {
 	names := e.AssertNames()
 	for _, n := range names {
-		if !d.next.isOwn("effects", n) {
+		if !m.isOwn("effects", n) {
 			return false
 		}
 	}
 	return len(names) > 0
-}
-
-// effectExpands reports whether an effect the update adds needs a fresh
-// yes: one another plugin defines is a grant like any other.
-func (d consentDiff) effectExpands(e EffectDeclaration, grantsOn bool) bool {
-	return grantsOn && !d.ownEffect(e)
 }
 
 // expands reports whether the update asks for anything the installed version
@@ -1034,20 +1040,23 @@ func (d consentDiff) expands(grantsOn bool) bool {
 			}
 		}
 	}
-	for _, e := range d.AddedEffects {
-		if d.effectExpands(e, grantsOn) {
-			return true
-		}
-	}
-	return d.RunChanged
+	return (len(d.AddedEffects) > 0 && grantsOn) || d.RunChanged
+}
+
+// revoked reports whether dropping member from ax revokes a grant: not on
+// a note axis (a reason, a download), and not what was the plugin's own.
+func (d consentDiff) revoked(ax consentAxis, member string) bool {
+	return ax.update != updateInformational && !d.ownRemoved(ax, member)
 }
 
 // contracts reports whether the update drops anything whose grant the app
-// will revoke. A note axis (a reason, a download) revokes nothing.
+// will revoke.
 func (d consentDiff) contracts() bool {
 	for _, ax := range consentAxes {
-		if len(d.Axes[ax.name].Removed) > 0 && ax.update != updateInformational {
-			return true
+		for _, m := range d.Axes[ax.name].Removed {
+			if d.revoked(ax, m) {
+				return true
+			}
 		}
 	}
 	return len(d.RemovedEffects) > 0
@@ -1056,9 +1065,10 @@ func (d consentDiff) contracts() bool {
 // axis returns one axis's diff by registry name (empty if none).
 func (d consentDiff) axis(name string) axisDiff { return d.Axes[name] }
 
-// ownAddLine words a "+" line for something the app judged the plugin's
-// own, whose "allow it" clause would name a switch there is none of.
-func ownAddLine(line string) string {
+// ownLine words a "+" or "-" line for something the app judged the
+// plugin's own, whose "allow it" clause would name a switch there is none
+// of.
+func ownLine(line string) string {
 	line = strings.Replace(line, " (allow it on the plugin's page)", "", 1)
 	return strings.TrimSuffix(line, "\n") + " (its own; no switch)\n"
 }
@@ -1116,7 +1126,7 @@ func manifestEffects(m PluginManifest) []EffectDeclaration {
 }
 
 func diffConsent(oldM, newM PluginManifest) consentDiff {
-	d := consentDiff{Axes: map[string]axisDiff{}, next: newM}
+	d := consentDiff{Axes: map[string]axisDiff{}, prev: oldM, next: newM}
 	for _, ax := range consentAxes {
 		added, removed := diffStrings(ax.extract(oldM), ax.extract(newM))
 		if len(added) > 0 || len(removed) > 0 {
@@ -1131,16 +1141,26 @@ func diffConsent(oldM, newM PluginManifest) consentDiff {
 	newEffects := map[string]bool{}
 	for _, e := range manifestEffects(newM) {
 		newEffects[effectKey(e)] = true
-		if !oldEffects[effectKey(e)] {
+		switch {
+		case oldEffects[effectKey(e)]:
+		case ownEffect(newM, e):
+			d.OwnAddedEffects = append(d.OwnAddedEffects, effectLabel(e))
+		default:
 			d.AddedEffects = append(d.AddedEffects, e)
 		}
 	}
 	for _, e := range manifestEffects(oldM) {
-		if !newEffects[effectKey(e)] {
+		switch {
+		case newEffects[effectKey(e)]:
+		case ownEffect(oldM, e):
+			d.OwnRemovedEffects = append(d.OwnRemovedEffects, effectLabel(e))
+		default:
 			d.RemovedEffects = append(d.RemovedEffects, effectLabel(e))
 		}
 	}
 	sort.Strings(d.RemovedEffects)
+	sort.Strings(d.OwnAddedEffects)
+	sort.Strings(d.OwnRemovedEffects)
 
 	if oldM.Run != newM.Run {
 		d.RunChanged = true
@@ -1171,11 +1191,10 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, gran
 	if d.contracts() {
 		fmt.Println("No longer requests (grants will be revoked):")
 		for _, ax := range consentAxes {
-			if ax.update == updateInformational {
-				continue
-			}
 			for _, m := range d.axis(ax.name).Removed {
-				fmt.Printf(ax.delFmt, ax.display(m))
+				if d.revoked(ax, m) {
+					fmt.Printf(ax.delFmt, ax.display(m))
+				}
 			}
 		}
 		for _, e := range d.RemovedEffects {
@@ -1200,17 +1219,25 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, gran
 		for _, m := range ad.Added {
 			switch {
 			case d.ownAdded(ax, m):
-				notes = append(notes, ownAddLine(fmt.Sprintf(ax.addFmt, ax.display(m))))
+				notes = append(notes, ownLine(fmt.Sprintf(ax.addFmt, ax.display(m))))
 			case !d.addedExpands(ax, m, grantsOn):
 				arriveOff = append(arriveOff, fmt.Sprintf(ax.addFmt, ax.display(m)))
 			}
 		}
+		for _, m := range ad.Removed {
+			if d.ownRemoved(ax, m) {
+				notes = append(notes, ownLine(fmt.Sprintf(ax.delFmt, ax.display(m))))
+			}
+		}
 	}
-	for _, e := range d.AddedEffects {
-		switch {
-		case d.ownEffect(e):
-			notes = append(notes, ownAddLine(effectAddLine(e)))
-		case !d.effectExpands(e, grantsOn):
+	for _, label := range d.OwnAddedEffects {
+		notes = append(notes, ownLine(fmt.Sprintf("  + effect: %s\n", label)))
+	}
+	for _, label := range d.OwnRemovedEffects {
+		notes = append(notes, ownLine(fmt.Sprintf("  - effect: %s\n", label)))
+	}
+	if !grantsOn {
+		for _, e := range d.AddedEffects {
 			arriveOff = append(arriveOff, effectAddLine(e))
 		}
 	}
@@ -1240,8 +1267,8 @@ func confirmUpdate(newM, oldM PluginManifest, in io.Reader, assumeYes, tty, gran
 			}
 		}
 	}
-	for _, e := range d.AddedEffects {
-		if d.effectExpands(e, grantsOn) {
+	if grantsOn {
+		for _, e := range d.AddedEffects {
 			fmt.Print(effectAddLine(e))
 		}
 	}
