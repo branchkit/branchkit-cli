@@ -50,6 +50,7 @@ var powerLineAxes = map[string]string{
 	"provided_blobs":      "neither",
 	"runtimes":            "neither", // managed runtimes inside the sandbox
 	"resources":           "neither", // a larger share of memory, inside the sandbox
+	"interrupts":          "neither", // its own cards, shown and spoken sooner
 	"capabilities":        "neither", // operations, each gated by a privilege
 	"stages":              "neither", // a stage's own reach is its stage.* privilege
 	"native_messaging":    "acts",    // a bridge to a browser extension

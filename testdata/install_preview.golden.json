@@ -173,6 +173,14 @@
       "kind": "scope"
     },
     {
+      "axis": "interrupts",
+      "items": [
+        "cards it marks urgent show even while you hold cards, and are read out at once"
+      ],
+      "text": "May interrupt you: cards it marks urgent show even while you hold cards, and are read out at once",
+      "kind": "scope"
+    },
+    {
       "axis": "capabilities",
       "items": [
         "speech.say"
@@ -248,7 +256,7 @@
   "blocklisted": false,
   "source": "github.com/example/golden",
   "tag": "v2.0.0",
-  "consent_digest": "04183f74fdc7749c30193916db8eb2c92eaf9f3373e0a0eaf8c58f0bae505b78",
+  "consent_digest": "2716b1636adc48f6a08147e47d9fe061959bbb8fc054f35ed30ccc7a711ddbec",
   "update": {
     "installed_version": "1.0.0",
     "added": [
@@ -431,6 +439,13 @@
         "axis": "resources",
         "item": "up to 2048 MB of memory",
         "text": "may use up to 2048 MB of memory",
+        "kind": "scope",
+        "expands": true
+      },
+      {
+        "axis": "interrupts",
+        "item": "cards it marks urgent show even while you hold cards, and are read out at once",
+        "text": "may interrupt you: cards it marks urgent show even while you hold cards, and are read out at once",
         "kind": "scope",
         "expands": true
       },

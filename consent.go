@@ -253,6 +253,10 @@ func (ax consentAxis) addExpands(grantsOn bool) bool {
 
 func plainDisplay(s string) string { return s }
 
+// interruptsMember is the one member `requires.interrupts` adds, the same
+// words the app's card uses.
+const interruptsMember = "cards it marks urgent show even while you hold cards, and are read out at once"
+
 // protectedReadDisplay names a protected kind of window in the person's
 // words; an unknown name (a newer app's) is shown as spelled.
 func protectedReadDisplay(s string) string {
@@ -561,6 +565,23 @@ var axisReaders = []consentAxis{
 		},
 		addFmt: "  + may use %s\n",
 		delFmt: "  - no longer asks for %s\n",
+	},
+	// That its HUD output may cut in. One member, worded as the app's card
+	// words it, so a manifest that starts asking reads as a new member.
+	{
+		name: "interrupts",
+		extract: func(m PluginManifest) []string {
+			if !m.Requires.Interrupts {
+				return nil
+			}
+			return []string{interruptsMember}
+		},
+		display: plainDisplay,
+		summary: func(v []string) string {
+			return fmt.Sprintf("  May interrupt you: %s\n", strings.Join(v, ", "))
+		},
+		addFmt: "  + may interrupt you: %s\n",
+		delFmt: "  - no longer interrupts: %s\n",
 	},
 	// Platform operations the plugin cannot start without. Only `required`:
 	// one added by an update can stop the plugin starting on this computer,

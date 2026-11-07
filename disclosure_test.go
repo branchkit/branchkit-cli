@@ -187,6 +187,44 @@ func TestUnshownDeclarationsAreDisclosedAndExpand(t *testing.T) {
 	}
 }
 
+// A plugin that says its cards may interrupt is told so at install, and an
+// update that starts saying it asks again; one that stops asks nothing.
+func TestInterruptsIsDisclosedAndExpands(t *testing.T) {
+	quiet := parseManifest(t, `{"id": "x", "name": "X", "version": "1.0.0"}`)
+	loud := parseManifest(t, `{"id": "x", "name": "X", "version": "2.0.0", "requires": {"interrupts": true}}`)
+
+	var got []string
+	for _, d := range previewDisclosures(loud) {
+		if d.Axis == "interrupts" {
+			got = d.Items
+		}
+	}
+	if !reflect.DeepEqual(got, []string{interruptsMember}) {
+		t.Errorf("interrupts disclosed %v, want [%q]", got, interruptsMember)
+	}
+	for _, d := range previewDisclosures(quiet) {
+		if d.Axis == "interrupts" {
+			t.Errorf("a plugin that does not ask is disclosed as interrupting: %v", d.Items)
+		}
+	}
+
+	out := captureStdout(t, func() { printConsentSummary(loud) })
+	if !strings.Contains(out, "May interrupt you: "+interruptsMember) {
+		t.Errorf("install summary omits the interrupts line:\n%s", out)
+	}
+
+	up := diffConsent(quiet, loud)
+	if len(up.axis("interrupts").Added) != 1 {
+		t.Errorf("an update that starts interrupting does not show it as new: %+v", up.axis("interrupts"))
+	}
+	if !up.expands(false) {
+		t.Error("an update that starts interrupting must ask again, whoever's plugin it is")
+	}
+	if down := diffConsent(loud, quiet); down.expands(false) {
+		t.Errorf("an update that stops interrupting asks for nothing: %+v", down)
+	}
+}
+
 // The panel's data and the terminal's copy come from the same registry: the
 // update rows carry the terminal's lines without their markers, and each
 // row says whether its member is a grant.

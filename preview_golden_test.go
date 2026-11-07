@@ -48,6 +48,7 @@ const goldenNewManifest = `{
 		"devices": {"hid": ["046d:c52b"], "ble": ["fff0"]},
 		"runtimes": ["python"],
 		"resources": {"memory_mb": 2048},
+		"interrupts": true,
 		"capabilities": {"uses": ["speech.say", "native.dbus_call"], "required": ["speech.say"]},
 		"reasons": {
 			"privilege:shell": "To run the converter you pointed it at.",

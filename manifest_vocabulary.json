@@ -117,6 +117,7 @@
       "capabilities",
       "dbus",
       "devices",
+      "interrupts",
       "network",
       "optional_privileges",
       "preferences",
@@ -286,6 +287,13 @@
       "field": "resources",
       "kind": "scope",
       "name": "resources",
+      "update": "expands"
+    },
+    {
+      "block": "requires",
+      "field": "interrupts",
+      "kind": "scope",
+      "name": "interrupts",
       "update": "expands"
     },
     {

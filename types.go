@@ -92,6 +92,11 @@ type RequiresCfg struct {
 	Runtimes []string `json:"runtimes,omitempty"`
 	// More of the computer than the default share: today, memory.
 	Resources *ResourcesCfg `json:"resources,omitempty"`
+	// That the plugin's HUD output may interrupt the person: a card it
+	// marks urgent, or a problem, is shown even while cards are held and
+	// is read out at once. Told at install, with no switch; an update that
+	// starts asking asks again.
+	Interrupts bool `json:"interrupts,omitempty"`
 	// D-Bus methods the plugin calls (Linux), one grant each on the
 	// plugin's page.
 	Dbus *DbusCfg `json:"dbus,omitempty"`
